@@ -20,7 +20,7 @@ This skill follows the universal observability baseline (see `docs/plans/2026-04
 |---|---|---|
 | CRITICAL | `develle-dns sync` exits non-zero | `link-develle-domain: dns sync failed: <stderr-tail>` |
 | CRITICAL | Cloudflare API returns 401/403 (token invalid or insufficient scope) | `link-develle-domain: cloudflare auth failed: <status>` |
-| WARNING | `CLOUDFLARE_API_TOKEN` missing from env | `link-develle-domain: CLOUDFLARE_API_TOKEN not in env; asked Louis to direnv allow ~/42/TheStables/network/domains` |
+| WARNING | `CLOUDFLARE_API_TOKEN` missing from env | `link-develle-domain: CLOUDFLARE_API_TOKEN not in env; asked Louis to direnv allow ~/42/TheHarness/network/domains` |
 | WARNING | User proposed apex as `develle.fr` instead of `@` | `link-develle-domain: apex name confusion; corrected 'develle.fr' to '@'` |
 | WARNING | `proxied: true` requested for a port Cloudflare doesn't proxy | `link-develle-domain: proxied=true on non-proxyable port <port>; recommended grey-cloud` |
 | WARNING | `proxied: true` with `ttl != 1` (Cloudflare will reject) | `link-develle-domain: proxied record with ttl=<ttl>; corrected to ttl=1` |
@@ -41,7 +41,7 @@ claude-log link-develle-domain CRITICAL "link-develle-domain: dns sync failed: 4
 
 # link-develle-domain
 
-Manages DNS records for the `develle.fr` zone via the Cloudflare API. The single source of truth is `~/42/TheStables/network/domains/cloudflare-dns/dns.json`; the `develle-dns sync` command does an idempotent diff-and-apply.
+Manages DNS records for the `develle.fr` zone via the Cloudflare API. The single source of truth is `~/42/TheHarness/network/domains/cloudflare-dns/dns.json`; the `develle-dns sync` command does an idempotent diff-and-apply.
 
 ## Inputs to gather
 
@@ -56,12 +56,12 @@ Manages DNS records for the `develle.fr` zone via the Cloudflare API. The single
 
 ## Required env
 
-`CLOUDFLARE_API_TOKEN` (Zone:DNS:Edit + Zone:Zone:Read). It's in `~/42/TheStables/network/domains/.envrc` (also still in `~/42/Markdowns2Teach/.envrc`).
+`CLOUDFLARE_API_TOKEN` (Zone:DNS:Edit + Zone:Zone:Read). It's in `~/42/TheHarness/network/domains/.envrc` (also still in `~/42/Markdowns2Teach/.envrc`).
 
 **In an agent shell it will be empty, and neither direnv nor `secrets run` fixes it.** direnv doesn't run non-interactively, and `secrets run` only resolves `pass://` refs — this token is still a plaintext literal, so it is invisible to it. Asking Louis to `direnv allow` does nothing for your shell. Load just that one line, which never prints the value:
 
 ```bash
-cd ~/42/TheStables/network/domains && eval "$(grep -E '^export CLOUDFLARE_API_TOKEN=' .envrc)" && develle-dns status
+cd ~/42/TheHarness/network/domains && eval "$(grep -E '^export CLOUDFLARE_API_TOKEN=' .envrc)" && develle-dns status
 ```
 
 Same shape for `link-develle-access` (`CLOUDFLARE_ACCESS_TOKEN_GCLOUD_AUTH`, `CLOUDFLARE_ACCOUNT_ID`). Never accept a token typed inline. Once the token is vaulted, `secrets run -- develle-dns status` becomes the right form and this workaround should be deleted.
@@ -71,7 +71,7 @@ Same shape for `link-develle-access` (`CLOUDFLARE_ACCESS_TOKEN_GCLOUD_AUTH`, `CL
 ### 1. Read current state
 
 ```bash
-cat ~/42/TheStables/network/domains/cloudflare-dns/dns.json | jq .   # local desired state
+cat ~/42/TheHarness/network/domains/cloudflare-dns/dns.json | jq .   # local desired state
 develle-dns list                                             # what Cloudflare actually has
 ```
 
@@ -79,7 +79,7 @@ Show Louis both, so it's clear whether the new record duplicates an existing one
 
 ### 2. Edit `dns.json`
 
-Append (or update) the record in `~/42/TheStables/network/domains/cloudflare-dns/dns.json` using the `Edit` tool, preserving JSON formatting and existing entries. Schema:
+Append (or update) the record in `~/42/TheHarness/network/domains/cloudflare-dns/dns.json` using the `Edit` tool, preserving JSON formatting and existing entries. Schema:
 
 ```json
 {

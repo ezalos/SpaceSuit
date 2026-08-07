@@ -20,7 +20,7 @@ This skill follows the universal observability baseline (see `docs/plans/2026-04
 |---|---|---|
 | CRITICAL | `develle-access` exits non-zero | `link-develle-access: develle-access <cmd> failed: <stderr-tail>` |
 | CRITICAL | Cloudflare API returns 401/403 (token invalid or insufficient scope) | `link-develle-access: cloudflare auth failed: <status>` |
-| WARNING | `CLOUDFLARE_ACCESS_TOKEN_GCLOUD_AUTH` missing from env | `link-develle-access: access token not in env; not vaulted yet, needs to be in env or ~/42/TheStables/network/domains/.envrc as plaintext (secrets check there)` |
+| WARNING | `CLOUDFLARE_ACCESS_TOKEN_GCLOUD_AUTH` missing from env | `link-develle-access: access token not in env; not vaulted yet, needs to be in env or ~/42/TheHarness/network/domains/.envrc as plaintext (secrets check there)` |
 | WARNING | `protect` requested on a grey-cloud / DNS-only host (Access can't enforce at the edge) | `link-develle-access: <host> is DNS-only; Access won't intercept — needs proxy/tunnel first` |
 | WARNING | `protect` on a host with non-browser clients (API/WebDAV) | `link-develle-access: <host> has non-browser clients; flagged need for a service token` |
 | WARNING | `public` requested (removes a gate — always confirm) | `link-develle-access: public <host> requested; confirmed with Louis before removing the gate` |
@@ -40,11 +40,11 @@ claude-log link-develle-access CRITICAL "link-develle-access: cloudflare auth fa
 
 # link-develle-access
 
-Gates `develle.fr` subdomains behind **Google SSO** via Cloudflare Access — or removes the gate to make them public. One-click login (the browser is already signed into Google), 30-day session cookie, no email/PIN. The Cloudflare side IS the source of truth (there's no local config file); `develle-access list` reflects live state. Wraps `~/42/TheStables/network/domains/cloudflare-access/access.sh`.
+Gates `develle.fr` subdomains behind **Google SSO** via Cloudflare Access — or removes the gate to make them public. One-click login (the browser is already signed into Google), 30-day session cookie, no email/PIN. The Cloudflare side IS the source of truth (there's no local config file); `develle-access list` reflects live state. Wraps `~/42/TheHarness/network/domains/cloudflare-access/access.sh`.
 
 ## Required env
 
-Sourced from `~/42/TheStables/network/domains/.envrc` via direnv (private `ezalos` GitHub repo):
+Sourced from `~/42/TheHarness/network/domains/.envrc` via direnv (private `ezalos` GitHub repo):
 
 | Var | Purpose |
 |---|---|
@@ -55,7 +55,7 @@ Sourced from `~/42/TheStables/network/domains/.envrc` via direnv (private `ezalo
 If `develle-access` complains the token is missing: it isn't vaulted yet, so **in an agent shell it will always be missing** — direnv doesn't run non-interactively and `secrets run` only resolves `pass://` refs, not plaintext literals. Load just the lines you need, which never prints their values:
 
 ```bash
-cd ~/42/TheStables/network/domains && eval "$(grep -E '^export (CLOUDFLARE_ACCESS_TOKEN_GCLOUD_AUTH|CLOUDFLARE_ACCOUNT_ID)=' .envrc)" && develle-access list
+cd ~/42/TheHarness/network/domains && eval "$(grep -E '^export (CLOUDFLARE_ACCESS_TOKEN_GCLOUD_AUTH|CLOUDFLARE_ACCOUNT_ID)=' .envrc)" && develle-access list
 ```
 
 Never accept a token typed inline. Once vaulted, `secrets run --` is the right form and this workaround should be deleted.

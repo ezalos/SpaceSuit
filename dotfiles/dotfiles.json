@@ -619,7 +619,7 @@
         },
         "claude_md": {
             "alias": "claude_md",
-            "main": "/home/ezalos/42/TheStables/dotfiles/claude_md",
+            "main": "/home/ezalos/42/TheHarness/dotfiles/claude_md",
             "deploy": {
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.claude/CLAUDE.md",
@@ -654,7 +654,7 @@
         },
         "claude_settings": {
             "alias": "claude_settings",
-            "main": "/home/ezalos/42/TheStables/dotfiles/claude_settings",
+            "main": "/home/ezalos/42/TheHarness/dotfiles/claude_settings",
             "deploy": {
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.claude/settings.json",
@@ -690,7 +690,7 @@
                 "Louiss.MacBook.Pro.3.local.ezalos"
             ],
             "variants": {
-                "TinyButMighty.ezalos": "/home/ezalos/42/TheStables/dotfiles/claude_settings.tbm"
+                "TinyButMighty.ezalos": "/home/ezalos/42/TheHarness/dotfiles/claude_settings.tbm"
             },
             "fanout": false
         },
@@ -726,7 +726,7 @@
         },
         "nginx.conf": {
             "alias": "nginx.conf",
-            "main": "/home/ezalos/42/TheStables/hosts/configs/nginx.conf",
+            "main": "/home/ezalos/42/TheHarness/hosts/configs/nginx.conf",
             "deploy": {
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/etc/nginx/nginx.conf",
@@ -841,7 +841,7 @@
         },
         "serve-slides.service": {
             "alias": "serve-slides.service",
-            "main": "/home/ezalos/42/TheStables/hosts/configs/serve-slides.service",
+            "main": "/home/ezalos/42/TheHarness/hosts/configs/serve-slides.service",
             "deploy": {
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.config/systemd/user/serve-slides.service",
@@ -923,7 +923,7 @@
         },
         "agents-dashboard.service": {
             "alias": "agents-dashboard.service",
-            "main": "/home/ezalos/42/TheStables/hosts/configs/agents-dashboard.service",
+            "main": "/home/ezalos/42/TheHarness/hosts/configs/agents-dashboard.service",
             "deploy": {
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.config/systemd/user/agents-dashboard.service",
@@ -969,7 +969,7 @@
         },
         "lock-session-on-login.service": {
             "alias": "lock-session-on-login.service",
-            "main": "/home/ezalos/42/TheStables/hosts/configs/lock-session-on-login.service",
+            "main": "/home/ezalos/42/TheHarness/hosts/configs/lock-session-on-login.service",
             "deploy": {
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.config/systemd/user/lock-session-on-login.service",
