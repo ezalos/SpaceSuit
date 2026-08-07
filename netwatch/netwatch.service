@@ -1,0 +1,26 @@
+[Unit]
+# ABOUTME: Runs the netwatch home-network black box recorder as a user service.
+# ABOUTME: Survives logout via linger; restarts itself so the ledger has no gaps.
+Description=netwatch — home network black box recorder
+After=network.target
+
+[Service]
+Type=simple
+# Per-host settings live here, 0600, outside git: the healthcheck ping URL is a
+# capability (it can forge liveness) and the peer address varies by machine.
+# direnv does not run under systemd, so this must not depend on it.
+#   NETWATCH_HEALTHCHECK_URL=https://hc-ping.com/<uuid>
+#   NETWATCH_PEER=<host>.<your-tailnet>.ts.net
+#   NETWATCH_ARGS=--no-vendor
+EnvironmentFile=-%h/.config/netwatch/env
+# $NETWATCH_ARGS is intentionally unquoted so systemd word-splits it — that is
+# what lets one unit file serve every host from per-host env.
+ExecStart=/usr/bin/python3 %h/Setup/netwatch/netwatch.py run --quiet $NETWATCH_ARGS
+Restart=always
+RestartSec=10
+# A monitor must never be the reason the machine feels slow.
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=default.target

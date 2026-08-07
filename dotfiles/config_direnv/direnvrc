@@ -1,0 +1,38 @@
+# ABOUTME: direnv stdlib extension: `use proton <context> [resolve]` wires a folder to ONE
+# ABOUTME: scoped read-only Proton agent token; `resolve` eagerly resolves pass:// refs in env.
+#
+# Mode B (capability repos, default): refs stay refs; tools resolve via `secrets run -- <cmd>`.
+#   use proton <ctx>
+# Mode A (project repos): place the line AFTER the ref exports; it resolves them into the env.
+#   export HF_TOKEN='pass://<share>/<item>/Secret'
+#   use proton <ctx> resolve
+#
+# Contexts = PAT files under ~/.claude/channels/proton-pass/<ctx>.pat (one context = one vault).
+# direnv evaluates this file with bash, so `local` is safe here (not a zsh func).
+
+use_proton() {
+  local ctx="${1:?use proton <context> [resolve]   (see ~/.claude/channels/proton-pass/*.pat)}"
+  local mode="${2:-}"
+  export PROTON_AGENT_CONTEXT="$ctx"
+  export PROTON_PASS_SESSION_DIR="$HOME/.claude/channels/proton-pass/session-$ctx"
+  export PROTON_PASS_AGENT_REASON="direnv:${PWD##*/}"
+  watch_file "$HOME/.claude/channels/proton-pass/$ctx.pat"
+  if [ "$mode" != "resolve" ]; then
+    log_status "proton: context '$ctx' (refs stay refs; tools use 'secrets run -- <cmd>')"
+    return 0
+  fi
+  local name ref val failed=""
+  while IFS='=' read -r name ref; do
+    # in-place resolution; on failure the var keeps its ref: self-describing, loud downstream
+    if val="$(proton-agent item view "$ref" 2>/dev/null)" && [ -n "$val" ]; then
+      export "$name=$val"
+    else
+      failed="$failed $name"
+    fi
+  done < <(env | grep -E '^[A-Za-z_][A-Za-z0-9_]*=pass://')
+  if [ -n "$failed" ]; then
+    log_error "proton: unresolved refs kept as refs:$failed  (offline? token? run 'secrets check')"
+  else
+    log_status "proton: context '$ctx', refs resolved into env"
+  fi
+}

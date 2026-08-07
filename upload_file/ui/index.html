@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>upload.develle.fr</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 640px; margin: 0 auto; padding: 1.5rem; line-height: 1.4; }
+  h1 { font-size: 1.2rem; margin-bottom: 0.25rem; }
+  .sub { color: #888; font-size: 0.9rem; margin-bottom: 1.5rem; }
+  label.drop {
+    display: block; padding: 2.5rem 1rem; border: 2px dashed #888; border-radius: 8px;
+    text-align: center; cursor: pointer; transition: background 0.15s, border-color 0.15s;
+  }
+  label.drop.over { background: rgba(120, 180, 255, 0.15); border-color: #4a8; }
+  label.drop input { display: none; }
+  .btn {
+    display: block; width: 100%; padding: 0.9rem; margin-top: 1rem;
+    font-size: 1rem; font-weight: 600; border: 0; border-radius: 6px;
+    background: #2a6; color: white; cursor: pointer;
+  }
+  .btn:disabled { background: #888; cursor: default; }
+  progress { width: 100%; height: 1.2rem; margin-top: 1rem; }
+  .log { margin-top: 1.5rem; font-family: ui-monospace, Menlo, monospace; font-size: 0.85rem; }
+  .log div { padding: 0.35rem 0.5rem; border-radius: 4px; margin-bottom: 0.2rem; }
+  .log .ok  { background: rgba(80, 200, 120, 0.18); }
+  .log .err { background: rgba(255, 90, 90, 0.18); }
+  .log .info { background: rgba(120, 120, 120, 0.12); }
+  .log .path {
+    background: rgba(80, 200, 120, 0.10); border: 1px solid rgba(80, 200, 120, 0.4);
+    cursor: pointer; user-select: all; display: flex; align-items: center; gap: 0.5rem;
+  }
+  .log .path:hover { background: rgba(80, 200, 120, 0.20); }
+  .log .path .label { color: #888; font-size: 0.75rem; flex-shrink: 0; }
+  .log .path .p { flex: 1; word-break: break-all; }
+  .log .path .copied { color: #2a6; font-size: 0.75rem; font-weight: 600; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<h1>Upload to inbox</h1>
+<div class="sub">Files land on TinyButMighty. Pull on the laptop with <code>pull-uploads</code>. Resumable &amp; chunked — large files are fine.</div>
+
+<label class="drop" id="drop">
+  <input type="file" id="files" multiple accept="*/*">
+  <div id="dropmsg">Tap to pick files, or drop them here.</div>
+</label>
+
+<button class="btn" id="go">Upload</button>
+<progress id="prog" hidden></progress>
+<div class="log" id="log"></div>
+
+<!-- tus resumable-upload client, vendored locally (no external CDN dependency) -->
+<script src="/tus.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const drop = $("drop"), input = $("files"), go = $("go"), prog = $("prog"), log = $("log"), dropmsg = $("dropmsg");
+
+// Each PATCH chunk stays under Cloudflare's 100MB proxy cap, so any file size works
+// through the tunnel. Resumable: an interrupted upload continues instead of restarting.
+const CHUNK = 48 * 1024 * 1024;
+
+function append(msg, cls = "info") {
+  const d = document.createElement("div");
+  d.textContent = msg;
+  d.className = cls;
+  log.prepend(d);
+}
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) { /* fall through */ }
+  const ta = document.createElement("textarea");
+  ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+  document.body.removeChild(ta);
+  return ok;
+}
+
+function appendPath(filename) {
+  const prompt = `pull uploads then read "~/Inbox/${filename}"`;
+  const d = document.createElement("div");
+  d.className = "path";
+  const label = document.createElement("span"); label.className = "label"; label.textContent = "prompt:";
+  const p = document.createElement("span"); p.className = "p"; p.textContent = prompt;
+  const flag = document.createElement("span"); flag.className = "copied"; flag.textContent = "tap to copy";
+  d.append(label, p, flag);
+  d.addEventListener("click", async () => {
+    const ok = await copyText(prompt);
+    flag.textContent = ok ? "copied!" : "copy failed";
+    setTimeout(() => { flag.textContent = "tap to copy"; }, 1500);
+  });
+  log.prepend(d);
+}
+
+function updateMsg() {
+  const n = input.files.length;
+  if (!n) { dropmsg.textContent = "Tap to pick files, or drop them here."; }
+  else { dropmsg.textContent = n === 1 ? input.files[0].name : `${n} files selected`; }
+}
+
+input.addEventListener("change", updateMsg);
+input.addEventListener("input", updateMsg);
+
+["dragenter", "dragover"].forEach(e => drop.addEventListener(e, ev => {
+  ev.preventDefault(); drop.classList.add("over");
+}));
+["dragleave", "drop"].forEach(e => drop.addEventListener(e, ev => {
+  ev.preventDefault(); drop.classList.remove("over");
+}));
+drop.addEventListener("drop", ev => { input.files = ev.dataTransfer.files; updateMsg(); });
+
+function uploadFile(file) {
+  return new Promise((resolve, reject) => {
+    const upload = new tus.Upload(file, {
+      endpoint: "/files/",
+      chunkSize: CHUNK,
+      retryDelays: [0, 1000, 3000, 5000, 10000],
+      removeFingerprintOnSuccess: true,
+      metadata: { filename: file.name, filetype: file.type || "application/octet-stream" },
+      onProgress: (sent, total) => { prog.max = total; prog.value = sent; },
+      onSuccess: () => { append(`ok  ${file.name}`, "ok"); appendPath(file.name); resolve(); },
+      onError: err => { append(`err ${file.name}: ${err}`, "err"); reject(err); },
+    });
+    // Resume if this exact file was interrupted before; otherwise start fresh.
+    upload.findPreviousUploads().then(prev => {
+      if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
+      upload.start();
+    });
+  });
+}
+
+go.addEventListener("click", async () => {
+  const files = [...input.files];
+  if (!files.length) {
+    append("no files selected — tap the box above to pick some first", "err");
+    return;
+  }
+  if (typeof tus === "undefined") {
+    append("upload library failed to load — reload the page", "err");
+    return;
+  }
+  go.disabled = true; prog.hidden = false;
+  for (const file of files) {
+    append(`uploading ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)…`, "info");
+    prog.value = 0;
+    try {
+      await uploadFile(file);
+    } catch (e) {
+      /* onError already logged */
+    }
+  }
+  prog.hidden = true;
+  go.disabled = false;
+  input.value = "";
+  updateMsg();
+});
+</script>
+</body>
+</html>

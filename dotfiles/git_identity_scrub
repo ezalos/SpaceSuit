@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+# ABOUTME: Identity content-scrub: blocks forbidden persona tokens in staged added lines.
+# ABOUTME: Exact substring + regex + edit-distance<=1 fuzzy (length-gated). Reads git diff on stdin.
+import sys, re, os, argparse
+
+
+def load_entries(paths):
+    literals, regexes = [], []
+    for p in paths:
+        if not p or not os.path.isfile(p):
+            continue
+        with open(p, encoding="utf-8", errors="replace") as fh:
+            for raw in fh:
+                line = raw.rstrip("\n").strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("regex:"):
+                    regexes.append(re.compile(line[6:], re.IGNORECASE))
+                elif line.startswith("literal:"):
+                    literals.append(line[8:].lower())
+                else:
+                    literals.append(line.lower())
+    return literals, regexes
+
+
+def edit_distance_le1(a, b):
+    la, lb = len(a), len(b)
+    if abs(la - lb) > 1:
+        return False
+    if a == b:
+        return True
+    if la > lb:
+        a, b, la, lb = b, a, lb, la          # a is now the shorter/equal
+    i = j = 0
+    edited = False
+    while i < la and j < lb:
+        if a[i] == b[j]:
+            i += 1; j += 1
+        else:
+            if edited:
+                return False
+            edited = True
+            if la == lb:
+                i += 1; j += 1               # substitution
+            else:
+                j += 1                       # deletion from the longer (b)
+    return True
+
+
+def _is_word_char(ch):
+    return ch.isalnum()
+
+
+def fuzzy_hit(line, token):
+    """True when a near-miss of `token` appears as its own word in `line`.
+
+    Anchored to word boundaries: a near-match buried inside a longer identifier
+    is a coincidence, not a persona leak — with a 5-char token the unanchored
+    version fired on ordinary prose and on required API identifiers. Exact
+    substring matching is handled by the caller and stays unanchored, so a real
+    token is still caught anywhere, including inside an identifier.
+    """
+    n = len(token)
+    for w in (n - 1, n, n + 1):
+        if w <= 0:
+            continue
+        for s in range(0, len(line) - w + 1):
+            if s > 0 and _is_word_char(line[s - 1]):
+                continue
+            end = s + w
+            if end < len(line) and _is_word_char(line[end]):
+                continue
+            if edit_distance_le1(token, line[s:end]):
+                return True
+    return False
+
+
+def scan(diff_text, literals, regexes, min_len):
+    hits = []
+    for raw in diff_text.splitlines():
+        if not raw.startswith("+") or raw.startswith("+++"):
+            continue
+        added = raw[1:]
+        low = added.lower()
+        matched = None
+        for lit in literals:
+            if lit in low:
+                matched = lit; break
+            if len(lit) >= min_len and fuzzy_hit(low, lit):
+                matched = lit + "~fuzzy"; break
+        if matched is None:
+            for rx in regexes:
+                if rx.search(added):
+                    matched = "regex:" + rx.pattern; break
+        if matched is not None:
+            hits.append((added, matched))
+    return hits
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--context")
+    ap.add_argument("--config-dir", default=os.path.expanduser("~/.config/git-identity"))
+    ap.add_argument("--forbidden-file", action="append", default=[])
+    ap.add_argument("--min-len", type=int, default=5)
+    a = ap.parse_args()
+    paths = list(a.forbidden_file)
+    if a.context:
+        fb = os.path.join(a.config_dir, "forbidden")
+        paths += [os.path.join(fb, "_universal.txt"),
+                  os.path.join(fb, "home-ip.txt"),
+                  os.path.join(fb, a.context + ".txt")]
+    literals, regexes = load_entries(paths)
+    # Read stdin as BYTES and decode defensively. `sys.stdin.read()` decodes as
+    # UTF-8 and raises UnicodeDecodeError on the first non-UTF-8 byte, which
+    # crashed the whole pre-commit hook whenever a binary file was staged (PDFs,
+    # 2026-08-05). A scrub that dies on binary is worse than one that scans it:
+    # the commit is blocked with a traceback instead of a verdict, and the
+    # obvious workaround is to disable the scrub entirely. errors="replace"
+    # matches how load_entries already reads its config files.
+    diff_bytes = sys.stdin.buffer.read()
+    hits = scan(diff_bytes.decode("utf-8", errors="replace"), literals, regexes, a.min_len)
+    if hits:
+        sys.stderr.write("[content-scrub] BLOCKED: forbidden persona tokens in staged content:\n")
+        for added, tok in hits[:20]:
+            sys.stderr.write("  %-60s  <- %s\n" % (added[:60], tok))
+        sys.exit(1)
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

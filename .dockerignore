@@ -1,0 +1,13 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+.git
+.pytest_cache
+test_dotfiles
+data/test_data
+.DS_Store
+.logs
+.envrc
+.secrets.sh
+nvim-osx64

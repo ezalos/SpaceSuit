@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+data/
+*.oga
+*.wav
+*.mp3
+*.m4a
+.dockerignore
+Dockerfile
+docker-compose.yml
+README.md
+run.sh

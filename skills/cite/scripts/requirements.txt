@@ -1,0 +1,2 @@
+# ABOUTME: Runtime deps for the cite skill scripts. System python3 already ships pyyaml.
+pyyaml>=5.4

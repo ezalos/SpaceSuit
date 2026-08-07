@@ -1,0 +1,14 @@
+# ABOUTME: Project configuration for the transcription server subproject.
+# ABOUTME: Defines isolated dependencies (whisperx, fastapi, torch) separate from the parent Setup project.
+
+[project]
+name = "transcription-server"
+version = "0.1.0"
+description = "FastAPI server wrapping whisperx for audio transcription"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "python-multipart>=0.0.18",
+    "whisperx @ git+https://github.com/m-bain/whisperX.git",
+]

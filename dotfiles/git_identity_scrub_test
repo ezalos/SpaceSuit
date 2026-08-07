@@ -1,0 +1,90 @@
+# ABOUTME: Tests for scrub.py — exact/regex/fuzzy forbidden-token matching on staged diffs.
+# ABOUTME: Synthetic fixtures only (no real identity tokens), so this file is safe to track in Setup.
+import re, importlib.util, os
+spec = importlib.util.spec_from_file_location(
+    "scrub", os.path.join(os.path.dirname(__file__), "scrub.py"))
+scrub = importlib.util.module_from_spec(spec); spec.loader.exec_module(scrub)
+
+
+def S(diff, lits=(), rxs=(), min_len=5):
+    return scrub.scan(diff, [l.lower() for l in lits],
+                      [re.compile(r, re.I) for r in rxs], min_len)
+
+
+def test_exact_substring():
+    assert S("+contact alpha.example now", lits=["alpha.example"])
+
+
+def test_regex_full_pattern_matches():
+    assert S("+by Xavier Young", rxs=[r"[Xx]avier[ ._-]*[Yy]oung"])
+
+
+def test_regex_does_not_flag_bare_partial():
+    # the regex needs both halves adjacent; a bare partial must not match
+    assert not S("+manage young.example dns", rxs=[r"[Xx]avier[ ._-]*[Yy]oung"])
+
+
+def test_fuzzy_one_substitution():
+    # 'gradiant' vs 'gradient' = 1 substitution; token long enough to fuzzy
+    assert S("+see delta-gradiant repo", lits=["delta-gradient"])
+
+
+def test_fuzzy_one_deletion():
+    assert S("+user bravo-charlie-dela", lits=["bravo-charlie-delta"])
+
+
+def test_short_token_not_fuzzied():
+    # 'abx' near 'abc' but len 3 < min_len -> only exact, no hit
+    assert not S("+value abx here", lits=["abc"], min_len=5)
+
+
+def test_only_added_lines():
+    assert not S("-removed alpha.example", lits=["alpha.example"])
+    assert not S("+++ b/file alpha.example", lits=["alpha.example"])
+
+
+def test_clean():
+    assert not S("+nothing forbidden here", lits=["alpha.example"], rxs=[r"zulu"])
+
+
+def test_edit_distance_helper():
+    assert scrub.edit_distance_le1("abc", "abc")
+    assert scrub.edit_distance_le1("abc", "abd")     # sub
+    assert scrub.edit_distance_le1("abc", "ab")      # del
+    assert scrub.edit_distance_le1("abc", "abxc")    # ins
+    assert not scrub.edit_distance_le1("abc", "axy")
+    assert not scrub.edit_distance_le1("abc", "abcde")
+
+
+# --- fuzzy word-boundary anchoring -------------------------------------------
+# The fuzzy pass exists to catch a persona name typo'd as its own word. Before
+# anchoring, it compared every 4-6 char window, so a 5-char token fired on
+# ordinary prose and on required API identifiers that merely contain a near-miss
+# as an infix. Exact matching stays unanchored and is unaffected.
+
+def test_fuzzy_ignores_near_miss_inside_a_longer_identifier():
+    assert not S("+value xxalphyxx here", lits=["alpha"])
+
+
+def test_fuzzy_ignores_near_miss_spanning_ordinary_words():
+    assert not S("+final phase notes", lits=["alpha"])
+
+
+def test_fuzzy_still_catches_standalone_typo_variant():
+    assert S("+signed by alpga today", lits=["alpha"])     # substitution
+    assert S("+signed by alph today", lits=["alpha"])      # deletion
+
+
+def test_fuzzy_still_catches_variant_at_punctuation_boundaries():
+    assert S("+mail: alpga@example.com", lits=["alpha"])
+    assert S("+see (alpga-dei) for details", lits=["alpha"])
+
+
+def test_exact_match_is_never_boundary_gated():
+    # Embedded inside a longer identifier: exact matching must still fire.
+    assert S("+var myalphaToken = 1", lits=["alpha"])
+
+
+def test_longer_token_fuzzy_respects_boundaries_too():
+    assert S("+see delta-gradiant repo", lits=["delta-gradient"])
+    assert not S("+xxdelta-gradiantxx", lits=["delta-gradient"])

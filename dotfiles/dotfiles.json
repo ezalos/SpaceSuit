@@ -1,0 +1,1093 @@
+{
+    "version": 1,
+    "dotfiles": {
+        ".neofetch": {
+            "alias": ".neofetch",
+            "main": "dotfiles/.neofetch",
+            "deploy": {
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.config/neofetch/config.conf",
+                    "backups": []
+                },
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/neofetch/config.conf",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/.neofetch_TheBeast.ezalos_2025-08-11_16:50:20.269037",
+                            "datetime": "2025-08-11_16:50:20.269037"
+                        }
+                    ]
+                },
+                "louiss.macbook.pro.3.home.ezalos": {
+                    "deploy_path": "/Users/ezalos/.config/neofetch/config.conf",
+                    "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/neofetch/config.conf",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.config/neofetch/config.conf",
+                    "backups": []
+                },
+                "rnd1": {
+                    "deploy_path": "/srv/data/home/labuser/.config/neofetch/config.conf",
+                    "backups": []
+                },
+                "rnd2": {
+                    "deploy_path": "/srv/data/home/labuser/.config/neofetch/config.conf",
+                    "backups": []
+                },
+                "rnd3": {
+                    "deploy_path": "/srv/data/home/labuser/.config/neofetch/config.conf",
+                    "backups": []
+                },
+                "rnd4": {
+                    "deploy_path": "/srv/data/home/labuser/.config/neofetch/config.conf",
+                    "backups": []
+                },
+                "smic": {
+                    "deploy_path": "/home/labuser/.config/neofetch/config.conf",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        ".zshrc": {
+            "alias": ".zshrc",
+            "main": "dotfiles/.zshrc",
+            "deploy": {
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.zshrc",
+                    "backups": []
+                },
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.zshrc",
+                    "backups": []
+                },
+                "louiss.macbook.pro.3.home.ezalos": {
+                    "deploy_path": "/Users/ezalos/.zshrc",
+                    "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.zshrc",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/.zshrc_TinyButMighty.ezalos_2026-02-21_15:22:07.756260",
+                            "datetime": "2026-02-21_15:22:07.756260"
+                        }
+                    ]
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.zshrc",
+                    "backups": []
+                },
+                "rnd1": {
+                    "deploy_path": "/srv/data/home/labuser/.zshrc",
+                    "backups": []
+                },
+                "rnd2": {
+                    "deploy_path": "/srv/data/home/labuser/.zshrc",
+                    "backups": []
+                },
+                "rnd3": {
+                    "deploy_path": "/srv/data/home/labuser/.zshrc",
+                    "backups": []
+                },
+                "rnd4": {
+                    "deploy_path": "/srv/data/home/labuser/.zshrc",
+                    "backups": []
+                },
+                "smic": {
+                    "deploy_path": "/home/labuser/.zshrc",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        ".vimrc": {
+            "alias": ".vimrc",
+            "main": "dotfiles/.vimrc",
+            "deploy": {
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.vimrc",
+                    "backups": []
+                },
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.vimrc",
+                    "backups": []
+                },
+                "louiss.macbook.pro.3.home.ezalos": {
+                    "deploy_path": "/Users/ezalos/.vimrc",
+                    "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.vimrc",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.vimrc",
+                    "backups": []
+                },
+                "rnd1": {
+                    "deploy_path": "/srv/data/home/labuser/.vimrc",
+                    "backups": []
+                },
+                "rnd2": {
+                    "deploy_path": "/srv/data/home/labuser/.vimrc",
+                    "backups": []
+                },
+                "rnd3": {
+                    "deploy_path": "/srv/data/home/labuser/.vimrc",
+                    "backups": []
+                },
+                "rnd4": {
+                    "deploy_path": "/srv/data/home/labuser/.vimrc",
+                    "backups": []
+                },
+                "smic": {
+                    "deploy_path": "/home/labuser/.vimrc",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "config_nvim": {
+            "alias": "config_nvim",
+            "main": "dotfiles/config_nvim",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/nvim",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/config_nvim_TheBeast.ezalos_2026-02-06_17:04:32.067642",
+                            "datetime": "2026-02-06_17:04:32.067642"
+                        }
+                    ]
+                },
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.config/nvim",
+                    "backups": [
+                        {
+                            "backup_path": "/Users/louis/Setup/dotfiles/old/config_nvim_MacBook.Pro.de.Louis.local.louis_2026-02-06_17:17:18.566795",
+                            "datetime": "2026-02-06_17:17:18.566795"
+                        }
+                    ]
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/nvim",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.config/nvim",
+                    "backups": [
+                        {
+                            "backup_path": "/Users/ezalos/Setup/dotfiles/old/config_nvim_Louiss.MacBook.Pro.3.local.ezalos_2026-03-22_15:19:39.299324",
+                            "datetime": "2026-03-22_15:19:39.299324"
+                        }
+                    ]
+                },
+                "rnd1": {
+                    "deploy_path": "/srv/data/home/labuser/.config/nvim",
+                    "backups": [
+                        {
+                            "backup_path": "/srv/data/home/labuser/Setup/dotfiles/old/config_nvim_rnd1.labuser_2026-02-06_17:20:05.876756",
+                            "datetime": "2026-02-06_17:20:05.876756"
+                        }
+                    ]
+                },
+                "rnd2": {
+                    "deploy_path": "/srv/data/home/labuser/.config/nvim",
+                    "backups": [
+                        {
+                            "backup_path": "/srv/data/home/labuser/Setup/dotfiles/old/config_nvim_rnd2.labuser_2026-02-06_17:22:45.753789",
+                            "datetime": "2026-02-06_17:22:45.753789"
+                        }
+                    ]
+                },
+                "rnd3": {
+                    "deploy_path": "/srv/data/home/labuser/.config/nvim",
+                    "backups": [
+                        {
+                            "backup_path": "/srv/data/home/labuser/Setup/dotfiles/old/config_nvim_rnd3.labuser_2026-02-06_17:23:30.294154",
+                            "datetime": "2026-02-06_17:23:30.294154"
+                        }
+                    ]
+                },
+                "rnd4": {
+                    "deploy_path": "/srv/data/home/labuser/.config/nvim",
+                    "backups": [
+                        {
+                            "backup_path": "/srv/data/home/labuser/Setup/dotfiles/old/config_nvim_rnd4.labuser_2026-02-06_17:23:58.318363",
+                            "datetime": "2026-02-06_17:23:58.318363"
+                        }
+                    ]
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        ".bashrc": {
+            "alias": ".bashrc",
+            "main": "dotfiles/.bashrc",
+            "deploy": {
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.bashrc",
+                    "backups": []
+                },
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.bashrc",
+                    "backups": []
+                },
+                "louiss.macbook.pro.3.home.ezalos": {
+                    "deploy_path": "/Users/ezalos/.bashrc",
+                    "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.bashrc",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/.bashrc_TinyButMighty.ezalos_2026-02-21_15:22:07.760054",
+                            "datetime": "2026-02-21_15:22:07.760054"
+                        }
+                    ]
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.bashrc",
+                    "backups": []
+                },
+                "rnd1": {
+                    "deploy_path": "/srv/data/home/labuser/.bashrc",
+                    "backups": []
+                },
+                "rnd2": {
+                    "deploy_path": "/srv/data/home/labuser/.bashrc",
+                    "backups": []
+                },
+                "rnd3": {
+                    "deploy_path": "/srv/data/home/labuser/.bashrc",
+                    "backups": []
+                },
+                "rnd4": {
+                    "deploy_path": "/srv/data/home/labuser/.bashrc",
+                    "backups": []
+                },
+                "smic": {
+                    "deploy_path": "/home/labuser/.bashrc",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "terminator": {
+            "alias": "terminator",
+            "main": "dotfiles/terminator",
+            "deploy": {
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.config/terminator/config",
+                    "backups": []
+                },
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/terminator/config",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/terminator_TheBeast.ezalos_2025-08-11_16:50:20.271123",
+                            "datetime": "2025-08-11_16:50:20.271123"
+                        }
+                    ]
+                },
+                "louiss.macbook.pro.3.home.ezalos": {
+                    "deploy_path": "/Users/ezalos/.config/terminator/config",
+                    "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/terminator/config",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.config/terminator/config",
+                    "backups": []
+                },
+                "rnd1": {
+                    "deploy_path": "/srv/data/home/labuser/.config/terminator/config",
+                    "backups": []
+                },
+                "rnd2": {
+                    "deploy_path": "/srv/data/home/labuser/.config/terminator/config",
+                    "backups": []
+                },
+                "rnd3": {
+                    "deploy_path": "/srv/data/home/labuser/.config/terminator/config",
+                    "backups": []
+                },
+                "rnd4": {
+                    "deploy_path": "/srv/data/home/labuser/.config/terminator/config",
+                    "backups": []
+                },
+                "smic": {
+                    "deploy_path": "/home/labuser/.config/terminator/config",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        ".p10k.zsh": {
+            "alias": ".p10k.zsh",
+            "main": "dotfiles/.p10k.zsh",
+            "deploy": {
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.p10k.zsh",
+                    "backups": []
+                },
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.p10k.zsh",
+                    "backups": []
+                },
+                "louiss.macbook.pro.3.home.ezalos": {
+                    "deploy_path": "/Users/ezalos/.p10k.zsh",
+                    "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.p10k.zsh",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.p10k.zsh",
+                    "backups": []
+                },
+                "rnd1": {
+                    "deploy_path": "/srv/data/home/labuser/.p10k.zsh",
+                    "backups": []
+                },
+                "rnd2": {
+                    "deploy_path": "/srv/data/home/labuser/.p10k.zsh",
+                    "backups": []
+                },
+                "rnd3": {
+                    "deploy_path": "/srv/data/home/labuser/.p10k.zsh",
+                    "backups": []
+                },
+                "rnd4": {
+                    "deploy_path": "/srv/data/home/labuser/.p10k.zsh",
+                    "backups": []
+                },
+                "smic": {
+                    "deploy_path": "/home/labuser/.p10k.zsh",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        ".gdbinit": {
+            "alias": ".gdbinit",
+            "main": "dotfiles/.gdbinit",
+            "deploy": {
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.gdbinit",
+                    "backups": []
+                },
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.gdbinit",
+                    "backups": []
+                },
+                "louiss.macbook.pro.3.home.ezalos": {
+                    "deploy_path": "/Users/ezalos/.gdbinit",
+                    "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.gdbinit",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.gdbinit",
+                    "backups": []
+                },
+                "rnd1": {
+                    "deploy_path": "/srv/data/home/labuser/.gdbinit",
+                    "backups": []
+                },
+                "rnd2": {
+                    "deploy_path": "/srv/data/home/labuser/.gdbinit",
+                    "backups": []
+                },
+                "rnd3": {
+                    "deploy_path": "/srv/data/home/labuser/.gdbinit",
+                    "backups": []
+                },
+                "rnd4": {
+                    "deploy_path": "/srv/data/home/labuser/.gdbinit",
+                    "backups": []
+                },
+                "smic": {
+                    "deploy_path": "/home/labuser/.gdbinit",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "jupyter_notebook_config.py": {
+            "alias": "jupyter_notebook_config.py",
+            "main": "dotfiles/jupyter_notebook_config.py",
+            "deploy": {
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.jupyter/jupyter_notebook_config.py",
+                    "backups": []
+                },
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.jupyter/jupyter_notebook_config.py",
+                    "backups": []
+                },
+                "louiss.macbook.pro.3.home.ezalos": {
+                    "deploy_path": "/Users/ezalos/.jupyter/jupyter_notebook_config.py",
+                    "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.jupyter/jupyter_notebook_config.py",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.jupyter/jupyter_notebook_config.py",
+                    "backups": []
+                },
+                "rnd1": {
+                    "deploy_path": "/srv/data/home/labuser/.jupyter/jupyter_notebook_config.py",
+                    "backups": []
+                },
+                "rnd2": {
+                    "deploy_path": "/srv/data/home/labuser/.jupyter/jupyter_notebook_config.py",
+                    "backups": []
+                },
+                "rnd3": {
+                    "deploy_path": "/srv/data/home/labuser/.jupyter/jupyter_notebook_config.py",
+                    "backups": []
+                },
+                "rnd4": {
+                    "deploy_path": "/srv/data/home/labuser/.jupyter/jupyter_notebook_config.py",
+                    "backups": []
+                },
+                "smic": {
+                    "deploy_path": "/home/labuser/.jupyter/jupyter_notebook_config.py",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "warp": {
+            "alias": "warp",
+            "main": "dotfiles/warp",
+            "deploy": {
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.warp/launch_configurations/launch_config.yaml",
+                    "backups": []
+                },
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.warp/launch_configurations/launch_config.yaml",
+                    "backups": []
+                },
+                "louiss.macbook.pro.3.home.ezalos": {
+                    "deploy_path": "/Users/ezalos/.warp/launch_configurations/launch_config.yaml",
+                    "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.warp/launch_configurations/launch_config.yaml",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.warp/launch_configurations/launch_config.yaml",
+                    "backups": []
+                },
+                "rnd1": {
+                    "deploy_path": "/srv/data/home/labuser/.warp/launch_configurations/launch_config.yaml",
+                    "backups": []
+                },
+                "rnd2": {
+                    "deploy_path": "/srv/data/home/labuser/.warp/launch_configurations/launch_config.yaml",
+                    "backups": []
+                },
+                "rnd3": {
+                    "deploy_path": "/srv/data/home/labuser/.warp/launch_configurations/launch_config.yaml",
+                    "backups": []
+                },
+                "rnd4": {
+                    "deploy_path": "/srv/data/home/labuser/.warp/launch_configurations/launch_config.yaml",
+                    "backups": []
+                },
+                "smic": {
+                    "deploy_path": "/home/labuser/.warp/launch_configurations/launch_config.yaml",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        ".tmux.conf": {
+            "alias": ".tmux.conf",
+            "main": "dotfiles/.tmux.conf",
+            "deploy": {
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.tmux.conf",
+                    "backups": []
+                },
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.tmux.conf",
+                    "backups": []
+                },
+                "louiss.macbook.pro.3.home.ezalos": {
+                    "deploy_path": "/Users/ezalos/.tmux.conf",
+                    "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.tmux.conf",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.tmux.conf",
+                    "backups": []
+                },
+                "rnd1": {
+                    "deploy_path": "/srv/data/home/labuser/.tmux.conf",
+                    "backups": []
+                },
+                "rnd2": {
+                    "deploy_path": "/srv/data/home/labuser/.tmux.conf",
+                    "backups": []
+                },
+                "rnd3": {
+                    "deploy_path": "/srv/data/home/labuser/.tmux.conf",
+                    "backups": []
+                },
+                "rnd4": {
+                    "deploy_path": "/srv/data/home/labuser/.tmux.conf",
+                    "backups": []
+                },
+                "smic": {
+                    "deploy_path": "/home/labuser/.tmux.conf",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "wezterm.lua": {
+            "alias": "wezterm.lua",
+            "main": "dotfiles/wezterm.lua",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/wezterm/wezterm.lua",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/wezterm.lua_TheBeast.ezalos_2026-02-07_19:51:14.741666",
+                            "datetime": "2026-02-07_19:51:14.741666"
+                        }
+                    ]
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/wezterm/wezterm.lua",
+                    "backups": []
+                },
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.config/wezterm/wezterm.lua",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.config/wezterm/wezterm.lua",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "claude_md": {
+            "alias": "claude_md",
+            "main": "/home/ezalos/42/TheStables/dotfiles/claude_md",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/CLAUDE.md",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/claude_md_TheBeast.ezalos_2026-02-16_12:45:35.375015",
+                            "datetime": "2026-02-16_12:45:35.375015"
+                        }
+                    ]
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/CLAUDE.md",
+                    "backups": []
+                },
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.claude/CLAUDE.md",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.claude/CLAUDE.md",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos",
+                "TinyButMighty.ezalos",
+                "MacBook.Pro.de.Louis.local.louis",
+                "Louiss.MacBook.Pro.3.local.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
+        },
+        "claude_settings": {
+            "alias": "claude_settings",
+            "main": "/home/ezalos/42/TheStables/dotfiles/claude_settings",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/settings.json",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/claude_settings_TheBeast.ezalos_2026-02-16_12:45:38.623793",
+                            "datetime": "2026-02-16_12:45:38.623793"
+                        }
+                    ]
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/settings.json",
+                    "backups": []
+                },
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.claude/settings.json",
+                    "backups": [
+                        {
+                            "backup_path": "/Users/louis/Setup/dotfiles/old/claude_settings_MacBook.Pro.de.Louis.local.louis_2026-03-05_16:10:37.598270",
+                            "datetime": "2026-03-05_16:10:37.598270"
+                        }
+                    ]
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.claude/settings.json",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos",
+                "TinyButMighty.ezalos",
+                "MacBook.Pro.de.Louis.local.louis",
+                "Louiss.MacBook.Pro.3.local.ezalos"
+            ],
+            "variants": {
+                "TinyButMighty.ezalos": "/home/ezalos/42/TheStables/dotfiles/claude_settings.tbm"
+            },
+            "fanout": false
+        },
+        "statusline.py": {
+            "alias": "statusline.py",
+            "main": "dotfiles/statusline.py",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/statusline.py",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/statusline.py_TheBeast.ezalos_2026-02-21_16:08:07.026982",
+                            "datetime": "2026-02-21_16:08:07.026982"
+                        }
+                    ]
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/statusline.py",
+                    "backups": []
+                },
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.claude/statusline.py",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.claude/statusline.py",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "nginx.conf": {
+            "alias": "nginx.conf",
+            "main": "/home/ezalos/42/TheStables/hosts/configs/nginx.conf",
+            "deploy": {
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/etc/nginx/nginx.conf",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TinyButMighty.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
+        },
+        "claude_log": {
+            "alias": "claude_log",
+            "main": "dotfiles/bin/claude-log",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/claude-log",
+                    "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/claude-log",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.local/bin/claude-log",
+                    "backups": []
+                },
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.local/bin/claude-log",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "git_pre_commit_guard": {
+            "alias": "git_pre_commit_guard",
+            "main": "dotfiles/git_pre_commit_guard",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/git/template/hooks/pre-commit",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "git_identity_scrub": {
+            "alias": "git_identity_scrub",
+            "main": "dotfiles/git_identity_scrub",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/git-identity/scrub.py",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/git_identity_scrub_TheBeast.ezalos_2026-07-01_00:26:24.931468",
+                            "datetime": "2026-07-01_00:26:24.931468"
+                        }
+                    ]
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "git_identity_scrub_test": {
+            "alias": "git_identity_scrub_test",
+            "main": "dotfiles/git_identity_scrub_test",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/git-identity/test_scrub.py",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/git_identity_scrub_test_TheBeast.ezalos_2026-07-01_00:26:25.343284",
+                            "datetime": "2026-07-01_00:26:25.343284"
+                        }
+                    ]
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "skills": {
+            "alias": "skills",
+            "main": "skills",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/skills",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": true
+        },
+        "glow": {
+            "alias": "glow",
+            "main": "dotfiles/glow",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/glow",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "serve-slides.service": {
+            "alias": "serve-slides.service",
+            "main": "/home/ezalos/42/TheStables/hosts/configs/serve-slides.service",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/systemd/user/serve-slides.service",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/serve-slides.service_TheBeast.ezalos_2026-07-09_12:58:22.664994",
+                            "datetime": "2026-07-09_12:58:22.664994"
+                        }
+                    ]
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
+        },
+        "direnvrc": {
+            "alias": "direnvrc",
+            "main": "dotfiles/config_direnv/direnvrc",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/direnv/direnvrc",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "gh_identity_router": {
+            "alias": "gh_identity_router",
+            "main": "dotfiles/gh_identity_router",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/gh",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/gh_identity_router_TheBeast.ezalos_2026-07-16_00:25:42.326191",
+                            "datetime": "2026-07-16_00:25:42.326191"
+                        }
+                    ]
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "gh_contexts_bootstrap": {
+            "alias": "gh_contexts_bootstrap",
+            "main": "dotfiles/gh_contexts_bootstrap",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/git-identity/gh-contexts-bootstrap.sh",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/gh_contexts_bootstrap_TheBeast.ezalos_2026-07-16_00:25:42.568370",
+                            "datetime": "2026-07-16_00:25:42.568370"
+                        }
+                    ]
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "netwatch_service": {
+            "alias": "netwatch_service",
+            "main": "netwatch/netwatch.service",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/systemd/user/netwatch.service",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "agents-dashboard.service": {
+            "alias": "agents-dashboard.service",
+            "main": "/home/ezalos/42/TheStables/hosts/configs/agents-dashboard.service",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/systemd/user/agents-dashboard.service",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/agents-dashboard.service_TheBeast.ezalos_2026-08-03_13:52:48.672436",
+                            "datetime": "2026-08-03_13:52:48.672436"
+                        }
+                    ]
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
+        },
+        "netwatch_publish_service": {
+            "alias": "netwatch_publish_service",
+            "main": "netwatch/netwatch-publish.service",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/systemd/user/netwatch-publish.service",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "netwatch_publish_timer": {
+            "alias": "netwatch_publish_timer",
+            "main": "netwatch/netwatch-publish.timer",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/systemd/user/netwatch-publish.timer",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
+        },
+        "lock-session-on-login.service": {
+            "alias": "lock-session-on-login.service",
+            "main": "/home/ezalos/42/TheStables/hosts/configs/lock-session-on-login.service",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/systemd/user/lock-session-on-login.service",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/lock-session-on-login.service_TheBeast.ezalos_2026-08-04_02:42:57.767567",
+                            "datetime": "2026-08-04_02:42:57.767567"
+                        }
+                    ]
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
+        },
+        "sunshine_override.conf": {
+            "alias": "sunshine_override.conf",
+            "main": "dotfiles/sunshine_override.conf",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/systemd/user/sunshine.service.d/override.conf",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/Setup/dotfiles/old/sunshine_override.conf_TheBeast.ezalos_2026-08-04_02:43:04.577491",
+                            "datetime": "2026-08-04_02:43:04.577491"
+                        }
+                    ]
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
+        },
+        "tls": {
+            "alias": "tls",
+            "main": "dotfiles/bin/tls",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/tls",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
+        }
+    },
+    "devices": {
+        "ezalos.TM1704.ezalos": {
+            "identifier": "ezalos.TM1704.ezalos",
+            "home_path": "/home/ezalos",
+            "dotfiles_dir_path": "dotfiles"
+        },
+        "Louiss.MBP.ezalos": {
+            "identifier": "Louiss.MBP.ezalos",
+            "home_path": "/Users/ezalos",
+            "dotfiles_dir_path": "dotfiles"
+        },
+        "TheBeast.ezalos": {
+            "identifier": "TheBeast.ezalos",
+            "home_path": "/home/ezalos",
+            "dotfiles_dir_path": "dotfiles"
+        },
+        "Louiss.MBP.lan.ezalos": {
+            "identifier": "Louiss.MBP.lan.ezalos",
+            "home_path": "/Users/ezalos",
+            "dotfiles_dir_path": "dotfiles"
+        },
+        "MacBook.Pro.de.Louis.local.louis": {
+            "identifier": "MacBook.Pro.de.Louis.local.louis",
+            "home_path": "/Users/louis",
+            "dotfiles_dir_path": "dotfiles"
+        },
+        "louiss.macbook.pro.3.home.ezalos": {
+            "identifier": "louiss.macbook.pro.3.home.ezalos",
+            "home_path": "/Users/ezalos",
+            "dotfiles_dir_path": "dotfiles"
+        },
+        "TinyButMighty.ezalos": {
+            "identifier": "TinyButMighty.ezalos",
+            "home_path": "/home/ezalos",
+            "dotfiles_dir_path": "dotfiles"
+        },
+        "Louiss.MacBook.Pro.3.local.ezalos": {
+            "identifier": "Louiss.MacBook.Pro.3.local.ezalos",
+            "home_path": "/Users/ezalos",
+            "dotfiles_dir_path": "dotfiles"
+        },
+        "rnd1": {
+            "identifier": "rnd1",
+            "home_path": "/srv/data/home/labuser",
+            "dotfiles_dir_path": "dotfiles"
+        },
+        "rnd2": {
+            "identifier": "rnd2",
+            "home_path": "/srv/data/home/labuser",
+            "dotfiles_dir_path": "dotfiles"
+        },
+        "rnd3": {
+            "identifier": "rnd3",
+            "home_path": "/srv/data/home/labuser",
+            "dotfiles_dir_path": "dotfiles"
+        },
+        "rnd4": {
+            "identifier": "rnd4",
+            "home_path": "/srv/data/home/labuser",
+            "dotfiles_dir_path": "dotfiles"
+        },
+        "smic": {
+            "identifier": "smic",
+            "home_path": "/home/labuser",
+            "dotfiles_dir_path": "dotfiles"
+        }
+    }
+}

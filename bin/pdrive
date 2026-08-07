@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# ABOUTME: Thin wrapper around the official proton-drive CLI for ad-hoc push/pull/ls.
+# ABOUTME: Bootstraps the user D-Bus session so keyring auth works in non-interactive shells.
+
+set -euo pipefail
+
+REMOTE_ROOT="/my-files"
+DEFAULT_PUSH_DIR="${PDRIVE_PUSH_DIR:-$REMOTE_ROOT/TheBeast}"
+PD_BIN="${PDRIVE_BIN:-proton-drive}"
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage:
+  pdrive push <local-path> [remote-dir]   upload (default remote dir: /my-files/TheBeast)
+  pdrive pull <remote-path> [local-dir]   download (default: current dir)
+  pdrive ls [remote-dir]                  list (default: /my-files)
+  pdrive login                            browser-URL login (URL works from another device)
+USAGE
+  exit 2
+}
+
+# Keyring access needs the user D-Bus session; non-interactive shells (agent Bash,
+# cron) may lack the env var. On macOS (Keychain) the socket check naturally no-ops.
+if [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
+  bus="/run/user/$(id -u)/bus"
+  if [[ -S "$bus" ]]; then
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=$bus"
+  fi
+fi
+
+run_pd() {
+  local rc=0 out
+  out=$("$PD_BIN" "$@" 2>&1) || rc=$?
+  printf '%s\n' "$out"
+  # "You need to login first" is the observed logged-out output (v0.5.0, 2026-07-18);
+  # the alternatives guard against wording drift in future CLI versions.
+  if (( rc != 0 )) && grep -qiE 'need to login|not logged in|no (active )?session|unauthorized' <<<"$out"; then
+    echo "pdrive: no valid session - run: pdrive login" >&2
+    exit 3
+  fi
+  return $rc
+}
+
+cmd="${1:-}"
+if [[ -n "$cmd" ]]; then shift; fi   # bare `[[ ]] && shift` would trip set -e on no args
+case "$cmd" in
+  login)
+    [[ $# -eq 0 ]] || usage
+    # exec, not run_pd: the flow streams a URL and waits; capturing output would hide it
+    exec "$PD_BIN" auth login
+    ;;
+  push)
+    [[ $# -ge 1 && $# -le 2 ]] || usage
+    run_pd filesystem upload "$1" "${2:-$DEFAULT_PUSH_DIR}"
+    ;;
+  pull)
+    [[ $# -ge 1 && $# -le 2 ]] || usage
+    run_pd filesystem download "$1" "${2:-.}"
+    ;;
+  ls)
+    [[ $# -le 1 ]] || usage
+    run_pd filesystem list "${1:-$REMOTE_ROOT}"
+    ;;
+  *) usage ;;
+esac

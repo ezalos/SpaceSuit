@@ -1,0 +1,3 @@
+# Ignore audio files in data directory
+*
+!.gitignore

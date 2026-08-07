@@ -1,0 +1,11 @@
+tiers:
+  1:
+    name: "Primary"
+    publishers:
+      - name: "SEC"
+        domains: ["sec.gov"]
+  5:
+    name: "Tier-2 press"
+    publishers:
+      - name: "TechCrunch"
+        domains: ["techcrunch.com"]

@@ -1,0 +1,172 @@
+<!doctype html>
+<!--
+  ABOUTME: Self-contained dashboard for netwatch; fetches each host's summary JSON.
+  ABOUTME: Static - no origin to proxy, so it keeps working when a host is away.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>network — netwatch</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --line:#232a34; --fg:#e6edf3; --dim:#8b949e;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#58a6ff;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#f6f8fa; --panel:#fff; --line:#d8dee4; --fg:#1f2328; --dim:#636c76; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;padding:1.5rem}
+  header{display:flex;align-items:baseline;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem}
+  h1{font-size:1.1rem;margin:0;letter-spacing:.02em}
+  .muted{color:var(--dim);font-size:.82rem}
+  .hosts{display:grid;gap:1.25rem;grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+        padding:1rem 1.1rem;overflow:hidden}
+  .card h2{font-size:.95rem;margin:0 0 .1rem;display:flex;align-items:center;gap:.5rem}
+  .dot{width:.6rem;height:.6rem;border-radius:50%;flex:none}
+  .grid{display:grid;grid-template-columns:auto 1fr;gap:.3rem .9rem;margin:.9rem 0 0}
+  .grid dt{color:var(--dim)}
+  .grid dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+  .banner{margin:.75rem 0 0;padding:.5rem .7rem;border-radius:6px;font-size:.82rem;
+          border:1px solid transparent}
+  .banner.warn{background:rgba(210,153,34,.12);border-color:rgba(210,153,34,.4);color:var(--warn)}
+  .banner.bad{background:rgba(248,81,73,.12);border-color:rgba(248,81,73,.4);color:var(--bad)}
+  table{width:100%;border-collapse:collapse;margin-top:.6rem;font-size:.8rem}
+  th,td{text-align:left;padding:.28rem .4rem;border-bottom:1px solid var(--line);
+        white-space:nowrap}
+  th{color:var(--dim);font-weight:normal}
+  td:last-child,th:last-child{text-align:right}
+  .scroll{overflow-x:auto}
+  .bar{height:.4rem;border-radius:3px;background:var(--line);overflow:hidden;margin-top:.35rem}
+  .bar>i{display:block;height:100%}
+  footer{margin-top:1.5rem;color:var(--dim);font-size:.78rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>netwatch</h1>
+  <span class="muted" id="updated">loading…</span>
+</header>
+<div class="hosts" id="hosts"></div>
+<footer>
+  Auto-refreshes every 60s. This page and its JSON are gated by Cloudflare Access
+  (Google SSO) — that gate is what makes showing the real public addresses here
+  acceptable. Coverage below 99% means the recorder was blind for part of the
+  window, so "no outages" would not be a clean bill.
+</footer>
+
+<script>
+// Which hosts to draw. A file that 404s renders as "no data", not a broken page:
+// after the move one of these lives in another house and may be unreachable.
+const HOSTS = ["thebeast", "tinybutmighty"];
+const STALE_S = 300;   // two publish intervals
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function dur(s){
+  if (s == null) return "–";
+  s = Math.round(s);
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.floor(s/60) + "m" + String(s%60).padStart(2,"0") + "s";
+  if (s < 86400) return Math.floor(s/3600) + "h" + String(Math.floor(s%3600/60)).padStart(2,"0") + "m";
+  return Math.floor(s/86400) + "d" + String(Math.floor(s%86400/3600)).padStart(2,"0") + "h";
+}
+const agoS = iso => iso ? (Date.now() - new Date(iso).getTime())/1000 : null;
+const hhmm = iso => iso ? new Date(iso).toLocaleString([], {
+  month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit"}) : "–";
+
+function cls(v, warn, bad, invert){
+  if (v == null) return "";
+  const hot = invert ? v <= warn : v >= warn;
+  const worse = invert ? v <= bad : v >= bad;
+  return worse ? "bad" : hot ? "warn" : "ok";
+}
+
+function card(name, d, err){
+  const el = document.createElement("div");
+  el.className = "card";
+  if (err || !d){
+    el.innerHTML = `<h2><span class="dot" style="background:var(--dim)"></span>${esc(name)}</h2>
+      <div class="banner warn">No data published yet, or this host has never reached
+      the dashboard. That is not the same as "healthy".</div>`;
+    return el;
+  }
+  const stale = agoS(d.generated_at);
+  const isStale = stale != null && stale > STALE_S;
+  const cov = d.coverage?.pct ?? 0;
+  const live = d.wan?.state === "ok" && !isStale;
+  const dotColour = isStale ? "var(--dim)" : live ? "var(--ok)" : "var(--bad)";
+
+  const rows = [
+    ["state", esc(d.wan?.state ?? "?"), live ? "ok" : "bad"],
+    ["coverage", cov.toFixed(2) + "%", cls(cov, 99.9, 99, true)],
+    ["availability", d.availability_pct != null ? d.availability_pct.toFixed(3)+"%" : "–",
+      cls(d.availability_pct ?? 100, 99.99, 99.9, true)],
+    ["router restarts", d.router?.restarts ?? 0, cls(d.router?.restarts ?? 0, 1, 3)],
+    ["router uptime", dur(d.router?.uptime_s), ""],
+    ["router temp", d.router?.temp_c != null ? d.router.temp_c + " °C" : "–",
+      cls(d.router?.temp_c, 65, 75)],
+    ["outages", d.outages?.count ?? 0, cls(d.outages?.count ?? 0, 1, 5)],
+    ["total down", dur(d.outages?.total_down_s), ""],
+    ["longest", dur(d.outages?.longest_s), ""],
+    ["link flaps", d.link?.flaps ?? 0, cls(d.link?.flaps ?? 0, 1, 4)],
+    ["WAN p50 / p95", `${d.wan?.rtt_p50?.toFixed(1) ?? "–"} / ${d.wan?.rtt_p95?.toFixed(1) ?? "–"} ms`, ""],
+    ["bad-neighbour", d.bad_neighbour ?? 0, cls(d.bad_neighbour ?? 0, 1, 1)],
+    ["public IP", esc(d.public_ip?.address ?? "not tracked") +
+      (d.public_ip?.changes ? ` (${d.public_ip.changes} change)` : ""), ""],
+    ["peer", d.peer ? (d.peer.up ? "up " + d.peer.rtt_ms + " ms" : "DOWN") : "–",
+      d.peer ? (d.peer.up ? "ok" : "bad") : ""],
+  ];
+
+  el.innerHTML = `
+    <h2><span class="dot" style="background:${dotColour}"></span>${esc(d.host || name)}
+      <span class="muted" style="margin-left:auto">${esc(d.link?.iface ?? "")} ${esc(d.link?.speed ? d.link.speed+"Mb" : "")}</span>
+    </h2>
+    <div class="muted">last ${d.window_days}d · updated ${hhmm(d.generated_at)}</div>
+    <div class="bar"><i style="width:${Math.min(100,cov)}%;background:${
+      cov >= 99 ? "var(--ok)" : cov >= 90 ? "var(--warn)" : "var(--bad)"}"></i></div>
+    ${isStale ? `<div class="banner bad">Stale — last update ${dur(stale)} ago.
+       This host stopped publishing; treat everything below as history.</div>` : ""}
+    ${cov < 99 ? `<div class="banner warn">Coverage ${cov.toFixed(1)}% — the recorder was
+       blind for part of this window, so these counts are a floor, not a total.</div>` : ""}
+    <dl class="grid">${rows.map(([k,v,c]) =>
+      `<dt>${k}</dt><dd class="${c}">${v}</dd>`).join("")}</dl>
+    ${(d.outages?.recent?.length) ? `<div class="scroll"><table>
+      <tr><th>recent outage</th><th>blame</th><th>for</th></tr>
+      ${d.outages.recent.slice().reverse().map(o =>
+        `<tr><td>${hhmm(o.start)}</td><td>${esc(o.blame ?? o.state)}</td>
+             <td>${dur(o.duration_s)}</td></tr>`).join("")}
+    </table></div>` : ""}
+    ${(d.coverage?.gaps?.length) ? `<div class="scroll"><table>
+      <tr><th>blind period</th><th>for</th></tr>
+      ${d.coverage.gaps.slice().reverse().map(g =>
+        `<tr><td>${hhmm(g.from)}</td><td>${dur(g.duration_s)}</td></tr>`).join("")}
+    </table></div>` : ""}`;
+  return el;
+}
+
+async function load(){
+  const box = document.getElementById("hosts");
+  box.innerHTML = "";
+  for (const h of HOSTS){
+    let d = null, err = null;
+    try {
+      const r = await fetch(`${h}.json?t=${Date.now()}`, {cache:"no-store"});
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      d = await r.json();
+    } catch (e) { err = e; }
+    box.appendChild(card(h, d, err));
+  }
+  document.getElementById("updated").textContent =
+    "page refreshed " + new Date().toLocaleTimeString();
+}
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

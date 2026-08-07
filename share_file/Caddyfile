@@ -1,0 +1,41 @@
+# share.develle.fr — token-gated file sharing for share-file CLI.
+# Caddy listens on :443 only (port 80 belongs to nginx for slides.develle.fr).
+# Cert is obtained via Cloudflare DNS-01 challenge (no port-80 ACME needed).
+# CLOUDFLARE_API_TOKEN is loaded from /etc/default/caddy (EnvironmentFile).
+
+{
+    # Use only the cloudflare DNS provider for ACME challenges.
+    acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    # Don't open port 80 for HTTP->HTTPS redirects — nginx owns it (slides).
+    auto_https disable_redirects
+}
+
+share.develle.fr {
+    root * /srv/share
+
+    # Strict path: /<32-char-token>/<filename> only. Anything else = 404.
+    # Token alphabet matches secrets.token_urlsafe (URL-safe base64 sans padding).
+    @valid path_regexp ^/[A-Za-z0-9_-]{32}/[^/]+$
+    @dotfile path_regexp /\.[^/]*$
+
+    # Block any attempt to fetch the .expires sidecar.
+    handle @dotfile {
+        respond 404
+    }
+
+    handle @valid {
+        file_server {
+            browse off
+            hide .expires
+        }
+    }
+
+    # Everything else: no listing, no leak.
+    handle {
+        respond 404
+    }
+
+    log {
+        output file /var/log/caddy/share.access.log
+    }
+}

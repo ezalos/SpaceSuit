@@ -1,0 +1,20 @@
+id: claim-01
+location: {file: "deck.md", slide: "01 — Market", line: 12}
+claim: {text: "Le marché atteint 2527 milliards en 2026", type: number, has_existing_source: false}
+proposed_source:
+  url: "https://www.example.com/report"
+  url_domain: "example.com"
+  publisher_org: "Example Research"
+  author: null
+  publication_date: "2026-01-10"
+  accessed_date: "2026-06-20"
+  quote: "The global AI market reached 2527 billion dollars in 2026 according to the firm."
+  surrounding_paragraph: "The global AI market reached 2527 billion dollars in 2026 according to the firm."
+  section_heading: null
+  alignment_justification: "States the 2527 figure for 2026."
+  confidence: high
+status: pending
+proposed_action: null
+proposed_claim_update: null
+validation: null
+page_text_file: "claim-01.page.txt"

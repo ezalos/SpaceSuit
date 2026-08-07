@@ -1,0 +1,32 @@
+# ABOUTME: Boot-time Telegram announcement of how to reach this host.
+# ABOUTME: Public IP, LAN, tailnet identity and the current ngrok address.
+#
+# A house move invalidates every address at once — new public IP, renumbered
+# LAN, and a fresh ngrok host:port. The machine is the only party that knows
+# all three, and Telegram is the one route out that needs no inbound
+# reachability. So it reports them itself instead of leaving Louis outside with
+# nothing to aim at.
+#
+# Deliberately a oneshot on boot rather than a timer: the address set only
+# changes when the machine or its network does, and netwatch.service already
+# alerts on a public-IP change while running.
+
+[Unit]
+Description=netwatch — announce how to reach this host after boot
+Documentation=file:%h/Setup/docs/plans/2026-08-05-public-ip-change-and-move-handoff.md
+After=default.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/netwatch/env
+# --wait covers ngrok, which cron starts on a 5-minute tick, so at boot it is
+# normally not up yet. That wait also gives the network time to settle before
+# the public-IP probe runs.
+ExecStart=/usr/bin/python3 %h/Setup/netwatch/netwatch.py announce --wait 300
+# Never let a failed announcement look like a healthy boot.
+StandardOutput=journal
+StandardError=journal
+Nice=10
+
+[Install]
+WantedBy=default.target

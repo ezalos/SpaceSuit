@@ -1,0 +1,46 @@
+[global_config]
+  geometry_hinting = True
+  borderless = True
+  title_hide_sizetext = True
+  suppress_multiple_term_dialog = True
+  always_split_with_profile = True
+[keybindings]
+[profiles]
+  [[default]]
+    background_color = "#230525"
+    background_darkness = 0.95
+    background_type = transparent
+    cursor_color = "#aaaaaa"
+    font = MesloLGS NF 10
+    scrollback_lines = 10000
+    scrollback_infinite = True
+    use_system_font = False
+  [[Outside]]
+    background_color = "#fdf6e3"
+    background_darkness = 0.9
+    background_type = transparent
+    cursor_color = "#aaaaaa"
+    font = MesloLGS NF 10
+    foreground_color = "#657b83"
+    palette = "#fbf1c7:#cc241d:#98971a:#d79921:#458588:#b16286:#689d6a:#7c6f64:#928374:#9d0006:#79740e:#b57614:#076678:#8f3f71:#427b58:#3c3836"
+    use_system_font = False
+[layouts]
+  [[default]]
+    [[[child0]]]
+      fullscreen = False
+      last_active_term = a480e613-963e-4777-bd90-e2deaf8ddbed
+      last_active_window = True
+      maximised = False
+      order = 0
+      parent = ""
+      position = 2904:899
+      size = 654, 451
+      title = ezalos:/home/ezalos
+      type = Window
+    [[[terminal1]]]
+      order = 0
+      parent = child0
+      profile = default
+      type = Terminal
+      uuid = a480e613-963e-4777-bd90-e2deaf8ddbed
+[plugins]

@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# ABOUTME: Append a structured observability log line to ~/.claude/lessons.md.
+# ABOUTME: Usage: claude-log <skill-name> <INFO|WARNING|CRITICAL> "<message>"
+
+set -euo pipefail
+
+usage() {
+    echo "usage: claude-log <skill-name> <INFO|WARNING|CRITICAL> \"<message>\"" >&2
+    echo "  Set CLAUDE_LOG_FILE to override target path (default: \$HOME/.claude/lessons.md)." >&2
+    exit 2
+}
+
+[ "$#" -eq 3 ] || usage
+
+skill="$1"
+level="$2"
+msg="$3"
+
+case "$level" in
+    INFO|WARNING|CRITICAL) ;;
+    *) echo "claude-log: invalid level '$level' (must be INFO|WARNING|CRITICAL)" >&2; exit 2 ;;
+esac
+
+log_file="${CLAUDE_LOG_FILE:-$HOME/.claude/lessons.md}"
+log_dir="$(dirname "$log_file")"
+mkdir -p "$log_dir"
+
+date_str="$(date +%Y-%m-%d)"
+line="$date_str $skill [$level] : $msg"
+
+# mkdir-based portable lock (works on macOS BSD + Linux GNU; no flock dependency)
+lock_dir="$log_file.lock"
+attempts=0
+max_attempts=50    # 50 * 0.1s = 5s timeout
+while ! mkdir "$lock_dir" 2>/dev/null; do
+    attempts=$((attempts + 1))
+    if [ "$attempts" -ge "$max_attempts" ]; then
+        echo "claude-log: lock timeout, best-effort append" >&2
+        break
+    fi
+    sleep 0.1
+done
+
+trap 'rmdir "$lock_dir" 2>/dev/null || true' EXIT
+
+printf '%s\n' "$line" >> "$log_file"

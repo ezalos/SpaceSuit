@@ -1,0 +1,9 @@
+[Unit]
+Description=share-file expired-token janitor
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/share_file/cleanup.py --root /srv/share
+User=caddy
+Group=caddy

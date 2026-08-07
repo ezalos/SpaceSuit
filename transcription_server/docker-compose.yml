@@ -1,0 +1,23 @@
+# ABOUTME: Docker Compose config for the WhisperX transcription server.
+# ABOUTME: Runs the server with GPU access, auto-restart, and configurable env vars.
+
+services:
+  transcription-server:
+    build: .
+    container_name: whisperx-server
+    ports:
+      - "${WHISPERX_PORT:-8642}:8642"
+    environment:
+      - WHISPERX_DEVICE=${WHISPERX_DEVICE:-cuda}
+      - WHISPERX_MODEL=${WHISPERX_MODEL:-large-v2}
+      - WHISPERX_COMPUTE_TYPE=${WHISPERX_COMPUTE_TYPE:-float32}
+      - WHISPERX_BATCH_SIZE=${WHISPERX_BATCH_SIZE:-16}
+      - HF_TOKEN=${HF_TOKEN:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped

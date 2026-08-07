@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+# ABOUTME: tusd post-finish hook — moves a completed upload into /srv/upload/inbox/ under a
+# ABOUTME: datetime-prefixed name so same-name uploads can never collide, shadow, or get lost.
+import sys, json, os, shutil, re, datetime
+INBOX = "/srv/upload/inbox"
+try:
+    up = json.load(sys.stdin)["Event"]["Upload"]
+    src = up["Storage"]["Path"]
+    if not src or not os.path.isfile(src):
+        sys.stderr.write(f"[post-finish] refuse: not a regular file: {src!r}\n"); sys.exit(1)
+    name = (up.get("MetaData") or {}).get("filename") or os.path.basename(src)
+    name = re.sub(r'[^\w.\- ]', '_', os.path.basename(name)) or "upload"
+    # Datetime prefix AT RECEPTION (the server-side fix): every upload gets a unique, sortable
+    # name the moment it lands, so re-uploading "selection.json" five times keeps five files.
+    stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    base, ext = os.path.splitext(name)
+    dst = os.path.join(INBOX, f"{stamp}_{name}"); i = 2
+    while os.path.exists(dst):  # same name in the same second — vanishingly rare
+        dst = os.path.join(INBOX, f"{stamp}_{base}_{i}{ext}"); i += 1
+    shutil.move(src, dst)
+    if os.path.exists(src + ".info"): os.remove(src + ".info")
+    sys.stderr.write(f"[post-finish] moved -> {dst}\n")
+except Exception as e:
+    sys.stderr.write(f"[post-finish] ERROR: {e}\n"); sys.exit(1)

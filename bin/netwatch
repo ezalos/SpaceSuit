@@ -1,0 +1,4 @@
+#!/bin/sh
+# ABOUTME: Wrapper putting the netwatch network black box recorder on PATH.
+# ABOUTME: Stdlib-only Python, so it deliberately does not use the repo venv.
+exec /usr/bin/python3 "$(dirname "$(readlink -f "$0")")/../netwatch/netwatch.py" "$@"

@@ -1,0 +1,27 @@
+{
+    "dotfiles": {
+        "other_dotfile": {
+            "alias": "other_dotfile",
+            "main": "other_dotfiles/.otherrc",
+            "deploy": [
+                {
+                    "deploy_path": "/Users/other/.otherrc",
+                    "identifier": "other_device",
+                    "backups": []
+                }
+            ]
+        }
+    },
+    "devices": {
+        "MacBook-Pro-de-Louis.local.louis": {
+            "identifier": "MacBook-Pro-de-Louis.local.louis",
+            "home_path": "/Users/louis",
+            "dotfiles_dir_path": "test_dotfiles"
+        },
+        "other_device": {
+            "identifier": "other_device",
+            "home_path": "/Users/other",
+            "dotfiles_dir_path": "other_dotfiles"
+        }
+    }
+}

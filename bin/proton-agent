@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# ABOUTME: Wrapper around pass-cli for Louis's per-context read-only Proton agent tokens.
+# ABOUTME: Picks the context's scoped PAT + isolated session, auto-logs-in, passes args to pass-cli.
+set -euo pipefail
+
+# Context selects which scoped token to use: set by `use proton <ctx>` in a project
+# .envrc, or via PROTON_AGENT_CONTEXT, else "general". Each context = one vault = one
+# token, so a project can only ever authenticate as its own context.
+CTX="${PROTON_AGENT_CONTEXT:-general}"
+export PROTON_PASS_SESSION_DIR="${PROTON_PASS_SESSION_DIR:-$HOME/.claude/channels/proton-pass/session-$CTX}"
+PAT_FILE="${PROTON_AGENT_PAT_FILE:-$HOME/.claude/channels/proton-pass/$CTX.pat}"
+# A reason is mandatory + audited for item access; default identifies the caller.
+export PROTON_PASS_AGENT_REASON="${PROTON_PASS_AGENT_REASON:-proton-agent:$(basename "$PWD")}"
+
+case "${1:-}" in
+  ""|-h|--help)
+    cat <<EOF
+proton-agent: run pass-cli as a scoped read-only agent (auto-login).
+  active context: '$CTX'  (set via PROTON_AGENT_CONTEXT or 'use proton <ctx>' in .envrc)
+  proton-agent run -- <cmd>     run <cmd> with pass:// refs resolved into its env
+  proton-agent item view ...    any pass-cli subcommand, session ensured first
+  proton-agent info | test      session / connection health
+EOF
+    exit 0 ;;
+esac
+
+if [ ! -r "$PAT_FILE" ]; then
+  echo "proton-agent: no token for context '$CTX' at $PAT_FILE" >&2
+  echo "  mint it as yourself:  pass-cli agent create --expiration 1y --vault <VAULT> claude-$CTX" >&2
+  exit 1
+fi
+mkdir -p "$PROTON_PASS_SESSION_DIR" && chmod 700 "$PROTON_PASS_SESSION_DIR"
+if ! pass-cli info >/dev/null 2>&1; then
+  if ! PROTON_PASS_PERSONAL_ACCESS_TOKEN="$(cat "$PAT_FILE")" pass-cli login >/dev/null 2>&1; then
+    # curl, not getent: must behave the same on macOS (BSD) and Linux
+    if ! curl -sf -m 3 -o /dev/null https://proton.me 2>/dev/null; then
+      echo "proton-agent: cannot reach Proton (offline?) for context '$CTX'" >&2
+    else
+      echo "proton-agent: login failed for context '$CTX' (token expired or revoked?)" >&2
+    fi
+    exit 1
+  fi
+fi
+exec pass-cli "$@"

@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# ABOUTME: Pulls files from the upload.develle.fr inbox on TinyButMighty down to ~/Inbox/,
+# ABOUTME: prefixing each with its upload timestamp so same-name uploads never collide/overwrite.
+
+set -euo pipefail
+
+DEST="${UPLOAD_INBOX_DEST:-$HOME/Inbox}"
+REMOTE_HOST="${UPLOAD_REMOTE_HOST:-TinyButMighty}"
+REMOTE_PATH="${UPLOAD_REMOTE_PATH:-/srv/upload/inbox/}"
+
+mkdir -p "$DEST"
+
+# Land in a same-filesystem staging dir first: rsyncing straight into $DEST let an incoming
+# file silently OVERWRITE an existing one with the same name (the selection.json incident).
+STAGING="$(mktemp -d "$DEST/.pull-staging.XXXXXX")"
+cleanup() {
+	find "$STAGING" -type d -empty -delete 2>/dev/null || true
+	if [ -d "$STAGING" ]; then
+		echo "warning: leftover partial files in $STAGING" >&2
+	fi
+}
+trap cleanup EXIT
+
+rsync -az --remove-source-files --partial "$REMOTE_HOST:$REMOTE_PATH" "$STAGING/" >/dev/null
+
+# Sweep empty subdirs the rsync leaves behind. Top-level inbox stays.
+ssh "$REMOTE_HOST" "find $REMOTE_PATH -mindepth 1 -type d -empty -delete" >/dev/null 2>&1 || true
+
+mapfile -t staged < <(cd "$STAGING" && find . -type f -printf '%P\n' | sort)
+
+if [ ${#staged[@]} -eq 0 ]; then
+	echo "Nothing in the inbox."
+	exit 0
+fi
+
+echo "Fetched ${#staged[@]} file(s):"
+for rel in "${staged[@]}"; do
+	dir="$(dirname "$rel")"
+	base="$(basename "$rel")"
+	out_dir="$DEST"
+	if [ "$dir" != "." ]; then
+		out_dir="$DEST/$dir"
+		mkdir -p "$out_dir"
+	fi
+	# The upload server (tusd post-finish hook) already stamps files at reception; only stamp
+	# here when the name lacks a prefix (e.g. legacy files, native WebDAV PUTs).
+	if [[ "$base" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{6}_ ]]; then
+		target="$out_dir/$base"
+	else
+		stamp="$(date -r "$STAGING/$rel" +%Y-%m-%d_%H%M%S)" # upload mtime (rsync -a preserves it)
+		target="$out_dir/${stamp}_${base}"
+	fi
+	n=2
+	while [ -e "$target" ]; do
+		target="$out_dir/${stamp}_${n}_${base}"
+		n=$((n + 1))
+	done
+	mv "$STAGING/$rel" "$target"
+	echo "  $target"
+done

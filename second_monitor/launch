@@ -1,0 +1,73 @@
+#!/bin/bash
+
+if [ -e /usr/share/X11/xorg.conf.d/20-intel.conf ]
+then
+	# Make sure your Android device is plugged in and accessible over adb.
+
+	# 16:10 screen formats:
+	# 	- 1280×800
+	#	- 1440×900
+	#	- 1680×1050
+	#	- 1920×1200
+	#	- 2560×1600
+
+	# SECOND_MONITOR_OUTPUT (set in ~/.zshrc.local, e.g. "export
+	# SECOND_MONITOR_OUTPUT=DP-1") selects this box's real output name and
+	# the tall-portrait geometry that goes with it; falls back to the
+	# generic virtual-display profile below when unset.
+	if [[ -n "${SECOND_MONITOR_OUTPUT:-}" ]]
+	then
+		O="$SECOND_MONITOR_OUTPUT"
+		W=900      # Virtual display width
+		H=1600      # Virtual display height
+		FPS=59.82
+	else
+		O=VIRTUAL1  # The name of the virtual display (check using xrandr)
+		W=1200      # Virtual display width
+		H=1920      # Virtual display height
+		FPS=60
+	fi
+	
+	P=eDP1      # The name of your physical display (check using xrandr)
+	PW="$(xrandr --current | grep \* | awk '{print $1;}' | cut -d x -f 1)"
+
+	# Create the virtual display
+	echo "Creating newmode"
+	gtf $W $H $FPS | sed '3q;d' | sed 's/Modeline//g' | xargs xrandr --newmode
+	sleep 3s
+	echo "Adding created mode"
+	gtf $W $H $FPS | sed '3q;d' | sed 's/Modeline//g' | awk '{print $1;}' | sed 's/^.\(.*\).$/\1/' | xargs xrandr --addmode $O
+	sleep 3s
+	# gtf $W $H 60 | sed '3q;d' | sed 's/Modeline//g' | awk '{print $1;}' | sed 's/^.\(.*\).$/\1/'
+	# is outputting 2560x1600_60.00
+	echo "Setting up the virtual screen"
+	gtf $W $H $FPS | sed '3q;d' | sed 's/Modeline//g' | awk '{print $1;}' | sed 's/^.\(.*\).$/\1/' | xargs xrandr --output $O --left-of $P --mode
+	# gtf $W $H 60 | sed '3q;d' | sed 's/Modeline//g' | awk '{print $1;}' | sed 's/^.\(.*\).$/\1/' | xargs xrandr --output $O --left-of $P --rotate left --mode
+	sleep 3s   
+
+	echo "Starting adb"
+	# Forward the VNC port to your device and start a VNC session
+	adb reverse tcp:5900 tcp:5900
+
+	echo "Starting x11vnc"
+	# x11vnc -localhost -clip ${W}x${H}+${PW}+0
+	x11vnc -localhost -clip ${W}x${H}+0+0
+
+	# When the session ends, turn off the virtual display
+	xrandr --output $O --off
+
+
+else
+	#### Remember to enable virtual displays in xorg by adding the following to your configuration (e.g. /usr/share/X11/xorg.conf.d/20-virtual.conf)
+	# Section "Device"
+	#    Identifier "intelgpu0"
+	#    Driver "intel"
+	#    Option "VirtualHeads" "1"
+	#EndSection
+
+	#### If you use AMD or Nvidia, change the Identifier and Driver options to match your GPU.
+	cp 20-intel.conf /usr/share/X11/xorg.conf.d/20-intel.conf
+	# via https://unix.stackexchange.com/questions/378373/add-virtual-output-to-xorg
+	echo "[vdl-monitor] You must reboot or relogin current session to finish setup"
+	sleep 10s
+fi

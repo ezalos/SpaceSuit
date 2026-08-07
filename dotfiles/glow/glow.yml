@@ -1,0 +1,17 @@
+# glow config (~/.config/glow/glow.yml)
+# Portable baseline for every glow call. Interactive use goes through the
+# glow() wrapper in .zshrc, which layers on adaptive width + the tuned
+# tokyo-night.json theme (5-col gutter). Non-interactive/piped calls fall back
+# to the built-in tokyo-night style below, which needs no absolute path and so
+# stays valid across machines (Linux + macOS).
+
+# style name or JSON path (default "auto")
+style: "tokyo-night"
+# keep blank lines from the source markdown
+preserve_new_lines: true
+# use pager to display markdown
+pager: false
+# mouse support (TUI-mode only)
+mouse: false
+# show all files, including hidden and ignored (TUI-mode only)
+all: false

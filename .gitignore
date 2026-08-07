@@ -1,0 +1,45 @@
+nvim-osx64
+*.pyc
+venv
+
+.DS_Store
+.setup_env
+.venv
+.pytest_cache
+test_dotfiles
+__pycache__
+data/test_data
+
+/usr
+
+*.pyc
+*.pyo
+
+.claude
+.envrc
+.envrc.heuritech
+.secrets.sh
+.logs
+.osgrep
+
+# Per-device dotfile backups made by the deployer before overwriting a live
+# file (old/<alias>_<device>_<timestamp>) -- personal history, not for git.
+dotfiles/old/
+
+CLAUDE.local.md
+/plans
+
+# Session planning scratch (task briefs, review diffs) - not for public history.
+.superpowers/
+
+# Caddy basic-auth bcrypt hash — see upload_file/README.md.
+# Repo is public; live /etc/caddy/Caddyfile is the source of truth.
+upload_file/Caddyfile.snippet
+
+# local scratch for secrets (never commit)
+.secrets
+
+# Vendor manuals: kept on disk and in the restic backup, not in a public repo.
+# 34MB of binaries would bloat it permanently. URLs to re-fetch are in the README.
+docs/hardware/*.pdf
+docs/hardware/photos/

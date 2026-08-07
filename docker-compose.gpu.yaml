@@ -1,0 +1,19 @@
+services:
+  work.gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.cuda112
+    image: ezalos/work.gpu:${DOCKER_TAG:-latest}
+    container_name: work.gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - /:/mnt/host
+      - $HOME:$HOME
+    tty: true
+    stdin_open: true 

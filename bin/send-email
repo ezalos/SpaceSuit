@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# ABOUTME: Send a plain-text email via Proton hosted SMTP (smtp.protonmail.ch:587).
+# ABOUTME: Loads creds from ~/Setup/.secrets.sh; From: fixed to $PROTON_SMTP_USER.
+
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: send-email --to ADDR --subject TEXT [--body TEXT | --body-file PATH]
+
+If neither --body nor --body-file is given, the body is read from stdin.
+
+Required env (auto-sourced from ~/Setup/.secrets.sh if absent):
+  PROTON_SMTP_HOST, PROTON_SMTP_PORT, PROTON_SMTP_USER, PROTON_SMTP_TOKEN
+
+Examples:
+  send-email --to a@b.com --subject "hi" --body "test"
+  echo "from stdin" | send-email --to a@b.com --subject "hi"
+  send-email --to a@b.com --subject "hi" --body-file ./note.txt
+EOF
+}
+
+to=""
+subject=""
+body=""
+body_file=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --to)        to="$2"; shift 2 ;;
+        --subject)   subject="$2"; shift 2 ;;
+        --body)      body="$2"; shift 2 ;;
+        --body-file) body_file="$2"; shift 2 ;;
+        -h|--help)   usage; exit 0 ;;
+        *) echo "send-email: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+    esac
+done
+
+if [[ -z "${PROTON_SMTP_TOKEN:-}" && -r "$HOME/Setup/.secrets.sh" ]]; then
+    # shellcheck disable=SC1091
+    source "$HOME/Setup/.secrets.sh"
+fi
+
+: "${PROTON_SMTP_HOST:?send-email: PROTON_SMTP_HOST not set (check ~/Setup/.secrets.sh)}"
+: "${PROTON_SMTP_PORT:?send-email: PROTON_SMTP_PORT not set}"
+: "${PROTON_SMTP_USER:?send-email: PROTON_SMTP_USER not set}"
+: "${PROTON_SMTP_TOKEN:?send-email: PROTON_SMTP_TOKEN not set}"
+
+[[ -n "$to" ]] || { echo "send-email: --to is required" >&2; exit 2; }
+[[ -n "$subject" ]] || { echo "send-email: --subject is required" >&2; exit 2; }
+
+if [[ -n "$body_file" ]]; then
+    [[ -r "$body_file" ]] || { echo "send-email: cannot read $body_file" >&2; exit 2; }
+    body="$(cat -- "$body_file")"
+elif [[ -z "$body" ]]; then
+    if [[ -t 0 ]]; then
+        echo "send-email: no --body, --body-file, or stdin provided" >&2
+        exit 2
+    fi
+    body="$(cat)"
+fi
+
+msg="$(mktemp)"
+chmod 600 "$msg"
+trap 'rm -f -- "$msg"' EXIT
+
+date_hdr="$(date "+%a, %d %b %Y %H:%M:%S %z")"
+
+{
+    printf 'From: %s\r\n' "$PROTON_SMTP_USER"
+    printf 'To: %s\r\n' "$to"
+    printf 'Subject: %s\r\n' "$subject"
+    printf 'Date: %s\r\n' "$date_hdr"
+    printf 'MIME-Version: 1.0\r\n'
+    printf 'Content-Type: text/plain; charset=UTF-8\r\n'
+    printf 'Content-Transfer-Encoding: 8bit\r\n'
+    printf '\r\n'
+    printf '%s' "$body"
+} > "$msg"
+
+curl --silent --show-error --fail \
+    --url "smtp://${PROTON_SMTP_HOST}:${PROTON_SMTP_PORT}" \
+    --ssl-reqd \
+    --mail-from "$PROTON_SMTP_USER" \
+    --mail-rcpt "$to" \
+    --upload-file "$msg" \
+    --user "${PROTON_SMTP_USER}:${PROTON_SMTP_TOKEN}"
+
+echo "send-email: sent to=$to subject=\"$subject\"" >&2

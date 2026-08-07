@@ -1,0 +1,14 @@
+[Unit]
+# ABOUTME: Pushes this host's netwatch summary to the machine serving the dashboard.
+# ABOUTME: Push, not pull — after the move this host has no inbound reachability.
+Description=netwatch — publish summary to the dashboard host
+After=network-online.target
+
+[Service]
+Type=oneshot
+# NETWATCH_PUBLISH_REMOTE lives here. A bare path publishes locally (the Pi
+# writes straight into its own web root); host:/path pushes over ssh.
+EnvironmentFile=-%h/.config/netwatch/env
+ExecStart=/usr/bin/python3 %h/Setup/netwatch/netwatch.py publish --quiet
+Nice=10
+IOSchedulingClass=idle

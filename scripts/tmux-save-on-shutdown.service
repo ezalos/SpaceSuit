@@ -1,0 +1,16 @@
+# ABOUTME: Systemd user service that runs tmux-save.sh at shutdown/reboot/logout.
+# ABOUTME: Ensures tmux session state is always captured before the system goes down.
+
+[Unit]
+Description=Save tmux sessions before shutdown
+DefaultDependencies=no
+Before=shutdown.target reboot.target halt.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart=/bin/true
+ExecStop=%h/Setup/scripts/tmux-save.sh --origin shutdown
+
+[Install]
+WantedBy=default.target

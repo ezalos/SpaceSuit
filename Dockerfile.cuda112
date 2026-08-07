@@ -1,0 +1,56 @@
+FROM nvidia/cuda:11.2.2-base-ubuntu20.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install basic dependencies
+RUN apt-get update && apt-get install -y \
+	git \
+	curl \
+	wget \
+	zsh \
+	python3 \
+	python3-pip \
+	tmux \
+	direnv \
+	neovim \
+	bat \
+	software-properties-common \
+	&& rm -rf /var/lib/apt/lists/*
+
+# Install neovim from PPA
+# RUN add-apt-repository ppa:neovim-ppa/unstable \
+# 	&& apt-get update \
+# 	&& apt-get install -y neovim \
+# 	&& rm -rf /var/lib/apt/lists/*
+
+# Install uv
+# Download the latest installer
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+
+# Run the installer then remove it
+RUN sh /uv-installer.sh && rm /uv-installer.sh
+
+# Ensure the installed binary is on the `PATH`
+ENV PATH="/root/.local/bin/:$PATH"
+
+# Setup zsh and p10k
+RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended \
+	&& git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k \
+	&& git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions \
+	&& git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting \
+	&& git clone https://github.com/zsh-users/zsh-history-substring-search ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-history-substring-search
+
+RUN echo "Hello World!"
+# Clone and setup dotfiles
+WORKDIR /root
+RUN git clone https://github.com/ezalos/Setup.git \
+	&& cd Setup \
+	&& uv sync \
+	&& uv run python -m src_dotfiles deploy
+
+# Set zsh as default shell
+RUN chsh -s $(which zsh)
+
+WORKDIR /root
+CMD ["zsh"]

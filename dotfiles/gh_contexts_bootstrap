@@ -1,0 +1,35 @@
+#!/bin/sh
+# ABOUTME: Idempotent bootstrap of per-context gh config dirs (~/.config/gh-contexts/<label>).
+# ABOUTME: Reads contexts.conf; pipes tokens from the global gh store - tokens are never printed.
+
+set -eu
+umask 077
+
+CONF="$HOME/.config/git-identity/contexts.conf"
+CTX_ROOT="$HOME/.config/gh-contexts"
+GH=/usr/bin/gh
+
+[ -f "$CONF" ] || { printf 'missing %s\n' "$CONF" >&2; exit 1; }
+
+trim() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+
+while IFS='|' read -r prefix name email label; do
+    prefix=$(trim "${prefix:-}")
+    case "$prefix" in ''|'#'*) continue ;; esac
+    name=$(trim "${name:-}")
+    label=$(trim "${label:-}")
+    [ -n "$name" ] && [ -n "$label" ] || continue
+
+    dir="$CTX_ROOT/$label"
+    mkdir -p "$dir"
+    # Left side of the pipe reads the GLOBAL gh store (no GH_CONFIG_DIR);
+    # right side writes ONLY into the per-context dir. Token stays in the pipe.
+    "$GH" auth token --user "$name" \
+        | GH_CONFIG_DIR="$dir" "$GH" auth login --hostname github.com --with-token --insecure-storage
+    GH_CONFIG_DIR="$dir" "$GH" config set git_protocol ssh
+
+    printf '%s -> ' "$label"
+    GH_CONFIG_DIR="$dir" "$GH" api user --jq .login
+done < "$CONF"
+
+printf 'gh contexts bootstrapped under %s\n' "$CTX_ROOT"

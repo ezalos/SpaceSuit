@@ -1,0 +1,58 @@
+#!/bin/sh
+# ABOUTME: Identity-routing gh wrapper - forces a per-tree GH_CONFIG_DIR resolved from contexts.conf.
+# ABOUTME: Fail-closed: unknown context, missing bootstrap, or any env token/config override aborts.
+
+set -u
+
+CONF="${GIT_IDENTITY_CONTEXTS:-$HOME/.config/git-identity/contexts.conf}"
+CTX_ROOT="${GH_CONTEXTS_ROOT:-$HOME/.config/gh-contexts}"
+
+fail() { printf '[gh-router] %s\n' "$*" >&2; exit 2; }
+
+# Any of these would bypass identity routing entirely - refuse rather than mis-route.
+[ -n "${GH_TOKEN:-}" ] && fail "GH_TOKEN is set; it overrides identity routing. Unset it, or call /usr/bin/gh directly if intentional."
+[ -n "${GITHUB_TOKEN:-}" ] && fail "GITHUB_TOKEN is set; it overrides identity routing. Unset it, or call /usr/bin/gh directly if intentional."
+[ -n "${GH_CONFIG_DIR:-}" ] && fail "GH_CONFIG_DIR is already set; refusing to re-route. Call /usr/bin/gh directly if intentional."
+[ -f "$CONF" ] || fail "missing $CONF"
+
+trim() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+
+resolve_ctx() { # $1 = absolute dir -> prints context label (longest prefix wins; '*' = default)
+    _dir="$1"; _best=""; _best_len=-1
+    while IFS='|' read -r _prefix _name _email _label; do
+        _prefix=$(trim "${_prefix:-}")
+        case "$_prefix" in ''|'#'*) continue ;; esac
+        _label=$(trim "${_label:-}")
+        if [ "$_prefix" = '*' ]; then
+            if [ "$_best_len" -lt 0 ]; then _best="$_label"; _best_len=0; fi
+            continue
+        fi
+        _exp=$(printf '%s' "$_prefix" | sed "s|^~|$HOME|")
+        case "$_dir/" in "$_exp"/*)
+            if [ "${#_exp}" -gt "$_best_len" ]; then _best="$_label"; _best_len=${#_exp}; fi
+        ;; esac
+    done < "$CONF"
+    printf '%s' "$_best"
+}
+
+# pwd (builtin) is validated against the real cwd at shell startup, unlike the
+# inherited $PWD env var, which non-shell callers (subprocess cwd=, env -C) leave stale.
+ldir=$(pwd)
+pdir=$(pwd -P)
+lctx=$(resolve_ctx "$ldir")
+if [ "$pdir" != "$ldir" ]; then
+    pctx=$(resolve_ctx "$pdir")
+    [ "$lctx" = "$pctx" ] || fail "ambiguous context: '$ldir' -> '${lctx:-none}' but physical '$pdir' -> '${pctx:-none}'. cd to a real path."
+fi
+
+[ -n "$lctx" ] || fail "no context (and no '*' default) matched: $PWD"
+cfg="$CTX_ROOT/$lctx"
+[ -f "$cfg/hosts.yml" ] || fail "context '$lctx' not bootstrapped; run ~/.config/git-identity/gh-contexts-bootstrap.sh"
+
+real=""
+for cand in $(which -a gh 2>/dev/null); do
+    if [ ! "$cand" -ef "$0" ]; then real="$cand"; break; fi
+done
+[ -n "$real" ] || fail "real gh binary not found in PATH"
+
+GH_CONFIG_DIR="$cfg" exec "$real" "$@"

@@ -1,0 +1,18 @@
+tiers:
+  1:
+    name: "Primary"
+    publishers:
+      - name: "SEC"
+        domains: ["sec.gov"]
+      - name: "Anthropic"
+        domains: ["anthropic.com", "investor.anthropic.com"]
+  4:
+    name: "Tier-1 press"
+    publishers:
+      - name: "Bloomberg"
+        domains: ["bloomberg.com"]
+  5:
+    name: "Tier-2 press"
+    publishers:
+      - name: "TechCrunch"
+        domains: ["techcrunch.com"]

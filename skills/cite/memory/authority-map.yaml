@@ -1,0 +1,221 @@
+# ABOUTME: Machine-readable authority roster; sibling to authority-map.md.
+# ABOUTME: Read by scripts/cite/tier_lookup.py. Kept in sync with .md via scripts/cite/lint_authority_map.py.
+
+tiers:
+  1:
+    name: "Primary sources (company IR, SEC filings, government)"
+    publishers:
+      - name: "SEC.gov"
+        domains: ["sec.gov"]
+        note: "US Securities and Exchange Commission"
+      - name: "CFTC.gov"
+        domains: ["cftc.gov"]
+      - name: "EUR-Lex"
+        domains: ["eur-lex.europa.eu"]
+      - name: "European Parliament"
+        domains: ["europarl.europa.eu"]
+      - name: "European Commission"
+        domains: ["ec.europa.eu", "digital-strategy.ec.europa.eu"]
+      - name: "Anthropic"
+        domains: ["anthropic.com"]
+      - name: "OpenAI"
+        domains: ["openai.com"]
+      - name: "Mistral AI"
+        domains: ["mistral.ai"]
+      - name: "INSEE"
+        domains: ["insee.fr"]
+      - name: "Eurostat"
+        domains: ["eurostat.ec.europa.eu"]
+      - name: "U.S. Bureau of Labor Statistics"
+        domains: ["bls.gov"]
+      - name: "UK Office for National Statistics"
+        domains: ["ons.gov.uk"]
+      - name: "Klarna (company press)"
+        domains: ["klarna.com"]
+      - name: "L'Oréal Finance (investor relations)"
+        domains: ["loreal-finance.com"]
+      - name: "Fin AI (Intercom product)"
+        domains: ["fin.ai"]
+      - name: "Google Developers (official docs)"
+        domains: ["developers.google.com"]
+      - name: "EU AI Act Service Desk"
+        domains: ["ai-act-service-desk.ec.europa.eu"]
+      - name: "Meta AI (official blog)"
+        domains: ["ai.meta.com"]
+      - name: "Google corporate blog"
+        domains: ["blog.google"]
+      - name: "Google DeepMind (official)"
+        domains: ["deepmind.google"]
+      - name: "Anthropic Claude product site"
+        domains: ["claude.com"]
+      - name: "AWS (official announcements)"
+        domains: ["aws.amazon.com"]
+      - name: "Linux Foundation (official announcements)"
+        domains: ["linuxfoundation.org"]
+      - name: "EU AI Act (artificialintelligenceact.eu official explainer)"
+        domains: ["artificialintelligenceact.eu"]
+      - name: "Coursera (course platform — authoritative for course official pages)"
+        domains: ["coursera.org"]
+  2:
+    name: "Peer-reviewed academic"
+    publishers:
+      - name: "arXiv"
+        domains: ["arxiv.org"]
+      - name: "Nature"
+        domains: ["nature.com"]
+      - name: "Science"
+        domains: ["science.org"]
+      - name: "IEEE Xplore"
+        domains: ["ieeexplore.ieee.org"]
+      - name: "ACM Digital Library"
+        domains: ["dl.acm.org"]
+      - name: "The Lancet"
+        domains: ["thelancet.com"]
+      - name: "New England Journal of Medicine"
+        domains: ["nejm.org"]
+      - name: "SWE-bench (academic benchmark)"
+        domains: ["swebench.com"]
+      - name: "Terminal-Bench (Stanford / Laude Institute benchmark)"
+        domains: ["tbench.ai"]
+      - name: "OSWorld (academic benchmark)"
+        domains: ["os-world.github.io"]
+  3:
+    name: "Tier-1 research firms and trackers"
+    publishers:
+      - name: "Gartner"
+        domains: ["gartner.com"]
+      - name: "McKinsey"
+        domains: ["mckinsey.com"]
+      - name: "Deloitte Insights"
+        domains: ["deloitte.com"]
+      - name: "IDC"
+        domains: ["idc.com"]
+      - name: "Forrester"
+        domains: ["forrester.com"]
+      - name: "Stanford HAI"
+        domains: ["hai.stanford.edu", "aiindex.stanford.edu"]
+      - name: "OECD.AI"
+        domains: ["oecd.ai"]
+      - name: "Epoch AI"
+        domains: ["epochai.org", "epoch.ai"]
+      - name: "Our World in Data"
+        domains: ["ourworldindata.org"]
+      - name: "CB Insights"
+        domains: ["cbinsights.com"]
+      - name: "Statista"
+        domains: ["statista.com"]
+      - name: "SemiAnalysis"
+        domains: ["semianalysis.com"]
+      - name: "CEPS"
+        domains: ["ceps.eu"]
+      - name: "Stack Overflow Developer Survey"
+        domains: ["survey.stackoverflow.co"]
+      - name: "Microsoft Research"
+        domains: ["microsoft.com"]
+      - name: "Databricks (engineering / research blog)"
+        domains: ["databricks.com"]
+      - name: "Hugging Face (official docs)"
+        domains: ["huggingface.co"]
+      - name: "MIT Sloan Management Review"
+        domains: ["sloanreview.mit.edu"]
+      - name: "Andreessen Horowitz (a16z research)"
+        domains: ["a16z.com"]
+      - name: "Bessemer Venture Partners (State of AI)"
+        domains: ["bvp.com"]
+      - name: "METR (model evaluation & safety research org)"
+        domains: ["metr.org"]
+      - name: "Vals AI (independent benchmark verifier)"
+        domains: ["vals.ai"]
+      - name: "Center for Data Innovation (EU policy think tank)"
+        domains: ["datainnovation.org", "www2.datainnovation.org"]
+      - name: "Cisco (corporate research/security blog)"
+        domains: ["blogs.cisco.com"]
+  4:
+    name: "Tier-1 press"
+    publishers:
+      - name: "Bloomberg"
+        domains: ["bloomberg.com"]
+      - name: "Reuters"
+        domains: ["reuters.com"]
+      - name: "Financial Times"
+        domains: ["ft.com"]
+      - name: "CNBC"
+        domains: ["cnbc.com"]
+      - name: "The New York Times"
+        domains: ["nytimes.com"]
+      - name: "The Wall Street Journal"
+        domains: ["wsj.com"]
+      - name: "The Economist"
+        domains: ["economist.com"]
+      - name: "The Information"
+        domains: ["theinformation.com"]
+      - name: "Les Échos"
+        domains: ["lesechos.fr"]
+      - name: "Le Monde"
+        domains: ["lemonde.fr"]
+  5:
+    name: "Tier-2 press (flagged for review)"
+    publishers:
+      - name: "TechCrunch"
+        domains: ["techcrunch.com"]
+      - name: "The Verge"
+        domains: ["theverge.com"]
+      - name: "Ars Technica"
+        domains: ["arstechnica.com"]
+      - name: "Wired"
+        domains: ["wired.com"]
+      - name: "VentureBeat"
+        domains: ["venturebeat.com"]
+      - name: "MIT Technology Review"
+        domains: ["technologyreview.com"]
+      - name: "Sifted (EU startup press)"
+        domains: ["sifted.eu"]
+      - name: "Entrepreneur"
+        domains: ["entrepreneur.com"]
+      - name: "Latent Space (AI industry editorial)"
+        domains: ["latent.space"]
+      - name: "Ahead of AI — Sebastian Raschka"
+        domains: ["magazine.sebastianraschka.com"]
+      - name: "Chip Huyen (practitioner blog)"
+        domains: ["huyenchip.com"]
+      - name: "Jason Liu (practitioner blog)"
+        domains: ["jxnl.co"]
+      - name: "VintageData (practitioner blog)"
+        domains: ["vintagedata.org"]
+      - name: "PYMNTS (trade press)"
+        domains: ["pymnts.com"]
+      - name: "36Kr (Chinese tech press)"
+        domains: ["36kr.com", "eu.36kr.com"]
+      - name: "The New Stack (developer-focused press)"
+        domains: ["thenewstack.io"]
+      - name: "Peter Steinberger blog (practitioner blog)"
+        domains: ["steipete.me"]
+      - name: "Revenue Wizards (SaaS pricing practitioner blog)"
+        domains: ["revenuewizards.com"]
+      - name: "Jarvislabs docs (GPU infra practitioner blog)"
+        domains: ["docs.jarvislabs.ai"]
+      - name: "Spheron Network (GPU/ML practitioner blog)"
+        domains: ["spheron.network"]
+      - name: "Richard Sutton — Incomplete Ideas (practitioner/essay site)"
+        domains: ["incompleteideas.net"]
+  6:
+    name: "Startup databases and aggregators (flagged for review)"
+    publishers:
+      - name: "Crunchbase"
+        domains: ["crunchbase.com"]
+      - name: "Sacra"
+        domains: ["sacra.com"]
+      - name: "PitchBook"
+        domains: ["pitchbook.com"]
+      - name: "Dealroom"
+        domains: ["dealroom.co"]
+      - name: "Wikipedia"
+        domains: ["en.wikipedia.org", "fr.wikipedia.org"]
+      - name: "GitHub (code/README host — use only as pointer to code or official repo)"
+        domains: ["github.com"]
+      - name: "YouTube (video aggregator — use only as pointer to official channel content)"
+        domains: ["youtube.com"]
+      - name: "X / Twitter (social media — use only for public statements by primary authors)"
+        domains: ["x.com", "twitter.com"]
+      - name: "Tracxn (startup data aggregator)"
+        domains: ["tracxn.com"]

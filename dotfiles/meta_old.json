@@ -1,0 +1,195 @@
+[
+    {
+        "alias": "mac.zshrc",
+        "path": "/Users/ezalos/.zshrc",
+        "main": "dotfiles/.zshrc",
+        "identifier": "Louiss.MBP.lan.ezalos",
+        "backups": []
+    },
+    {
+        "alias": "mac.p10k.zsh",
+        "path": "/Users/ezalos/.p10k.zsh",
+        "main": "dotfiles/.p10k.zsh",
+        "identifier": "Louiss.MBP.lan.ezalos",
+        "backups": []
+    },
+    {
+        "alias": "mac.vimrc",
+        "path": "/Users/ezalos/.vimrc",
+        "main": "dotfiles/.vimrc",
+        "identifier": "Louiss.MBP.lan.ezalos",
+        "backups": []
+    },
+    {
+        "alias": ".neofetch",
+        "path": "/home/ezalos/.config/neofetch/config.conf",
+        "main": "dotfiles/.neofetch",
+        "identifier": "ezalos.TM1704.ezalos",
+        "backups": [
+            {
+                "backup_path": "dotfiles/old/.neofetch_ezalos.TM1704.ezalos_2021-03-28_00:39",
+                "identifier": "ezalos.TM1704.ezalos",
+                "datetime": "2021-03-28_00:39"
+            },
+            {
+                "backup_path": "dotfiles/old/config.conf_TheBeast.ezalos_2021-05-12_17:54",
+                "identifier": "TheBeast.ezalos",
+                "datetime": "2021-05-12_17:54"
+            }
+        ]
+    },
+    {
+        "alias": ".zshrc",
+        "path": "/home/ezalos/.zshrc",
+        "main": "dotfiles/.zshrc",
+        "identifier": "ezalos.TM1704.ezalos",
+        "backups": [
+            {
+                "backup_path": "dotfiles/old/.zshrc_ezalos.TM1704.ezalos_2021-03-28_00:58",
+                "identifier": "ezalos.TM1704.ezalos",
+                "datetime": "2021-03-28_00:58"
+            },
+            {
+                "backup_path": "dotfiles/old/.zshrc_TheBeast.ezalos_2021-05-12_16:54",
+                "identifier": "TheBeast.ezalos",
+                "datetime": "2021-05-12_16:54"
+            },
+            {
+                "backup_path": "dotfiles/old/.zshrc_TheBeast.ezalos_2021-06-22_11:40",
+                "identifier": "TheBeast.ezalos",
+                "datetime": "2021-06-22_11:40"
+            }
+        ]
+    },
+    {
+        "alias": ".vimrc",
+        "path": "/home/ezalos/.vimrc",
+        "main": "dotfiles/.vimrc",
+        "identifier": "ezalos.TM1704.ezalos",
+        "backups": [
+            {
+                "backup_path": "dotfiles/old/.vimrc_ezalos.TM1704.ezalos_2021-03-28_01:01",
+                "identifier": "ezalos.TM1704.ezalos",
+                "datetime": "2021-03-28_01:01"
+            }
+        ]
+    },
+    {
+        "alias": "init.vim",
+        "path": "/home/ezalos/.config/nvim/init.vim",
+        "main": "dotfiles/init.vim",
+        "identifier": "ezalos.TM1704.ezalos",
+        "backups": [
+            {
+                "backup_path": "dotfiles/old/init.vim_ezalos.TM1704.ezalos_2021-03-28_01:14",
+                "identifier": "ezalos.TM1704.ezalos",
+                "datetime": "2021-03-28_01:14"
+            },
+            {
+                "backup_path": "dotfiles/old/init.vim_TheBeast.ezalos_2021-05-12_18:01",
+                "identifier": "TheBeast.ezalos",
+                "datetime": "2021-05-12_18:01"
+            }
+        ]
+    },
+    {
+        "alias": ".bashrc",
+        "path": "/home/ezalos/.bashrc",
+        "main": "dotfiles/.bashrc",
+        "identifier": "TheBeast.ezalos",
+        "backups": [
+            {
+                "backup_path": "dotfiles/old/.bashrc_TheBeast.ezalos_2021-05-12_15:59",
+                "identifier": "TheBeast.ezalos",
+                "datetime": "2021-05-12_15:59"
+            },
+            {
+                "backup_path": "dotfiles/old/.bashrc_TheBeast.ezalos_2021-06-22_11:40",
+                "identifier": "TheBeast.ezalos",
+                "datetime": "2021-06-22_11:40"
+            }
+        ]
+    },
+    {
+        "alias": "terminator",
+        "path": "/home/ezalos/.config/terminator/config",
+        "main": "dotfiles/terminator",
+        "identifier": "ezalos.TM1704.ezalos",
+        "backups": [
+            {
+                "backup_path": "dotfiles/old/config_ezalos.TM1704.ezalos_2021-05-13_09:10",
+                "identifier": "ezalos.TM1704.ezalos",
+                "datetime": "2021-05-13_09:10"
+            },
+            {
+                "backup_path": "dotfiles/old/config_TheBeast.ezalos_2021-05-13_09:27",
+                "identifier": "TheBeast.ezalos",
+                "datetime": "2021-05-13_09:27"
+            },
+            {
+                "backup_path": "dotfiles/old/terminator_ezalos.TM1704.ezalos_2021-08-19_09:47",
+                "identifier": "ezalos.TM1704.ezalos",
+                "datetime": "2021-08-19_09:47"
+            }
+        ]
+    },
+    {
+        "alias": ".p10k.zsh",
+        "path": "/home/ezalos/.p10k.zsh",
+        "main": "dotfiles/.p10k.zsh",
+        "identifier": "TheBeast.ezalos",
+        "backups": [
+            {
+                "backup_path": "dotfiles/old/.p10k.zsh_TheBeast.ezalos_2021-06-10_17:27",
+                "identifier": "TheBeast.ezalos",
+                "datetime": "2021-06-10_17:27"
+            }
+        ]
+    },
+    {
+        "alias": ".gdbinit",
+        "path": "/home/ezalos/.gdbinit",
+        "main": "dotfiles/.gdbinit",
+        "identifier": "ezalos.TM1704.ezalos",
+        "backups": [
+            {
+                "backup_path": "dotfiles/old/.gdbinit_ezalos.TM1704.ezalos_2021-06-14_12:48",
+                "identifier": "ezalos.TM1704.ezalos",
+                "datetime": "2021-06-14_12:48"
+            }
+        ]
+    },
+    {
+        "alias": "jupyter_notebook_config.py",
+        "path": "/home/ezalos/.jupyter/jupyter_notebook_config.py",
+        "main": "dotfiles/jupyter_notebook_config.py",
+        "identifier": "TheBeast.ezalos",
+        "backups": [
+            {
+                "backup_path": "dotfiles/old/jupyter_notebook_config.py_TheBeast.ezalos_2021-07-28_17:08",
+                "identifier": "TheBeast.ezalos",
+                "datetime": "2021-07-28_17:08"
+            }
+        ]
+    },
+    {
+        "alias": "warp",
+        "path": "/Users/ezalos/.warp/launch_configurations/launch_config.yaml",
+        "main": "dotfiles/warp",
+        "identifier": "Louiss.MBP.ezalos",
+        "backups": [
+            {
+                "backup_path": "/Users/ezalos/Setup/dotfiles/old/warp_Louiss.MBP.ezalos_2024-06-13_11:47",
+                "identifier": "Louiss.MBP.ezalos",
+                "datetime": "2024-06-13_11:47"
+            }
+        ]
+    },
+    {
+        "alias": ".tmux.conf",
+        "path": "/home/ezalos/.tmux.conf",
+        "main": "dotfiles/.tmux.conf",
+        "identifier": "TheBeast.ezalos",
+        "backups": []
+    }
+]

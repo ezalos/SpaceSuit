@@ -1,0 +1,15 @@
+[Unit]
+# ABOUTME: Runs the netwatch dashboard publish every minute.
+# ABOUTME: Matches the page's 60s refresh, so "stale" on screen means genuinely stale.
+Description=netwatch — publish summary every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+# The page flags a host as stale after 5 minutes. Keep publishing well inside
+# that so the banner only ever appears for a real problem.
+AccuracySec=10s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

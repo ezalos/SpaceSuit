@@ -1,0 +1,46 @@
+#!/bin/sh
+# ABOUTME: Table-driven identity guard: enforces per-tree git identity + content-scrub on commit.
+# ABOUTME: Data-free — reads ~/.config/git-identity/{contexts.conf,forbidden/*,scrub.py}. No tokens here.
+[ "${GIT_IDENTITY_GUARD:-}" = "off" ] && exit 0
+CFG="${GIT_IDENTITY_DIR:-$HOME/.config/git-identity}"
+CONF="$CFG/contexts.conf"
+[ -f "$CONF" ] || exit 0   # not configured -> no-op (safe in other projects / new machines)
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+repo_root_abs=$(cd "$repo_root" && pwd -P)/
+
+# resolve context: longest matching dir-prefix; '*' is the default fallback
+ctx="" ctx_name="" ctx_email="" ctx_len=-1 def_name="" def_email="" def_ctx=""
+while IFS='|' read -r pfx name email fb; do
+	case "$pfx" in ''|\#*) continue ;; esac
+	pfx=$(printf '%s' "$pfx" | sed 's/^ *//;s/ *$//')
+	name=$(printf '%s' "$name" | sed 's/^ *//;s/ *$//')
+	email=$(printf '%s' "$email" | sed 's/^ *//;s/ *$//')
+	fb=$(printf '%s' "$fb" | sed 's/^ *//;s/ *$//')
+	if [ "$pfx" = "*" ]; then def_name="$name"; def_email="$email"; def_ctx="$fb"; continue; fi
+	abs=$(eval echo "$pfx"); abs=$(cd "$abs" 2>/dev/null && pwd -P)/ || continue
+	case "$repo_root_abs" in
+		"$abs"*) len=${#abs}; if [ "$len" -gt "$ctx_len" ]; then
+			ctx_len=$len; ctx="$fb"; ctx_name="$name"; ctx_email="$email"; fi ;;
+	esac
+done < "$CONF"
+[ -z "$ctx" ] && { ctx="$def_ctx"; ctx_name="$def_name"; ctx_email="$def_email"; }
+
+email=$(git config user.email); name=$(git config user.name)
+if [ "$email" != "$ctx_email" ] || [ "$name" != "$ctx_name" ]; then
+	printf '[identity-guard] BLOCKED: wrong identity for this tree (context: %s)\n' "$ctx" >&2
+	printf '  have:     %s <%s>\n  expected: %s <%s>\n' "$name" "$email" "$ctx_name" "$ctx_email" >&2
+	printf '  fix: git config user.name "%s" && git config user.email "%s"\n' "$ctx_name" "$ctx_email" >&2
+	printf '  bypass once: GIT_IDENTITY_GUARD=off git commit ...\n' >&2
+	exit 1
+fi
+
+if [ "${PRO_CONTENT_SCRUB:-}" != "off" ] && [ -f "$CFG/scrub.py" ]; then
+	git diff --cached -U0 --no-color --diff-filter=ACMR | \
+		python3 "$CFG/scrub.py" --context "$ctx" --config-dir "$CFG" \
+			--forbidden-file "$HOME/.config/git-content-scrub/spacesuit-extra.txt" || {
+			printf '  bypass once: PRO_CONTENT_SCRUB=off git commit ...\n' >&2
+			exit 1
+		}
+fi
+exit 0

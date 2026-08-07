@@ -1,0 +1,40 @@
+# ABOUTME: Lightweight test Dockerfile that COPYs local code and runs pytest + deploy verification.
+# ABOUTME: Multi-arch (ARM64/x86_64). Use: docker build -f Dockerfile.test -t setup-test .
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+WORKDIR /root/Setup
+
+# Deps layer (cached unless pyproject.toml/uv.lock change)
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen
+
+# Source + test + dotfiles
+COPY src_dotfiles/ src_dotfiles/
+COPY tests/ tests/
+COPY data/ data/
+COPY dotfiles/ dotfiles/
+
+# 1. Unit tests
+RUN uv run pytest tests/test_dotfiles.py -v
+
+# 2. Real deploy (translates paths to container's /root)
+RUN uv run python -m src_dotfiles deploy
+
+# 3. Verify deploy created symlinks for all loaded dotfiles
+RUN uv run python -c "\
+from src_dotfiles.__main__ import ManageDotfiles; \
+import os; \
+m = ManageDotfiles(); \
+total = len(m.db.data); \
+linked = [d for d in m.db.data if os.path.islink(d.data.deploy[d.identifier].deploy_path)]; \
+missing = [d for d in m.db.data if not os.path.islink(d.data.deploy[d.identifier].deploy_path)]; \
+print(f'Deploy: {len(linked)}/{total} symlinks created'); \
+[print(f'  OK: {d.data.alias} -> {d.data.deploy[d.identifier].deploy_path}') for d in linked]; \
+[print(f'  MISSING: {d.data.alias} -> {d.data.deploy[d.identifier].deploy_path}') for d in missing]; \
+assert not missing, f'{len(missing)} dotfiles failed to deploy' \
+"

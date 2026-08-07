@@ -1,0 +1,19 @@
+# ABOUTME: Template .envrc for Proton Pass per-project secrets (API-credential items).
+# ABOUTME: Easiest path: `proton-envrc <context> >> .envrc` then `direnv allow`.
+#
+# Convention (Proton "API Credential" item): the item's "API Key" field is the env var
+# NAME, the "Secret" field is the value. Reference the value with /Secret.
+# Contexts map to per-context vaults; list them: ls ~/.claude/channels/proton-pass/*.pat
+
+# Bind this folder to ONE context/vault. A jailbroken agent here can only authenticate
+# as this context, so it reads only this vault.
+
+# They look like (id-based refs are robust against spaced titles):
+#   export ANTHROPIC_API_KEY='pass://<share-id>/<item-id>/Secret'   # Anthropic
+
+use proton money resolve
+
+# Generate the export lines + trailing use-proton line automatically (recommended):
+#   proton-envrc money --resolve >> .envrc     # project repo (values resolved into env)
+#   proton-envrc money >> .envrc               # capability repo (refs stay refs)
+# In a capability repo, run tools through:  secrets run -- <cmd>

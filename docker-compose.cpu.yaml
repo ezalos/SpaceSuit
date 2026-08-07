@@ -1,0 +1,22 @@
+services:
+  work.cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    image: ezalos/work.cpu:${DOCKER_TAG:-latest}
+    container_name: work.cpu
+    user: "${UID:-1466}:${GID:-1372}"
+    volumes:
+      - /:/mnt/host
+      - $HOME/monorepo:$HOME/monorepo
+      - $HOME/chromadb_tests:$HOME/chromadb_tests
+      - /srv/data:/srv/data
+      - /srv/fastdata:/srv/fastdata
+    ports:
+      - "8501:8501"
+      - "42069:42069"
+    environment:
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_SERVER_PORT=8501
+    tty: true
+    stdin_open: true 
