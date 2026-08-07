@@ -31,7 +31,10 @@ if [[ "$WHICH_COMPUTER" == "CURSOR_AGENT" ]]; then
 export ZSH_THEME=""
 else
 # From: https://github.com/romkatv/powerlevel10k/issues/702#issuecomment-626222730
-emulate zsh -c "$(direnv export zsh)"
+# Guarded: a pristine machine (direnv not yet installed) would otherwise spray
+# "command not found: direnv" on every shell start -- found via the
+# resurrection e2e test (~/42/TheHarness/resurrection/).
+(( ${+commands[direnv]} )) && emulate zsh -c "$(direnv export zsh)"
 
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
@@ -41,7 +44,7 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
 fi
 
 # From: https://github.com/romkatv/powerlevel10k/issues/702#issuecomment-626222730
-emulate zsh -c "$(direnv hook zsh)"
+(( ${+commands[direnv]} )) && emulate zsh -c "$(direnv hook zsh)"
 
 ZSH_THEME="powerlevel10k/powerlevel10k"
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
@@ -66,14 +69,19 @@ fi
 # Path to your oh-my-zsh installation.
 export ZSH=$HOME/.oh-my-zsh
 
-source $ZSH/custom/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh
+# Guarded: a pristine machine (oh-my-zsh/plugins not yet installed via
+# Installs/bootstrap.sh) would otherwise spray "no such file or directory" on
+# every shell start -- found via the resurrection e2e test
+# (~/42/TheHarness/resurrection/).
+[[ -f "$ZSH/custom/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh" ]] \
+  && source "$ZSH/custom/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh"
 
 plugins=(
   git
   zsh-autosuggestions
   zsh-syntax-highlighting
 )
-source $ZSH/oh-my-zsh.sh
+[[ -f "$ZSH/oh-my-zsh.sh" ]] && source "$ZSH/oh-my-zsh.sh"
 HISTCONTROL=ignorespace
 export LANG=en_US.UTF-8
 
@@ -158,7 +166,12 @@ fi
 # ---------------------------------------------------------------------------- #
 # One-shot SSH agent/key setup ----------------------------------------------- #
 setup_ssh() {
-  (( ${+SSH_AUTH_SOCK} )) || eval "$(ssh-agent -s)" >/dev/null 2>&1
+  # Guarded: a pristine machine (no openssh-client yet) would otherwise spray
+  # "command not found: ssh-agent" on every shell start -- found via the
+  # resurrection e2e test (~/42/TheHarness/resurrection/).
+  if (( ! ${+SSH_AUTH_SOCK} )) && (( ${+commands[ssh-agent]} )); then
+    eval "$(ssh-agent -s)" >/dev/null 2>&1
+  fi
 
   # ZSHRC_LOCAL_SSH_KEY (set in ~/.zshrc.local) takes priority -- machine-local
   # override. Falls back to the generic case below for machines without one.
@@ -170,9 +183,13 @@ setup_ssh() {
     esac
   fi
 
+  # Only warn when we actually expected a specific key (a recognized
+  # WHICH_COMPUTER or an explicit ZSHRC_LOCAL_SSH_KEY) and it's missing --
+  # not on every unrecognized/unconfigured machine, where there was never a
+  # key to expect in the first place (e.g. a fresh resurrection).
   if [[ -n $key && -f $key ]]; then
       ssh-add "$key" >/dev/null 2>&1
-  else
+  elif [[ -n $key ]]; then
       echo >&2 "⚠️  SSH key $key not found"
   fi
 }
