@@ -45,8 +45,10 @@ def get_project_path(pwd=False):
 
 
 def get_home_path():
-    # TODO: Function uses a trick which is not viable long term
-    home_path = Path(__file__).parent.parent.parent.as_posix()  # /home/ezalos (if cloned directly)
+    # The user's real home. Never derive this from the repo location: the old
+    # grandparent-of-__file__ trick broke the day the repo moved to ~/42/SpaceSuit
+    # (fanout deployed into ~/42/.claude on TinyButMighty, 2026-08-08).
+    home_path = Path.home().as_posix()
     logger.debug(f'Current home path: {home_path}')
     return home_path
 
