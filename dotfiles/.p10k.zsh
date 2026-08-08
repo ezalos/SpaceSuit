@@ -1697,44 +1697,36 @@ typeset -g POWERLEVEL9K_CONFIG_FILE=${${(%):-%x}:a}
 # For CPU temperature
 
 function prompt_my_cpu_temp() {
-  # integer cpu_temp="$(</sys/class/thermal/thermal_zone0/temp) / 1000"
-  # integer cpu_temp="$(sensors -u 2>&- | grep PCI -A 10 | grep Tctl -A 1 | grep -oP 'temp1_input:\s+\K\d+.\d+')"
+  # Shows min-max across trusted silicon sensors (CPU dies + NVMe/SATA drives),
+  # so one reading can't misinform: the low is the coolest component, the high
+  # picks the color. SuperIO chips (nct6779 etc.) are deliberately excluded:
+  # dead PCH channels read 0 and floating AUXTIN thermistors read garbage.
+  # Pure sysfs reads, no forks - safe for a prompt segment.
+  [[ "$OSTYPE" == darwin* ]] && return 0  # no sysfs on macOS; segment is Linux-only
 
-  if [[ "$OSTYPE" == darwin* ]]; then
-    # macOS - use powermetrics or sysctl
-    # Option 1: Using powermetrics (requires sudo, might be slow)
-    # cpu_temp=$(sudo powermetrics -n 1 -s smc | grep "CPU die temperature" | awk '{print int($4)}')
-    
-    return 0
-    # Option 2: Try to get from thermal state (simpler but less precise)
-    local thermal_state=$(pmset -g thermlog | tail -1 | awk '{print $4}' 2>/dev/null)
-    if [[ -n "$thermal_state" && "$thermal_state" =~ ^[0-9]+$ ]]; then
-      cpu_temp=$thermal_state
-    else
-      # Fallback: estimate based on system load or skip
-      return 0
-    fi
+  local hw sensor_name t
+  integer v lo=999 hi=-999
+  for hw in /sys/class/hwmon/hwmon*(N); do
+    [[ -r $hw/name ]] || continue
+    sensor_name=$(<$hw/name)
+    [[ $sensor_name == (k10temp|coretemp|nvme|drivetemp) ]] || continue
+    for t in $hw/temp*_input(N); do
+      [[ -r $t ]] || continue
+      v=$(<$t) 2>/dev/null || continue
+      (( v /= 1000 ))
+      (( v > 5 && v < 120 )) || continue  # drop disconnected/implausible readings
+      (( v < lo )) && lo=$v
+      (( v > hi )) && hi=$v
+    done
+  done
+  (( hi == -999 )) && return 0
+
+  if (( hi >= 80 )); then
+    p10k segment -s HOT  -f red    -t "${lo}-${hi}"$'\uE339' -i $'\uF737'
+  elif (( hi >= 60 )); then
+    p10k segment -s WARM -f yellow -t "${lo}-${hi}"$'\uE339' -i $'\uE350'
   else
-    # Linux - use sensors with compatible grep
-    local sensor_output=$(sensors -u 2>/dev/null | grep -A 10 "PCI" | grep -A 1 "Tctl")
-    if [[ -n "$sensor_output" ]]; then
-      # Use sed instead of grep -P for better compatibility
-      cpu_temp=$(echo "$sensor_output" | sed -n 's/.*temp1_input: *\([0-9.]*\).*/\1/p' | head -1)
-      cpu_temp=${cpu_temp%.*}  # Remove decimal part
-    else
-      return 0
-    fi
-  fi
-  
-  # Only proceed if we got a valid temperature
-  if [[ -n "$cpu_temp" && "$cpu_temp" =~ ^[0-9]+$ ]]; then
-    if (( cpu_temp >= 80 )); then
-      p10k segment -s HOT  -f red    -t "${cpu_temp}"$'\uE339' -i $'\uF737'
-    elif (( cpu_temp >= 60 )); then
-      p10k segment -s WARM -f yellow -t "${cpu_temp}"$'\uE339' -i $'\uE350'
-    else
-      p10k segment -s COOL -f green -t "${cpu_temp}"$'\uE339' -i $'\uE350'
-    fi
+    p10k segment -s COOL -f green -t "${lo}-${hi}"$'\uE339' -i $'\uE350'
   fi
 }
 
