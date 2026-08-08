@@ -1697,7 +1697,7 @@ typeset -g POWERLEVEL9K_CONFIG_FILE=${${(%):-%x}:a}
 # For CPU temperature
 
 function prompt_my_temp() {
-  # Per-hardware temperatures: CPU min-max, GPU, drives min-max - one sub-segment
+  # Per-hardware temperatures: CPU min-max, GPU, hottest drive - one sub-segment
   # each, colored by that hardware's own thresholds. Ranges over single readings
   # so one sonde can't misinform. SuperIO chips (nct6779 etc.) are deliberately
   # excluded: dead PCH channels read 0 and floating AUXTIN thermistors read
@@ -1745,10 +1745,13 @@ function prompt_my_temp() {
     fi
   fi
 
+  # Only the hottest drive matters - collapse the disk range to its max.
+  [[ -n ${hi[dsk]:-} ]] && lo[dsk]=$hi[dsk]
+
   # One sub-segment per hardware, colored by its own limits (CPU throttles ~90,
   # GPU ~83 = the thermal-guard alert line, drives are unhappy past ~70).
   local icon text color
-  local -a spec=(cpu $'\u2699\uFE0F' 60 80  gpu $'\U0001F3AE' 70 83  dsk $'\U0001F4BE' 50 60)
+  local -a spec=(cpu $'\u2699\uFE0F' 60 80  gpu $'\U0001F680' 70 83  dsk $'\U0001F4BE' 50 60)
   integer i warm hot
   for (( i=1; i<=$#spec; i+=4 )); do
     kind=$spec[i]; icon=$spec[i+1]; warm=$spec[i+2]; hot=$spec[i+3]
