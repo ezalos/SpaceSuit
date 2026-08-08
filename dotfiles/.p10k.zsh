@@ -110,7 +110,7 @@
     # battery               # internal battery
     # wifi                  # wifi speed
     # example               # example user-defined segment (see prompt_example function below)
-	my_cpu_temp				# CPU Temp (see end of file)
+	my_temp				# Hardware temperatures (see end of file)
   )
 
   # Defines character set used by powerlevel10k. It's best to let `p10k configure` set it for you.
@@ -1696,38 +1696,70 @@ typeset -g POWERLEVEL9K_CONFIG_FILE=${${(%):-%x}:a}
 # From : https://github.com/romkatv/powerlevel10k/issues/768
 # For CPU temperature
 
-function prompt_my_cpu_temp() {
-  # Shows min-max across trusted silicon sensors (CPU dies + NVMe/SATA drives),
-  # so one reading can't misinform: the low is the coolest component, the high
-  # picks the color. SuperIO chips (nct6779 etc.) are deliberately excluded:
-  # dead PCH channels read 0 and floating AUXTIN thermistors read garbage.
-  # Pure sysfs reads, no forks - safe for a prompt segment.
+function prompt_my_temp() {
+  # Per-hardware temperatures: CPU min-max, GPU, drives min-max - one sub-segment
+  # each, colored by that hardware's own thresholds. Ranges over single readings
+  # so one sonde can't misinform. SuperIO chips (nct6779 etc.) are deliberately
+  # excluded: dead PCH channels read 0 and floating AUXTIN thermistors read
+  # garbage. CPU/drives are pure sysfs reads (no forks); the GPU has no sysfs
+  # sensor under the NVIDIA driver, so it comes from a small cache refreshed by
+  # a throttled disowned nvidia-smi - the prompt itself never waits on it.
   [[ "$OSTYPE" == darwin* ]] && return 0  # no sysfs on macOS; segment is Linux-only
+  zmodload -F zsh/stat b:zstat 2>/dev/null
+  zmodload zsh/datetime 2>/dev/null
 
-  local hw sensor_name t
-  integer v lo=999 hi=-999
+  local hw sensor_name t kind
+  integer v
+  local -a reply
+  local -A lo hi
   for hw in /sys/class/hwmon/hwmon*(N); do
     [[ -r $hw/name ]] || continue
     sensor_name=$(<$hw/name)
-    [[ $sensor_name == (k10temp|coretemp|nvme|drivetemp) ]] || continue
+    case $sensor_name in
+      k10temp|coretemp) kind=cpu ;;
+      nvme|drivetemp)   kind=dsk ;;
+      *) continue ;;
+    esac
     for t in $hw/temp*_input(N); do
       [[ -r $t ]] || continue
       v=$(<$t) 2>/dev/null || continue
       (( v /= 1000 ))
       (( v > 5 && v < 120 )) || continue  # drop disconnected/implausible readings
-      (( v < lo )) && lo=$v
-      (( v > hi )) && hi=$v
+      (( v < ${lo[$kind]:-999} )) && lo[$kind]=$v
+      (( v > ${hi[$kind]:--999} )) && hi[$kind]=$v
     done
   done
-  (( hi == -999 )) && return 0
 
-  if (( hi >= 80 )); then
-    p10k segment -s HOT  -f red    -t "${lo}-${hi}"$'\uE339' -i $'\uF737'
-  elif (( hi >= 60 )); then
-    p10k segment -s WARM -f yellow -t "${lo}-${hi}"$'\uE339' -i $'\uE350'
-  else
-    p10k segment -s COOL -f green -t "${lo}-${hi}"$'\uE339' -i $'\uE350'
+  # GPU: refresh a cache in the background at most every 10s, read it for free.
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    local cf=${XDG_CACHE_HOME:-$HOME/.cache}/p10k_gpu_temp
+    integer mtime=0
+    zstat -A reply +mtime $cf 2>/dev/null && mtime=$reply[1]
+    if (( EPOCHSECONDS - mtime > 10 )); then
+      ( nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader 2>/dev/null \
+          | head -1 | tr -dc '0-9' > $cf.new && command mv -f $cf.new $cf ) &!
+    fi
+    if [[ -r $cf ]]; then
+      v=$(<$cf) 2>/dev/null || v=0
+      (( v > 5 && v < 120 )) && { lo[gpu]=$v; hi[gpu]=$v; }
+    fi
   fi
+
+  # One sub-segment per hardware, colored by its own limits (CPU throttles ~90,
+  # GPU ~83 = the thermal-guard alert line, drives are unhappy past ~70).
+  local icon text color
+  local -a spec=(cpu $'\u2699\uFE0F' 60 80  gpu $'\U0001F3AE' 70 83  dsk $'\U0001F4BE' 50 60)
+  integer i warm hot
+  for (( i=1; i<=$#spec; i+=4 )); do
+    kind=$spec[i]; icon=$spec[i+1]; warm=$spec[i+2]; hot=$spec[i+3]
+    [[ -n ${hi[$kind]:-} ]] || continue
+    if (( lo[$kind] == hi[$kind] )); then text=${hi[$kind]}
+    else text="${lo[$kind]}-${hi[$kind]}"; fi
+    if (( hi[$kind] >= hot )); then color=red
+    elif (( hi[$kind] >= warm )); then color=yellow
+    else color=green; fi
+    p10k segment -s ${(U)kind} -f $color -t "${icon}${text}"$'\uE339'
+  done
 }
 
 function prompt_dotfiles_sync() {
