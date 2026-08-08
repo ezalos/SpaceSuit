@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ABOUTME: Front door for develle.fr Cloudflare Access gating; cwd-agnostic via `secrets run`.
-# ABOUTME: Wraps ~/42/TheHarness/network/domains/cloudflare-access/access.sh; no direnv, no cd required.
+# ABOUTME: Wraps ~/42/GroundControl/network/domains/cloudflare-access/access.sh; no direnv, no cd required.
 set -euo pipefail
-cd "$HOME/42/TheHarness/network/domains"
+cd "$HOME/42/GroundControl/network/domains"
 exec secrets run -- ./cloudflare-access/access.sh "$@"

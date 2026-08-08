@@ -50,7 +50,7 @@ Internet ──► SFR Box (<gateway>) ──► TinyButMighty (<proxy-host>, ng
                                   └──► TheBeast (<workstation>) directly  (e.g. SSH on ext <ext-ssh-port>)
 ```
 
-Public IP: redacted (see `~/42/TheHarness/network/routers/nat_manager/README.md`). TinyButMighty runs nginx on port 80 already (slides). Most HTTP services follow the proxied path; SSH-to-TheBeast goes direct on port <ext-ssh-port>.
+Public IP: redacted (see `~/42/GroundControl/network/routers/nat_manager/README.md`). TinyButMighty runs nginx on port 80 already (slides). Most HTTP services follow the proxied path; SSH-to-TheBeast goes direct on port <ext-ssh-port>.
 
 ## Inputs to gather
 

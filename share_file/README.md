@@ -121,7 +121,7 @@ chown it: `ssh TinyButMighty 'sudo chown caddy:caddy /var/log/caddy/share.access
 Use the `open-local-port` skill. Equivalent CLI:
 
 ```bash
-cd ~/42/TheHarness/network/routers/nat_manager
+cd ~/42/GroundControl/network/routers/nat_manager
 uv run python nat.py add share_https 443 74 443 --proto tcp
 ```
 

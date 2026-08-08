@@ -73,7 +73,7 @@ Expect the Moonlight stream to drop and return.
 ```bash
 DISPLAY=:0 XAUTHORITY=/run/user/1000/gdm/Xauthority xrandr | grep connected   # want a CONNECTED output
 nvidia-smi --query-gpu=display_active --format=csv,noheader                   # want Enabled
-~/42/TheHarness/monitoring/thebeast/scripts/check-streaming-stack.sh
+~/42/GroundControl/monitoring/thebeast/scripts/check-streaming-stack.sh
 ```
 
 Note the X display number moves between `:0` and `:1` depending on greeter vs autologin —

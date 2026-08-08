@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ABOUTME: Front door for the SFR Box NAT manager; cwd-agnostic via `secrets run`.
-# ABOUTME: Wraps ~/42/TheHarness/network/routers/nat_manager/nat.py under uv; no direnv, no cd required.
+# ABOUTME: Wraps ~/42/GroundControl/network/routers/nat_manager/nat.py under uv; no direnv, no cd required.
 set -euo pipefail
-cd "$HOME/42/TheHarness/network/routers/nat_manager"
+cd "$HOME/42/GroundControl/network/routers/nat_manager"
 exec secrets run -- uv run python nat.py "$@"

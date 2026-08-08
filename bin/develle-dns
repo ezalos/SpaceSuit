@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ABOUTME: Front door for develle.fr DNS sync; cwd-agnostic, resolves secrets via `secrets run`.
-# ABOUTME: Wraps ~/42/TheHarness/network/domains/cloudflare-dns/dns.sh; never requires direnv or a cd.
+# ABOUTME: Wraps ~/42/GroundControl/network/domains/cloudflare-dns/dns.sh; never requires direnv or a cd.
 set -euo pipefail
-cd "$HOME/42/TheHarness/network/domains"
+cd "$HOME/42/GroundControl/network/domains"
 exec secrets run -- ./cloudflare-dns/dns.sh "$@"

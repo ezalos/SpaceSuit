@@ -33,7 +33,7 @@ else
 # From: https://github.com/romkatv/powerlevel10k/issues/702#issuecomment-626222730
 # Guarded: a pristine machine (direnv not yet installed) would otherwise spray
 # "command not found: direnv" on every shell start -- found via the
-# resurrection e2e test (~/42/TheHarness/resurrection/).
+# resurrection e2e test (~/42/GroundControl/resurrection/).
 (( ${+commands[direnv]} )) && emulate zsh -c "$(direnv export zsh)"
 
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
@@ -72,7 +72,7 @@ export ZSH=$HOME/.oh-my-zsh
 # Guarded: a pristine machine (oh-my-zsh/plugins not yet installed via
 # Installs/bootstrap.sh) would otherwise spray "no such file or directory" on
 # every shell start -- found via the resurrection e2e test
-# (~/42/TheHarness/resurrection/).
+# (~/42/GroundControl/resurrection/).
 [[ -f "$ZSH/custom/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh" ]] \
   && source "$ZSH/custom/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh"
 
@@ -168,7 +168,7 @@ fi
 setup_ssh() {
   # Guarded: a pristine machine (no openssh-client yet) would otherwise spray
   # "command not found: ssh-agent" on every shell start -- found via the
-  # resurrection e2e test (~/42/TheHarness/resurrection/).
+  # resurrection e2e test (~/42/GroundControl/resurrection/).
   if (( ! ${+SSH_AUTH_SOCK} )) && (( ${+commands[ssh-agent]} )); then
     eval "$(ssh-agent -s)" >/dev/null 2>&1
   fi

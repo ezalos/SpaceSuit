@@ -264,8 +264,8 @@ files). The dashboard (`dashboard/build.mjs`) has a STRICT schema — follow it 
    - Never purge with `purge_everything`: the develle.fr zone is shared by other
      subdomains (upload, share, alakazam, …). The script purges only social URLs.
    - The purge needs `CLOUDFLARE_API_TOKEN` with `Zone > Cache Purge` permission,
-     resolved via `secrets run` in `~/42/TheHarness/network/domains`. If it errors, diagnose
-     with `cd ~/42/TheHarness/network/domains && secrets check` — a single broken vault ref
+     resolved via `secrets run` in `~/42/GroundControl/network/domains`. If it errors, diagnose
+     with `cd ~/42/GroundControl/network/domains && secrets check` — a single broken vault ref
      blocks the whole context resolve.
    - Origin vhosts (nginx :80 = the CF-facing one, Caddy :443) must send
      `Cache-Control: no-cache` so Cloudflare and browsers revalidate (cheap ETag 304s).
