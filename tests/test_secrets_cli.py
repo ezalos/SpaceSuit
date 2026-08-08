@@ -37,6 +37,12 @@ esac
 
 @pytest.fixture
 def proj(tmp_path, monkeypatch):
+    # A direnv-loaded shell exports its own pass:// refs (e.g. CLOUDFLARE_EZALOS);
+    # `secrets` reads the live environment too, so ambient refs must not reach the
+    # CLI or the expected-names lists depend on which repo the test runner sat in.
+    for name, value in list(os.environ.items()):
+        if value.startswith("pass://"):
+            monkeypatch.delenv(name)
     fake_bin = tmp_path / "fakebin"
     fake_bin.mkdir()
     fake = fake_bin / "proton-agent"
