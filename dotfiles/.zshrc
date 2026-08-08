@@ -13,7 +13,7 @@ fi
 
 
 
-export PATH_SETUP_DIR="$HOME/Setup"
+export PATH_SETUP_DIR="$HOME/42/SpaceSuit"
 # Helper utilities ---------------------------------------------------- #
 # Functions to safely add directories to $PATH (duplicates removed)
 path_prepend() { for d in "$@"; do [[ -d $d ]] && path=($d $path); done }

@@ -13,7 +13,7 @@
 
 [Unit]
 Description=netwatch — announce how to reach this host after boot
-Documentation=file:%h/Setup/docs/plans/2026-08-05-public-ip-change-and-move-handoff.md
+Documentation=file:%h/42/SpaceSuit/docs/plans/2026-08-05-public-ip-change-and-move-handoff.md
 After=default.target
 
 [Service]
@@ -22,7 +22,7 @@ EnvironmentFile=-%h/.config/netwatch/env
 # --wait covers ngrok, which cron starts on a 5-minute tick, so at boot it is
 # normally not up yet. That wait also gives the network time to settle before
 # the public-IP probe runs.
-ExecStart=/usr/bin/python3 %h/Setup/netwatch/netwatch.py announce --wait 300
+ExecStart=/usr/bin/python3 %h/42/SpaceSuit/netwatch/netwatch.py announce --wait 300
 # Never let a failed announcement look like a healthy boot.
 StandardOutput=journal
 StandardError=journal

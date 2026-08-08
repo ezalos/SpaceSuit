@@ -15,7 +15,7 @@ Type=simple
 EnvironmentFile=-%h/.config/netwatch/env
 # $NETWATCH_ARGS is intentionally unquoted so systemd word-splits it — that is
 # what lets one unit file serve every host from per-host env.
-ExecStart=/usr/bin/python3 %h/Setup/netwatch/netwatch.py run --quiet $NETWATCH_ARGS
+ExecStart=/usr/bin/python3 %h/42/SpaceSuit/netwatch/netwatch.py run --quiet $NETWATCH_ARGS
 Restart=always
 RestartSec=10
 # A monitor must never be the reason the machine feels slow.
