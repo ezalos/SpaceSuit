@@ -1052,3 +1052,6 @@ _setup_notices_check
 
 # Social content repo (used by /post, /log, /audit skills)
 export SOCIAL_HOME="$HOME/42/social"
+
+# rip2: same-filesystem graveyard (default /tmp graveyard is cross-fs from /home)
+export GRAVEYARD="$HOME/.local/share/graveyard"
