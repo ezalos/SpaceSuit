@@ -771,6 +771,10 @@
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.config/git/template/hooks/pre-commit",
                     "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/git/template/hooks/pre-commit",
+                    "backups": []
                 }
             },
             "only_devices": [
@@ -794,6 +798,10 @@
                             "datetime": "2026-07-01_00:26:24.931468"
                         }
                     ]
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/git-identity/scrub.py",
+                    "backups": []
                 }
             },
             "only_devices": [
@@ -817,6 +825,10 @@
                             "datetime": "2026-07-01_00:26:25.343284"
                         }
                     ]
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/git-identity/test_scrub.py",
+                    "backups": []
                 }
             },
             "only_devices": [
@@ -835,6 +847,10 @@
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.claude/skills",
                     "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/skills",
+                    "backups": []
                 }
             },
             "only_devices": [
@@ -851,6 +867,10 @@
             "main": "dotfiles/glow",
             "deploy": {
                 "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/glow",
+                    "backups": []
+                },
+                "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.config/glow",
                     "backups": []
                 }
@@ -886,6 +906,10 @@
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.config/direnv/direnvrc",
                     "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/direnv/direnvrc",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -904,6 +928,10 @@
                             "datetime": "2026-07-16_00:25:42.326191"
                         }
                     ]
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/gh",
+                    "backups": []
                 }
             },
             "only_devices": [
@@ -927,6 +955,10 @@
                             "datetime": "2026-07-16_00:25:42.568370"
                         }
                     ]
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/git-identity/gh-contexts-bootstrap.sh",
+                    "backups": []
                 }
             },
             "only_devices": [
@@ -943,6 +975,10 @@
             "main": "netwatch/netwatch.service",
             "deploy": {
                 "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/systemd/user/netwatch.service",
+                    "backups": []
+                },
+                "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.config/systemd/user/netwatch.service",
                     "backups": []
                 }
@@ -981,6 +1017,10 @@
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.config/systemd/user/netwatch-publish.service",
                     "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/systemd/user/netwatch-publish.service",
+                    "backups": []
                 }
             },
             "only_devices": [
@@ -995,6 +1035,10 @@
             "main": "netwatch/netwatch-publish.timer",
             "deploy": {
                 "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/systemd/user/netwatch-publish.timer",
+                    "backups": []
+                },
+                "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.config/systemd/user/netwatch-publish.timer",
                     "backups": []
                 }
