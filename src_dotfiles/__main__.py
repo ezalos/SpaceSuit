@@ -286,9 +286,10 @@ class ManageDotfiles:
     def scrub_path_substring(self, old_substring: str, new_substring: str) -> int:
         """Replace a literal substring in every path-like string in the registry.
 
-        Walks `devices[*].home_path` and, for every dotfile, each device's
-        `deploy_path` and every `backups[*].backup_path`. Does NOT touch dict
-        keys (device identifiers, aliases) -- use `rename_device` for those.
+        Walks `devices[*].home_path` and, for every dotfile, its `main`, every
+        `variants[*]` path, each device's `deploy_path` and every
+        `backups[*].backup_path`. Does NOT touch dict keys (device
+        identifiers, aliases) -- use `rename_device` for those.
         Generic registry-migration primitive: never hand-edit dotfiles.json.
 
         Args:
@@ -306,6 +307,14 @@ class ManageDotfiles:
                 changed += 1
 
         for model in self.db.metadata.dotfiles.values():
+            if old_substring in model.main:
+                model.main = model.main.replace(old_substring, new_substring)
+                changed += 1
+            if model.variants:
+                for dev_id, variant_path in model.variants.items():
+                    if old_substring in variant_path:
+                        model.variants[dev_id] = variant_path.replace(old_substring, new_substring)
+                        changed += 1
             for deployed in model.deploy.values():
                 if old_substring in deployed.deploy_path:
                     deployed.deploy_path = deployed.deploy_path.replace(old_substring, new_substring)
