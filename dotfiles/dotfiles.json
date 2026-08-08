@@ -773,7 +773,12 @@
                     "backups": []
                 }
             },
-            "only_devices": null,
+            "only_devices": [
+                "TheBeast.ezalos",
+                "TinyButMighty.ezalos",
+                "MacBook.Pro.de.Louis.local.louis",
+                "Louiss.MacBook.Pro.3.local.ezalos"
+            ],
             "variants": null,
             "fanout": false
         },
@@ -791,7 +796,12 @@
                     ]
                 }
             },
-            "only_devices": null,
+            "only_devices": [
+                "TheBeast.ezalos",
+                "TinyButMighty.ezalos",
+                "MacBook.Pro.de.Louis.local.louis",
+                "Louiss.MacBook.Pro.3.local.ezalos"
+            ],
             "variants": null,
             "fanout": false
         },
@@ -809,7 +819,12 @@
                     ]
                 }
             },
-            "only_devices": null,
+            "only_devices": [
+                "TheBeast.ezalos",
+                "TinyButMighty.ezalos",
+                "MacBook.Pro.de.Louis.local.louis",
+                "Louiss.MacBook.Pro.3.local.ezalos"
+            ],
             "variants": null,
             "fanout": false
         },
@@ -822,7 +837,12 @@
                     "backups": []
                 }
             },
-            "only_devices": null,
+            "only_devices": [
+                "TheBeast.ezalos",
+                "TinyButMighty.ezalos",
+                "MacBook.Pro.de.Louis.local.louis",
+                "Louiss.MacBook.Pro.3.local.ezalos"
+            ],
             "variants": null,
             "fanout": true
         },
@@ -886,7 +906,12 @@
                     ]
                 }
             },
-            "only_devices": null,
+            "only_devices": [
+                "TheBeast.ezalos",
+                "TinyButMighty.ezalos",
+                "MacBook.Pro.de.Louis.local.louis",
+                "Louiss.MacBook.Pro.3.local.ezalos"
+            ],
             "variants": null,
             "fanout": false
         },
@@ -904,7 +929,12 @@
                     ]
                 }
             },
-            "only_devices": null,
+            "only_devices": [
+                "TheBeast.ezalos",
+                "TinyButMighty.ezalos",
+                "MacBook.Pro.de.Louis.local.louis",
+                "Louiss.MacBook.Pro.3.local.ezalos"
+            ],
             "variants": null,
             "fanout": false
         },
@@ -917,7 +947,10 @@
                     "backups": []
                 }
             },
-            "only_devices": null,
+            "only_devices": [
+                "TheBeast.ezalos",
+                "TinyButMighty.ezalos"
+            ],
             "variants": null,
             "fanout": false
         },
@@ -950,7 +983,10 @@
                     "backups": []
                 }
             },
-            "only_devices": null,
+            "only_devices": [
+                "TheBeast.ezalos",
+                "TinyButMighty.ezalos"
+            ],
             "variants": null,
             "fanout": false
         },
@@ -963,7 +999,10 @@
                     "backups": []
                 }
             },
-            "only_devices": null,
+            "only_devices": [
+                "TheBeast.ezalos",
+                "TinyButMighty.ezalos"
+            ],
             "variants": null,
             "fanout": false
         },
