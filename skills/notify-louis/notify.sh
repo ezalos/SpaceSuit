@@ -108,11 +108,18 @@ main() {
   token="$(load_token)"
   local chat_id
   chat_id="$(load_chat_id)"
+  # Message convention (GroundControl docs/naming.md, "Telegram messages"):
+  # agent emoji by the repo this session works in, [claude] as the service.
+  local agent_emoji="🧑‍🚀"
+  case "$PWD" in
+    *SevenLeagues*) agent_emoji="⛸️" ;;
+    *GroundControl*) agent_emoji="🖥️" ;;
+  esac
   local response http_code body
   response="$(curl --silent --show-error \
     --write-out '\n%{http_code}' \
     --data-urlencode "chat_id=${chat_id}" \
-    --data-urlencode "text=${message}" \
+    --data-urlencode "text=${agent_emoji} [claude] ${message}" \
     "https://api.telegram.org/bot${token}/sendMessage")" || {
     printf 'curl failed\n' >&2
     return 4

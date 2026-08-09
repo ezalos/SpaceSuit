@@ -435,7 +435,9 @@ def telegram_send(text: str) -> bool:
     if not token or not chat_id:
         return False
     try:
-        payload = json.dumps({"chat_id": chat_id, "text": text}).encode()
+        # Message convention (GroundControl docs/naming.md, "Telegram messages"):
+        # netwatch ships with SpaceSuit, so its agent emoji is the suit.
+        payload = json.dumps({"chat_id": chat_id, "text": f"🧑‍🚀 [netwatch] {text}"}).encode()
         req = urllib.request.Request(
             f"https://api.telegram.org/bot{token}/sendMessage",
             data=payload, headers={"Content-Type": "application/json"},
@@ -1739,7 +1741,7 @@ def cmd_announce(args) -> int:
     else:
         ip_note = "unknown — no provider answered"
 
-    lines = [f"🖥  {socket.gethostname()} is up",
+    lines = [f"{socket.gethostname()} is up",
              f"public IP : {ip_note}",
              f"LAN       : {lan_address(iface) or '?'} via {gateway or '?'} ({iface or '?'})"]
     if ts:
