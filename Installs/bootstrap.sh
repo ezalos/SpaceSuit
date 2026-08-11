@@ -103,15 +103,26 @@ else
     [[ -f /tmp/bootstrap-rip2.log ]] && cat /tmp/bootstrap-rip2.log >&2
 fi
 
-# --- nvim: official linux-x86_64 tarball -------------------------------------
+# --- nvim: official per-arch tarball -----------------------------------------
+# Arch-aware since the TinyButMighty resurrection drill (2026-08-11) caught the
+# x86_64 tarball landing on an arm64 box: the file installs fine, `command -v`
+# finds it, and only actually EXECUTING it reveals the wrong-arch binary.
 NVIM_VERSION="v0.10.4"
 NVIM_HOME="$HOME/.local/opt/nvim"
+case "$(uname -m)" in
+    x86_64)  NVIM_ARCH="x86_64" ;;
+    aarch64) NVIM_ARCH="arm64" ;;
+    *)       NVIM_ARCH="" ;;
+esac
 if [[ -x "$NVIM_HOME/bin/nvim" ]]; then
     status "nvim" "skipped(present)"
+elif [[ -z "$NVIM_ARCH" ]]; then
+    echo "[bootstrap] nvim: no official tarball for $(uname -m)" >&2
+    status "nvim" "FAILED"
 else
     mkdir -p "$HOME/.local/opt" "$HOME/.local/bin"
     if curl -fsSL -o /tmp/nvim.tar.gz \
-            "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-x86_64.tar.gz" \
+            "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-${NVIM_ARCH}.tar.gz" \
         && rm -rf "$NVIM_HOME" \
         && mkdir -p "$NVIM_HOME" \
         && tar -xzf /tmp/nvim.tar.gz -C "$NVIM_HOME" --strip-components=1 \
