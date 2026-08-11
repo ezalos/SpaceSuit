@@ -16,6 +16,7 @@
 #   - rip2                              (CLAUDE.md: "Always use rip", cargo install)
 #   - nvim                              (EDITOR='nvim' when not over ssh)
 #   - direnv                            (direnv export/hook zsh, unconditional)
+#   - gh                                (GitHub CLI; the gh-contexts dotfiles route identities through it)
 #
 # Deliberately does NOT use apt/sudo for anything: every tool here has an
 # official user-space install path, and bootstrap.sh must work whether or not
@@ -146,6 +147,34 @@ else
         status "direnv" "FAILED"
         cat /tmp/bootstrap-direnv.log >&2
     fi
+fi
+
+# --- gh: official per-arch tarball -------------------------------------------
+# The gh_contexts_bootstrap / gh_identity_router dotfiles are meaningless
+# without the binary they wrap; the resurrection drill asserts gh actually
+# executes (same wrong-arch trap as nvim: presence checks cannot catch it).
+GH_VERSION="2.97.0"
+case "$(uname -m)" in
+    x86_64)  GH_ARCH="amd64" ;;
+    aarch64) GH_ARCH="arm64" ;;
+    *)       GH_ARCH="" ;;
+esac
+if [[ -x "$HOME/.local/bin/gh" ]]; then
+    status "gh" "skipped(present)"
+elif [[ -z "$GH_ARCH" ]]; then
+    echo "[bootstrap] gh: no official tarball for $(uname -m)" >&2
+    status "gh" "FAILED"
+else
+    mkdir -p "$HOME/.local/bin"
+    if curl -fsSL -o /tmp/gh.tar.gz \
+            "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz" \
+        && tar -xzf /tmp/gh.tar.gz -C /tmp "gh_${GH_VERSION}_linux_${GH_ARCH}/bin/gh" \
+        && install -m 0755 "/tmp/gh_${GH_VERSION}_linux_${GH_ARCH}/bin/gh" "$HOME/.local/bin/gh"; then
+        status "gh" "ok"
+    else
+        status "gh" "FAILED"
+    fi
+    rm -rf /tmp/gh.tar.gz "/tmp/gh_${GH_VERSION}_linux_${GH_ARCH}"
 fi
 
 # --- tmux: base toolchain, but apt-only -- verify, don't try to install -----
