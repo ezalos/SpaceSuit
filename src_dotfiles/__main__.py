@@ -190,9 +190,10 @@ class ManageDotfiles:
             new_main (str): New value for `main` (or the variant, if `device`
                 is given).
             device (Optional[str]): If set, repoints this device's entry in
-                `variants` instead of the alias-wide `main`. The device must
-                already have a variant entry (set_main does not create new
-                variants).
+                `variants` instead of the alias-wide `main`. Creates the
+                variant entry when absent, but only for a device already
+                known to the registry — an unknown identifier is treated as
+                a typo and refused.
 
         Returns:
             Optional[str]: alias on success, None if alias is unknown, the
@@ -211,10 +212,19 @@ class ManageDotfiles:
 
         if device is not None:
             if not model.variants or device not in model.variants:
-                logger.error(f"set-main: {alias!r} has no variant entry for device {device!r}")
-                return None
-            old_value = model.variants[device]
-            model.variants[device] = new_main
+                # Creating a new variant is legitimate; the known-devices check
+                # keeps the original typo protection.
+                if device not in self.db.metadata.devices:
+                    logger.error(f"set-main: unknown device {device!r}; refusing to create a variant for a typo")
+                    return None
+                if model.variants is None:
+                    model.variants = {}
+                old_value = None
+                model.variants[device] = new_main
+                logger.info(f"set-main: created variant entry for {device!r}")
+            else:
+                old_value = model.variants[device]
+                model.variants[device] = new_main
         else:
             old_value = model.main
             model.main = new_main
