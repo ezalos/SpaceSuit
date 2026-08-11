@@ -2703,10 +2703,10 @@ class TestTlsCommand:
 # (no `--directory`) picks the right venv but leaves cwd wherever the caller
 # was, and pyproject.toml has no [build-system] so agents_dashboard is never
 # installed into .venv - `python -m agents_dashboard` only resolves via cwd.
-# The wrapper worked only when invoked from ~/Setup itself. This runs the
+# The wrapper worked only when invoked from the repo itself. This runs the
 # actual script, as a subprocess, from a directory that is not this repo.
 class TestTlsWrapperSubprocess:
-    WRAPPER = "/home/ezalos/Setup/dotfiles/bin/tls"
+    WRAPPER = str(Path(__file__).resolve().parent.parent / "dotfiles" / "bin" / "tls")
 
     def _tmux_server_is_up(self):
         try:
