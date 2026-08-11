@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ABOUTME: Send a plain-text email via Proton hosted SMTP (smtp.protonmail.ch:587).
-# ABOUTME: Loads creds from ~/Setup/.secrets.sh; From: fixed to $PROTON_SMTP_USER.
+# ABOUTME: Loads creds from ~/42/SpaceSuit/.secrets.sh; From: fixed to $PROTON_SMTP_USER.
 
 set -euo pipefail
 
@@ -10,7 +10,7 @@ Usage: send-email --to ADDR --subject TEXT [--body TEXT | --body-file PATH]
 
 If neither --body nor --body-file is given, the body is read from stdin.
 
-Required env (auto-sourced from ~/Setup/.secrets.sh if absent):
+Required env (auto-sourced from ~/42/SpaceSuit/.secrets.sh if absent):
   PROTON_SMTP_HOST, PROTON_SMTP_PORT, PROTON_SMTP_USER, PROTON_SMTP_TOKEN
 
 Examples:
@@ -36,12 +36,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "${PROTON_SMTP_TOKEN:-}" && -r "$HOME/Setup/.secrets.sh" ]]; then
+if [[ -z "${PROTON_SMTP_TOKEN:-}" && -r "$HOME/42/SpaceSuit/.secrets.sh" ]]; then
     # shellcheck disable=SC1091
-    source "$HOME/Setup/.secrets.sh"
+    source "$HOME/42/SpaceSuit/.secrets.sh"
 fi
 
-: "${PROTON_SMTP_HOST:?send-email: PROTON_SMTP_HOST not set (check ~/Setup/.secrets.sh)}"
+: "${PROTON_SMTP_HOST:?send-email: PROTON_SMTP_HOST not set (check ~/42/SpaceSuit/.secrets.sh)}"
 : "${PROTON_SMTP_PORT:?send-email: PROTON_SMTP_PORT not set}"
 : "${PROTON_SMTP_USER:?send-email: PROTON_SMTP_USER not set}"
 : "${PROTON_SMTP_TOKEN:?send-email: PROTON_SMTP_TOKEN not set}"

@@ -316,7 +316,7 @@ _tmux_idle_fmt() {
   fi
 }
 
-# tmux session listing. Delegates to ~/Setup/agents_dashboard, which adds each
+# tmux session listing. Delegates to ~/42/SpaceSuit/agents_dashboard, which adds each
 # Claude session's title, whether it is blocked on you and for how long, and its
 # task progress — see docs/plans/2026-08-04-tls-terminal-view-design.md.
 # Defined as a function rather than left to PATH so `tls` keeps working in shells
@@ -753,9 +753,9 @@ export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
 # ---------- setup_notices ----------
-# Per-machine first-time-setup reminders. See: ~/Setup/setup_notices/README.md
+# Per-machine first-time-setup reminders. See: ~/42/SpaceSuit/setup_notices/README.md
 
-SETUP_NOTICES_DIR="$HOME/Setup/setup_notices"
+SETUP_NOTICES_DIR="$HOME/42/SpaceSuit/setup_notices"
 SETUP_NOTICES_ACK_DIR="$HOME/.cache/setup_notices"
 
 # Prints each pending notice ID and its notice file path, tab-separated,
@@ -892,7 +892,7 @@ _setup_notices_find() {
 
 
 # ---------- grab: reverse file fetch over SSH ----------
-# See: ~/Setup/plans/2026_04_12-spec_grab_reverse_fetch.md
+# See: ~/42/SpaceSuit/plans/2026_04_12-spec_grab_reverse_fetch.md
 
 GRAB_ENABLED_HOSTS=(
   rnd1 rnd2 rnd3 rnd4
@@ -912,7 +912,7 @@ _grab_receiver_ensure() {
     return 0
   fi
   mkdir -p "$HOME/.cache" "$HOME/Downloads/grab"
-  nohup python3 "$HOME/Setup/scripts/grab-receiver.py" \
+  nohup python3 "$HOME/42/SpaceSuit/scripts/grab-receiver.py" \
     --port "$GRAB_RECEIVER_PORT" \
     >"$HOME/.cache/grab-receiver.log" 2>&1 &!
   # Give it a moment to bind the port

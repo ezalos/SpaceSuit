@@ -48,7 +48,7 @@
   # last prompt line gets hidden if it would overlap with left prompt.
   typeset -g POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(
     # =========================[ Line #1 ]=========================
-    dotfiles_sync           # dotfiles repo sync status (~/Setup)
+    dotfiles_sync           # dotfiles repo sync status (~/42/SpaceSuit)
     status                  # exit code of the last command
     command_execution_time  # duration of the last command
     background_jobs         # presence of background jobs
