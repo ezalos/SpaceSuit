@@ -53,7 +53,7 @@ Flags:
 - `--verify-only` — skip proposal generation; print report and exit
 - `--apply <path>` — read a previously-generated proposals file and apply approved decisions
 
-Default scope (no flags): user + project skills + agents that are **Louis-authored** (symlinks into `~/Setup/dotfiles/`). Installed third-party skills (real directories in `~/.claude/skills/` populated by marketplaces) are excluded by default. Plugins always excluded by default.
+Default scope (no flags): user + project skills + agents that are **Louis-authored** (symlinks into `~/42/SpaceSuit/dotfiles/`). Installed third-party skills (real directories in `~/.claude/skills/` populated by marketplaces) are excluded by default. Plugins always excluded by default.
 
 If invoked with no flags AND no proposals file argument: run Phase 1 + Phase 2.
 If invoked with `--apply <path>`: run Phase 3.
@@ -75,7 +75,7 @@ Resolve the scope flags to a list of files. The mapping:
 
 | Scope | Glob | Editability |
 |---|---|---|
-| user skills (authored) | `~/.claude/skills/*/SKILL.md` where the skill dir is a **symlink** to `~/Setup/dotfiles/...` | editable |
+| user skills (authored) | `~/.claude/skills/*/SKILL.md` where the skill dir is a **symlink** to `~/42/SpaceSuit/dotfiles/...` | editable |
 | user skills (installed) | `~/.claude/skills/*/SKILL.md` where the skill dir is a **real directory** | upstream-owned |
 | user agents | `~/.claude/agents/*.md` | editable (assume Louis-authored) |
 | project skills | `<cwd>/.claude/skills/*/SKILL.md` | editable |
@@ -89,7 +89,7 @@ Resolve the scope flags to a list of files. The mapping:
 [ -L ~/.claude/skills/<name> ] && echo authored || echo installed
 ```
 
-Louis's deployment pattern symlinks every authored skill from `~/Setup/skills/<name>/` to `~/.claude/skills/<name>/` via the single `skills` fan-out entry. Real directories in `~/.claude/skills/` are necessarily third-party-installed (marketplaces, manual copies, etc.; recorded in `skills/EXTERNAL.md`).
+Louis's deployment pattern symlinks every authored skill from `~/42/SpaceSuit/skills/<name>/` to `~/.claude/skills/<name>/` via the single `skills` fan-out entry. Real directories in `~/.claude/skills/` are necessarily third-party-installed (marketplaces, manual copies, etc.; recorded in `skills/EXTERNAL.md`).
 
 Default behavior: scan authored only. Add `--installed` to include installed skills (report-only, no proposals).
 

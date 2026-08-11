@@ -47,7 +47,7 @@ No Google account, no OAuth, no API key. It works only on albums shared as
 ## Usage
 
 ```bash
-uv run ~/Setup/skills/gphotos-download/gphotos_dl.py \
+uv run ~/42/SpaceSuit/skills/gphotos-download/gphotos_dl.py \
     "https://photos.app.goo.gl/XXXXXXXX" \
     --out <output-dir> \
     --prefix <filename-prefix>
@@ -68,7 +68,7 @@ land somewhere permanent; guessing wrong means moving hundreds of megabytes late
 
 **Check whether the destination is inside a git repo.** Albums are tens of MB and
 git keeps binaries forever. If the target is a repo, add the directory to
-`.gitignore` first and say so — `~/Setup/docs/hardware/photos/` is set up exactly
+`.gitignore` first and say so — `~/42/SpaceSuit/docs/hardware/photos/` is set up exactly
 that way: on disk and inside the restic backup, out of the public repo.
 
 ## After running

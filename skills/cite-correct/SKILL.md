@@ -46,7 +46,7 @@ Never revert on failure — report and leave for the user.
 ## Step 7: Authority promotion gate
 For each per-run `authority-map.md` proposal, AskUserQuestion promote yes/no/skip. On yes, append under the right tier in `~/.claude/skills/cite/memory/authority-map.yaml` AND its `.md` mirror — OR, if a project overlay exists and the user prefers, into `docs/references/authority-map.yaml`. Default: the global base map. Project overlays hold only repo-specific entries. After edits: `python3 $S/lint_authority_map.py` must pass; then commit the Setup change:
 ```bash
-cd ~/Setup && git add skills/cite/memory/authority-map.* && git commit -m "chore(cite): promote <N> publishers from <slug>"
+cd ~/42/SpaceSuit && git add skills/cite/memory/authority-map.* && git commit -m "chore(cite): promote <N> publishers from <slug>"
 ```
 
 ## Step 8: Final report

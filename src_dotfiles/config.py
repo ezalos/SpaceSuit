@@ -32,14 +32,14 @@ def get_computer_name():
 
 def get_project_path(pwd=False):
     # TODO: Function uses a trick which is not viable long term
-    project_path = Path(__file__).parent.parent.as_posix() # ~/Setup
+    project_path = Path(__file__).parent.parent.as_posix() # ~/42/SpaceSuit
     if pwd:
-        surplus = "Setup/src_dotfiles"
+        surplus = "SpaceSuit/src_dotfiles"
     else:
         surplus = "src_dotfiles"
     if project_path[-len(surplus):] == surplus:
         project_path = project_path[:-len(surplus)]
-    # project_path = "~/Setup/"
+    # project_path = "~/42/SpaceSuit/"
     logger.debug(f'Current {"pwd" if pwd else "project path"}: {project_path}')
     return project_path
 

@@ -73,19 +73,19 @@ when the intent is to hand over a set — one zip is cleaner.
 share-file <path> [--duration <Nh|Nm|Nd>]
 ```
 
-The script (located at `~/Setup/share_file/share.py`, aliased to `share-file` in `.zshrc`) prints the URL on stdout and the expiry timestamp on stderr.
+The script (located at `~/42/SpaceSuit/share_file/share.py`, aliased to `share-file` in `.zshrc`) prints the URL on stdout and the expiry timestamp on stderr.
 
 If the alias is missing for some reason, fall back to:
 
 ```bash
-python3 ~/Setup/share_file/share.py <path> --duration <duration>
+python3 ~/42/SpaceSuit/share_file/share.py <path> --duration <duration>
 ```
 
 After running, copy the URL line and hand it to Louis. Do not click/curl the link to "verify" it — that would generate access logs in `/var/log/caddy/share.access.log` for an unintended viewer.
 
 ## When the share infra isn't bootstrapped yet
 
-If `ssh TinyButMighty 'test -d /srv/share'` fails, or `share-file` errors with a connection issue, the share stack hasn't been set up. Walk Louis through `~/Setup/share_file/README.md` — do not start running its bootstrap commands without confirming first; they touch the Pi, the SFR Box, and Cloudflare DNS.
+If `ssh TinyButMighty 'test -d /srv/share'` fails, or `share-file` errors with a connection issue, the share stack hasn't been set up. Walk Louis through `~/42/SpaceSuit/share_file/README.md` — do not start running its bootstrap commands without confirming first; they touch the Pi, the SFR Box, and Cloudflare DNS.
 
 The bootstrap relies on the `open-local-port` and `link-develle-domain` skills for steps 4 and 5 respectively.
 

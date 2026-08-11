@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ABOUTME: Updates ~/Setup sync status cache. Local state recomputes every call
+# ABOUTME: Updates ~/42/SpaceSuit sync status cache. Local state recomputes every call
 # ABOUTME: (no network, ~20ms); git fetch is rate-limited to once per 30min globally.
 
 CACHE_FILE="${HOME}/.cache/dotfiles_sync_status"

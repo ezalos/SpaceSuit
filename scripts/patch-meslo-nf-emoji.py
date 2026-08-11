@@ -1,5 +1,5 @@
 # ABOUTME: Diagnostic/patch tool for MesloLGS NF broken cmap entries at U+23F4-U+23F7.
-# ABOUTME: See ~/Setup/docs/wezterm-emoji-fix.md for full context and the actual fix.
+# ABOUTME: See ~/42/SpaceSuit/docs/wezterm-emoji-fix.md for full context and the actual fix.
 #
 # Some Nerd Font builds add cmap entries for U+23F4-U+23F7 (media transport triangles)
 # that map to .notdef. If wezterm ls-fonts --text "⏵" shows .notdef AND the font is

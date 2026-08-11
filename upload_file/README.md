@@ -1,7 +1,7 @@
 # upload_file
 
 WebDAV inbox at `https://upload.develle.fr/inbox/` for phone → server
-file drops. Files land on TinyButMighty; `pull-uploads` (in `~/Setup/bin/`)
+file drops. Files land on TinyButMighty; `pull-uploads` (in `~/42/SpaceSuit/bin/`)
 rsyncs them to `~/Inbox/` on the local machine.
 
 ## Architecture
@@ -86,8 +86,8 @@ URL, user, password.
 
 ## Bootstrap (one-time)
 
-Driven by `~/Setup/plans/2026_05_14-plan_upload_develle_fr.md`. Depends
-on the share-file stack already being up (see `~/Setup/share_file/README.md`)
+Driven by `~/42/SpaceSuit/plans/2026_05_14-plan_upload_develle_fr.md`. Depends
+on the share-file stack already being up (see `~/42/SpaceSuit/share_file/README.md`)
 — this reuses the same Caddy install, NAT rule, and Cloudflare token.
 
 ## Gotchas
@@ -152,5 +152,5 @@ on the share-file stack already being up (see `~/Setup/share_file/README.md`)
   server block (the implicit default on :80).
 - `README.md` — this file.
 
-The actual CLI lives at `~/Setup/bin/pull-uploads` (picked up via the
+The actual CLI lives at `~/42/SpaceSuit/bin/pull-uploads` (picked up via the
 existing `$PATH_SETUP_DIR/bin` path-prepend in `.zshrc`).

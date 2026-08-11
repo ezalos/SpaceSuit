@@ -10,7 +10,7 @@ Before=shutdown.target reboot.target halt.target
 Type=oneshot
 RemainAfterExit=true
 ExecStart=/bin/true
-ExecStop=%h/Setup/scripts/tmux-save.sh --origin shutdown
+ExecStop=%h/42/SpaceSuit/scripts/tmux-save.sh --origin shutdown
 
 [Install]
 WantedBy=default.target

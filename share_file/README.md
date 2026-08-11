@@ -70,7 +70,7 @@ each connection, so share.py works immediately from TheBeast without re-login).
 ### 4. Deploy Caddyfile + token
 
 ```bash
-scp ~/Setup/share_file/Caddyfile TinyButMighty:/tmp/Caddyfile
+scp ~/42/SpaceSuit/share_file/Caddyfile TinyButMighty:/tmp/Caddyfile
 ssh TinyButMighty 'sudo install -m 0644 -o root -g root /tmp/Caddyfile /etc/caddy/Caddyfile && rm /tmp/Caddyfile'
 
 # Token — pipe via stdin so it never appears in argv or shell history.
@@ -128,11 +128,11 @@ uv run python nat.py add share_https 443 74 443 --proto tcp
 ### 8. DNS record
 
 Use the `link-develle-domain` skill. The `share` A record is already in
-`~/Setup/cloudflare-dns/dns.json`. Sync:
+`~/42/SpaceSuit/cloudflare-dns/dns.json`. Sync:
 
 ```bash
 ( source ~/42/Markdowns2Teach/.envrc >/dev/null 2>&1
-  cd ~/Setup/cloudflare-dns && ./dns.sh status && ./dns.sh sync )
+  cd ~/42/SpaceSuit/cloudflare-dns && ./dns.sh status && ./dns.sh sync )
 ```
 
 `proxied: false` is required because Caddy issues a real cert end-to-end and
@@ -145,7 +145,7 @@ visitors connect direct (no Cloudflare edge). Could flip to proxied + per-hostna
 cloned there).
 
 ```bash
-scp ~/Setup/share_file/cleanup.py ~/Setup/share_file/share-cleanup.{service,timer} TinyButMighty:/tmp/
+scp ~/42/SpaceSuit/share_file/cleanup.py ~/42/SpaceSuit/share_file/share-cleanup.{service,timer} TinyButMighty:/tmp/
 ssh TinyButMighty '
   sudo install -d -m 0755 /opt/share_file
   sudo install -m 0755 /tmp/cleanup.py /opt/share_file/cleanup.py

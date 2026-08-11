@@ -73,7 +73,7 @@ _self_test() {
   _assert_eq "$(_sanitize_name '!!!')"                ''                    'sanitize: all-bad-chars'
 
   local name
-  name=$(_gen_session_name "/home/ezalos/Setup" 1713283800)
+  name=$(_gen_session_name "/home/ezalos/42/SpaceSuit" 1713283800)
   [[ "$name" =~ ^setup@[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{2}h[0-9]{2}$ ]] \
     && printf 'ok   gen: setup dir format\n' \
     || { printf 'FAIL gen: setup dir format: %q\n' "$name" >&2; failed=1; }

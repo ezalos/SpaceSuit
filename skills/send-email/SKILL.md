@@ -20,7 +20,7 @@ This skill follows the universal observability baseline (see `docs/plans/2026-04
 |---|---|---|
 | CRITICAL | SMTP auth failed (`535`/`5.7.x` from Proton) | `send-email: auth rejected; PROTON_SMTP_TOKEN likely revoked or wrong` |
 | CRITICAL | `send-email` CLI exits non-zero (network, TLS, 5xx) | `send-email: CLI failed: <stderr-tail>` |
-| CRITICAL | Required env var missing and `.secrets.sh` unreadable | `send-email: PROTON_SMTP_* missing; ~/Setup/.secrets.sh not loaded` |
+| CRITICAL | Required env var missing and `.secrets.sh` unreadable | `send-email: PROTON_SMTP_* missing; ~/42/SpaceSuit/.secrets.sh not loaded` |
 | WARNING | Recipient address looks malformed (no `@` or no TLD) | `send-email: recipient '<addr>' looks malformed; confirmed with Louis` |
 | WARNING | Subject empty or `<3` chars (spam risk) | `send-email: weak subject '<subj>'; asked Louis to expand` |
 | WARNING | Body > 50 KB (likely paste of large content) | `send-email: large body (<n> KB); confirmed with Louis` |
@@ -40,7 +40,7 @@ claude-log send-email CRITICAL "send-email: auth rejected by smtp.protonmail.ch;
 
 # send-email
 
-Submits a plain-text email through Proton's hosted SMTP submission endpoint. Authenticated with an SMTP token stored in `~/Setup/.secrets.sh`. From-address is fixed to `louis@develle.fr`.
+Submits a plain-text email through Proton's hosted SMTP submission endpoint. Authenticated with an SMTP token stored in `~/42/SpaceSuit/.secrets.sh`. From-address is fixed to `louis@develle.fr`.
 
 ## Defaults
 
@@ -71,17 +71,17 @@ send-email --to <addr> --subject "<text>" --body-file <path>
 <command-producing-text> | send-email --to <addr> --subject "<text>"
 ```
 
-The script lives at `~/Setup/bin/send-email` (on PATH). On success it prints `send-email: sent to=… subject="…"` on stderr and exits 0. On failure curl's error surface comes out on stderr.
+The script lives at `~/42/SpaceSuit/bin/send-email` (on PATH). On success it prints `send-email: sent to=… subject="…"` on stderr and exits 0. On failure curl's error surface comes out on stderr.
 
 If the binary is missing for some reason, fall back to direct execution:
 
 ```bash
-bash ~/Setup/bin/send-email --to <addr> --subject "<text>" --body "<text>"
+bash ~/42/SpaceSuit/bin/send-email --to <addr> --subject "<text>" --body "<text>"
 ```
 
 ## Reminders / caveats
 
-- **Token is in `~/Setup/.secrets.sh`.** Never embed the value in scripts, mail bodies, or logs. Never read or paste it back when explaining what happened — refer to it as `$PROTON_SMTP_TOKEN`.
+- **Token is in `~/42/SpaceSuit/.secrets.sh`.** Never embed the value in scripts, mail bodies, or logs. Never read or paste it back when explaining what happened — refer to it as `$PROTON_SMTP_TOKEN`.
 - **From is locked to `louis@develle.fr`.** Don't try to send "from" anyone else — Proton's SMTP submission requires MAIL FROM to be the authenticated user. Aliases require Proton-side setup, not a CLI flag.
 - **Spam-on-cold-start.** First mails to a new recipient may land in Promotions or Spam in Gmail, even with SPF/DKIM/DMARC clean. Mention this when sending to a brand-new address.
 - **No HTML, no attachments, no multi-recipient yet.** If Louis asks for one of these, surface the gap rather than half-implementing — extend the wrapper, don't pile onto curl manually.
@@ -90,4 +90,4 @@ bash ~/Setup/bin/send-email --to <addr> --subject "<text>" --body "<text>"
 
 ## When the SMTP creds aren't set up
 
-If `send-email` fails with `PROTON_SMTP_* not set`, walk Louis through generating a token at `account.proton.me → Account & password → Mail credentials → SMTP submission`, then appending the four `PROTON_SMTP_*` vars to `~/Setup/.secrets.sh`. Do not commit the file — it's gitignored.
+If `send-email` fails with `PROTON_SMTP_* not set`, walk Louis through generating a token at `account.proton.me → Account & password → Mail credentials → SMTP submission`, then appending the four `PROTON_SMTP_*` vars to `~/42/SpaceSuit/.secrets.sh`. Do not commit the file — it's gitignored.

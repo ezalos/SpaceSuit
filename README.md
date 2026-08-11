@@ -21,8 +21,8 @@ minutes. Public on purpose: clone it, take what fits, leave what doesn't.
 ## Quickstart on a fresh machine
 
 ```bash
-git clone https://github.com/ezalos/SpaceSuit ~/Setup
-cd ~/Setup && uv sync
+git clone https://github.com/ezalos/SpaceSuit ~/42/SpaceSuit
+cd ~/42/SpaceSuit && uv sync
 uv run python -m src_dotfiles deploy        # symlinks the dotfiles for this device
 ```
 

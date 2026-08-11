@@ -54,14 +54,14 @@ Don't run it on a cadence (no cron / no /loop) unless Louis explicitly asks — 
 pull-uploads
 ```
 
-The script (`~/Setup/bin/pull-uploads`) prints either:
+The script (`~/42/SpaceSuit/bin/pull-uploads`) prints either:
 
 - `Nothing in the inbox.` — no-op, exit cleanly.
 - `Fetched N file(s):` followed by one absolute path per line.
 
 Hand the path list back to Louis verbatim. If he asked to do something with the files (open, summarize, extract, etc.), use the printed paths.
 
-If the alias is missing, fall back to `~/Setup/bin/pull-uploads` directly — the binary is on `$PATH` via `$PATH_SETUP_DIR/bin` so this almost never happens.
+If the alias is missing, fall back to `~/42/SpaceSuit/bin/pull-uploads` directly — the binary is on `$PATH` via `$PATH_SETUP_DIR/bin` so this almost never happens.
 
 ## Inputs to gather
 
@@ -83,12 +83,12 @@ If `pull-uploads` errors with an ssh or rsync failure, the most likely causes ar
 
 - TinyButMighty powered off / not on the network → check with `ping TinyButMighty` and tell Louis.
 - SFR Box NAT rule dropped → see `open-local-port` skill for the 443 rule (port 22 is internal-only, not NAT'd; SSH works via LAN).
-- Caddy / WebDAV stack broken → see `~/Setup/upload_file/README.md` and `~/Setup/share_file/README.md` for bootstrap.
+- Caddy / WebDAV stack broken → see `~/42/SpaceSuit/upload_file/README.md` and `~/42/SpaceSuit/share_file/README.md` for bootstrap.
 
 Don't try to bootstrap the stack from this skill — point Louis at the README and stop.
 
 ## Reminders / caveats
 
 - **Files are removed from the Pi on successful pull.** If Louis wants to fetch without removing (rare), tell him to `rsync` directly without `--remove-source-files` rather than modifying the script.
-- **Files arrive datetime-prefixed** (`YYYY-MM-DD_HHMMSS_<original-name>`). The prefix is applied **at reception on the Pi** by the tusd post-finish hook (the root fix — repeat uploads of the same name all survive server-side; source: `~/Setup/upload_file/tusd/post-finish`). The pull script preserves that name, lands files via a staging dir (never overwrites `~/Inbox/`), and only adds its own mtime-stamp to files that arrive unprefixed (legacy files, native WebDAV PUTs). When telling Louis where a file landed, quote the full prefixed name.
+- **Files arrive datetime-prefixed** (`YYYY-MM-DD_HHMMSS_<original-name>`). The prefix is applied **at reception on the Pi** by the tusd post-finish hook (the root fix — repeat uploads of the same name all survive server-side; source: `~/42/SpaceSuit/upload_file/tusd/post-finish`). The pull script preserves that name, lands files via a staging dir (never overwrites `~/Inbox/`), and only adds its own mtime-stamp to files that arrive unprefixed (legacy files, native WebDAV PUTs). When telling Louis where a file landed, quote the full prefixed name.
 - **`~/Inbox/` accumulates indefinitely.** No cleanup. Suggest archiving older files periodically if it gets cluttered.

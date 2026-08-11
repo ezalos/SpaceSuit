@@ -94,7 +94,7 @@ class ManageDotfiles:
     ) -> Optional[str]:
         """Register an existing-in-place dotfile and deploy it.
 
-        Use when the source already lives at `~/Setup/<main>` (e.g. a config
+        Use when the source already lives at `~/42/SpaceSuit/<main>` (e.g. a config
         authored directly into `dotfiles/`) and only the registry entry +
         deploy symlink need to be created. Unlike `add`, this does NOT back up
         or copy the source — it is already where it belongs; only the symlink
@@ -106,7 +106,7 @@ class ManageDotfiles:
             alias (str): Registry alias (must not collide unless force=True).
             deploy_path (str): Absolute path where the symlink should land on
                 the current device.
-            main (Optional[str]): Path inside ~/Setup/ to the source. Default:
+            main (Optional[str]): Path inside ~/42/SpaceSuit/ to the source. Default:
                 `dotfiles/<alias>` (matches the registry convention).
             only_device (Optional[str]): If set, restrict deploy to this device
                 identifier. For device-scoped skills, pass the current device.
@@ -173,12 +173,12 @@ class ManageDotfiles:
         """Repoint an existing dotfile's `main` (or a per-device variant) to a
         new source path.
 
-        For moving a dotfile's real copy out of ~/Setup (e.g. into a private
+        For moving a dotfile's real copy out of ~/42/SpaceSuit (e.g. into a private
         repo) without losing its registry history: the alias, deploy paths,
         and backups are untouched, only the source path field changes. Does
         NOT move or copy the underlying file -- it must already exist at
         `new_main` (absolute paths are used as-is; relative paths join with
-        ~/Setup, same as any other `main`). Refuses to repoint to a source
+        ~/42/SpaceSuit, same as any other `main`). Refuses to repoint to a source
         that doesn't exist, so the registry can never point at nothing.
 
         Re-deploys the symlink for the current device immediately after

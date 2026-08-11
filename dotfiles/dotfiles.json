@@ -13,7 +13,7 @@
                     "deploy_path": "/home/ezalos/.config/neofetch/config.conf",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/.neofetch_TheBeast.ezalos_2025-08-11_16:50:20.269037",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/.neofetch_TheBeast.ezalos_2025-08-11_16:50:20.269037",
                             "datetime": "2025-08-11_16:50:20.269037"
                         }
                     ]
@@ -75,7 +75,7 @@
                     "deploy_path": "/home/ezalos/.zshrc",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/.zshrc_TinyButMighty.ezalos_2026-02-21_15:22:07.756260",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/.zshrc_TinyButMighty.ezalos_2026-02-21_15:22:07.756260",
                             "datetime": "2026-02-21_15:22:07.756260"
                         }
                     ]
@@ -166,7 +166,7 @@
                     "deploy_path": "/home/ezalos/.config/nvim",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/config_nvim_TheBeast.ezalos_2026-02-06_17:04:32.067642",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/config_nvim_TheBeast.ezalos_2026-02-06_17:04:32.067642",
                             "datetime": "2026-02-06_17:04:32.067642"
                         }
                     ]
@@ -254,7 +254,7 @@
                     "deploy_path": "/home/ezalos/.bashrc",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/.bashrc_TinyButMighty.ezalos_2026-02-21_15:22:07.760054",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/.bashrc_TinyButMighty.ezalos_2026-02-21_15:22:07.760054",
                             "datetime": "2026-02-21_15:22:07.760054"
                         }
                     ]
@@ -300,7 +300,7 @@
                     "deploy_path": "/home/ezalos/.config/terminator/config",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/terminator_TheBeast.ezalos_2025-08-11_16:50:20.271123",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/terminator_TheBeast.ezalos_2025-08-11_16:50:20.271123",
                             "datetime": "2025-08-11_16:50:20.271123"
                         }
                     ]
@@ -595,7 +595,7 @@
                     "deploy_path": "/home/ezalos/.config/wezterm/wezterm.lua",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/wezterm.lua_TheBeast.ezalos_2026-02-07_19:51:14.741666",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/wezterm.lua_TheBeast.ezalos_2026-02-07_19:51:14.741666",
                             "datetime": "2026-02-07_19:51:14.741666"
                         }
                     ]
@@ -625,7 +625,7 @@
                     "deploy_path": "/home/ezalos/.claude/CLAUDE.md",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/claude_md_TheBeast.ezalos_2026-02-16_12:45:35.375015",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/claude_md_TheBeast.ezalos_2026-02-16_12:45:35.375015",
                             "datetime": "2026-02-16_12:45:35.375015"
                         }
                     ]
@@ -660,7 +660,7 @@
                     "deploy_path": "/home/ezalos/.claude/settings.json",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/claude_settings_TheBeast.ezalos_2026-02-16_12:45:38.623793",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/claude_settings_TheBeast.ezalos_2026-02-16_12:45:38.623793",
                             "datetime": "2026-02-16_12:45:38.623793"
                         }
                     ]
@@ -702,7 +702,7 @@
                     "deploy_path": "/home/ezalos/.claude/statusline.py",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/statusline.py_TheBeast.ezalos_2026-02-21_16:08:07.026982",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/statusline.py_TheBeast.ezalos_2026-02-21_16:08:07.026982",
                             "datetime": "2026-02-21_16:08:07.026982"
                         }
                     ]
@@ -794,7 +794,7 @@
                     "deploy_path": "/home/ezalos/.config/git-identity/scrub.py",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/git_identity_scrub_TheBeast.ezalos_2026-07-01_00:26:24.931468",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/git_identity_scrub_TheBeast.ezalos_2026-07-01_00:26:24.931468",
                             "datetime": "2026-07-01_00:26:24.931468"
                         }
                     ]
@@ -821,7 +821,7 @@
                     "deploy_path": "/home/ezalos/.config/git-identity/test_scrub.py",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/git_identity_scrub_test_TheBeast.ezalos_2026-07-01_00:26:25.343284",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/git_identity_scrub_test_TheBeast.ezalos_2026-07-01_00:26:25.343284",
                             "datetime": "2026-07-01_00:26:25.343284"
                         }
                     ]
@@ -887,7 +887,7 @@
                     "deploy_path": "/home/ezalos/.config/systemd/user/serve-slides.service",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/serve-slides.service_TheBeast.ezalos_2026-07-09_12:58:22.664994",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/serve-slides.service_TheBeast.ezalos_2026-07-09_12:58:22.664994",
                             "datetime": "2026-07-09_12:58:22.664994"
                         }
                     ]
@@ -924,7 +924,7 @@
                     "deploy_path": "/home/ezalos/.local/bin/gh",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/gh_identity_router_TheBeast.ezalos_2026-07-16_00:25:42.326191",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/gh_identity_router_TheBeast.ezalos_2026-07-16_00:25:42.326191",
                             "datetime": "2026-07-16_00:25:42.326191"
                         }
                     ]
@@ -951,7 +951,7 @@
                     "deploy_path": "/home/ezalos/.config/git-identity/gh-contexts-bootstrap.sh",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/gh_contexts_bootstrap_TheBeast.ezalos_2026-07-16_00:25:42.568370",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/gh_contexts_bootstrap_TheBeast.ezalos_2026-07-16_00:25:42.568370",
                             "datetime": "2026-07-16_00:25:42.568370"
                         }
                     ]
@@ -998,7 +998,7 @@
                     "deploy_path": "/home/ezalos/.config/systemd/user/agents-dashboard.service",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/agents-dashboard.service_TheBeast.ezalos_2026-08-03_13:52:48.672436",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/agents-dashboard.service_TheBeast.ezalos_2026-08-03_13:52:48.672436",
                             "datetime": "2026-08-03_13:52:48.672436"
                         }
                     ]
@@ -1058,7 +1058,7 @@
                     "deploy_path": "/home/ezalos/.config/systemd/user/lock-session-on-login.service",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/lock-session-on-login.service_TheBeast.ezalos_2026-08-04_02:42:57.767567",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/lock-session-on-login.service_TheBeast.ezalos_2026-08-04_02:42:57.767567",
                             "datetime": "2026-08-04_02:42:57.767567"
                         }
                     ]
@@ -1078,7 +1078,7 @@
                     "deploy_path": "/home/ezalos/.config/systemd/user/sunshine.service.d/override.conf",
                     "backups": [
                         {
-                            "backup_path": "/home/ezalos/Setup/dotfiles/old/sunshine_override.conf_TheBeast.ezalos_2026-08-04_02:43:04.577491",
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/sunshine_override.conf_TheBeast.ezalos_2026-08-04_02:43:04.577491",
                             "datetime": "2026-08-04_02:43:04.577491"
                         }
                     ]

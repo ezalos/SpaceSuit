@@ -2,7 +2,7 @@
 # ABOUTME: Standard crontab format. Blank lines and comments are preserved.
 
 # Save tmux sessions every 15 min for crash + lost-input recovery (keeps ~1h of history)
-*/15 * * * * "$HOME/Setup/scripts/tmux-save.sh" >/dev/null 2>&1
+*/15 * * * * "$HOME/42/SpaceSuit/scripts/tmux-save.sh" >/dev/null 2>&1
 
 # Refresh the home public IP block list (append-only) every 6h so commits never leak it
-0 */6 * * * "$HOME/Setup/scripts/check-home-ip.sh" >/dev/null 2>&1
+0 */6 * * * "$HOME/42/SpaceSuit/scripts/check-home-ip.sh" >/dev/null 2>&1
