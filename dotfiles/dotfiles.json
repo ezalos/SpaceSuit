@@ -664,6 +664,10 @@
                         {
                             "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/claude_settings_TheBeast.ezalos_2026-02-16_12:45:38.623793",
                             "datetime": "2026-02-16_12:45:38.623793"
+                        },
+                        {
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/claude_settings_TheBeast.ezalos_2026-08-12_14:22:04.325811",
+                            "datetime": "2026-08-12_14:22:04.325811"
                         }
                     ]
                 },
@@ -1104,6 +1108,19 @@
             "only_devices": [
                 "TheBeast.ezalos"
             ],
+            "variants": null,
+            "fanout": false
+        },
+        "block-outbound-comms.sh": {
+            "alias": "block-outbound-comms.sh",
+            "main": "hooks/block-outbound-comms.sh",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/hooks/block-outbound-comms.sh",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
             "variants": null,
             "fanout": false
         }
