@@ -28,7 +28,7 @@ case "$tool" in
     # keeps mentions like `git log --grep send-email` unblocked — the 2026-08-11
     # incident hook taught us real sends always carry flags.
     if printf '%s' "$cmd" | grep -qiE \
-      '(^[[:space:]]*|[;&|(][[:space:]]*)send-email([[:space:]]|$)|/send-email([[:space:]]|$)|send-email[[:space:]]+--?(to|subject|body|cc|bcc|attach)|(^|[[:space:];&|(])(sendmail|msmtp|swaks|mutt)([[:space:]]|$)|smtps?://|smtp\.protonmail|smtplib|SMTP\('; then
+      '(^[[:space:]]*|[;&|(][[:space:]]*)[^[:space:]]*/?send-email([[:space:]]|$)|send-email[[:space:]]+--?(to|subject|body|cc|bcc|attach)|(^|[[:space:];&|(])(sendmail|msmtp|swaks|mutt)([[:space:]]|$)|smtps?://|smtp\.protonmail|smtplib|SMTP\('; then
       block "this command could transmit email/messages as Louis."
     fi
     exit 0
