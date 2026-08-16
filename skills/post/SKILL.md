@@ -184,6 +184,33 @@ context reviews each tweet as a cold reader (text + visuals only). Every tweet m
 information-heavy part; the text carries the takeaway). Iterate until it passes; record the
 result in the run record under `fresh_eyes:`.
 
+### Step 6.9: Clarity gate — X only (BLOCKING — do not skip)
+
+X drafts follow the ASD-STE100 subset in `voice/x.md` ("Clarity"). Run the checker over the
+assembled thread and resolve every `error` before saving:
+
+```sh
+cd $SOCIAL_HOME && bun -e '
+import {splitThread} from "./dashboard/lib/thread.mjs";
+import {checkThread, RULES} from "./dashboard/lib/clarity.mjs";
+const body = await Bun.file(process.argv[1]).text();
+const tweets = splitThread(body.replace(/^---[\s\S]*?\n---\n/, ""));
+for (const f of checkThread(tweets, {terms: []}))
+  console.log(`[${RULES[f.rule].severity}] t${f.tweet} ${f.rule}: ${f.detail}`);
+' <path-to-draft>
+```
+
+- **`error` blocks the save**: a sentence over 25 words, a word with more than one meaning,
+  a hedge, one concept under two names. Rewrite, or waive it with Louis and say why.
+- **`warn` does not block**: passive voice where the actor is genuinely irrelevant is fine.
+- The checker skips the Sources tweet, because a list of citations is not prose.
+- If the thread has domain terms the built-in groups do not know, declare them in the run
+  record as `terms: [{use: <approved>, not: [<variant>, ...]}]` and re-run.
+
+Set `clarity_verified: true` only after every error is fixed or consciously waived, and
+record any waiver under `clarity_waived`. Same rule as citations: the gate is satisfied by
+a decision, never by silence.
+
 ### Step 7: Slugify and save
 
 Generate slug from message: lowercase, dash-separated, ≤6 words.
@@ -208,6 +235,9 @@ sources:                          # one entry per sourced factual claim
     tier: <int>
 citations_waived:                 # omit if none; else list reasons for explicit waivers
   - "<claim> — <why waived>"
+clarity_verified: true            # X only; set by Step 6.9 once no clarity error remains
+clarity_waived:                   # omit if none; else one line per accepted violation
+  - "<rule> t<N> — <why kept>"
 ---
 ```
 
@@ -223,6 +253,7 @@ Sources:
 ```
 
 `citations_verified` MUST be `true` to save (every claim sourced, softened, or waived).
+For X, `clarity_verified` MUST be `true` too (every clarity error fixed or waived).
 If Louis waived a claim, still set `citations_verified: true` but record it under
 `citations_waived` — the gate is satisfied by a conscious decision, never by silence.
 
@@ -277,6 +308,32 @@ files). The dashboard (`dashboard/build.mjs`) has a STRICT schema — follow it 
 This step is not optional and does not wait for "ship it": drafts render in the
 dashboard's Drafts section so Louis can review the full card (thread, stages, visuals,
 sources) in one place.
+
+### Step 7.9: Ship gate (BLOCKING — the last thing before Louis pastes)
+
+```sh
+cd $SOCIAL_HOME && make ship-check DRAFT=drafts/<file>.md
+```
+
+Two things, both about what leaves this repo:
+
+- **Text.** Invisible Unicode, exotic spaces, bidi controls and tag characters survive
+  copy-paste into X and are invisible in every editor, so a machine has to look. A finding
+  BLOCKS. Fix with `make ship-clean DRAFT=...`, then re-run and confirm it is clean.
+- **Visuals.** Every image and video the run record declares is scanned for C2PA / EXIF /
+  XMP and known vendor marks. This is **report only**, including our own renders: measured
+  2026-08-12, they carry no AI marks at all, so cleaning them is a no-op with a real chance
+  of corrupting a render. If a mark ever appears, say so and let Louis decide.
+
+**Never strip a third-party figure.** The gate labels them from the run record
+(`source_url:`, or a `source:` naming a paper) and never modifies them. Those are other
+people's published figures, credited on the post as `[camera N]`; removing their
+provenance removes their attribution. Do not "fix" a finding on one.
+
+**Layer B is deliberately not wired.** The upstream skill can also defeat statistical
+token-sampling watermarks by paraphrasing. Do not run it on a draft: it rewrites text the
+clarity gate and `/fresh-eyes` already approved, trading Louis's voice for a mark X cannot
+read anyway.
 
 ### Step 8: Output
 
