@@ -9,6 +9,10 @@ Type=oneshot
 # NETWATCH_PUBLISH_REMOTE lives here. A bare path publishes locally (the Pi
 # writes straight into its own web root); host:/path pushes over ssh.
 EnvironmentFile=-%h/.config/netwatch/env
+# A service must never consult the session keyring's ssh-agent: a wedged
+# gnome-keyring answers connects but never replies, and every publish then
+# hangs to its subprocess timeout (3352 silent failures, 2026-08-14..16).
+Environment=SSH_AUTH_SOCK=
 ExecStart=/usr/bin/python3 %h/42/SpaceSuit/netwatch/netwatch.py publish --quiet
 Nice=10
 IOSchedulingClass=idle
