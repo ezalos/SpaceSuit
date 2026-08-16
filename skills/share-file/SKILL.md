@@ -75,7 +75,8 @@ share-file <path> [--duration <Nh|Nm|Nd>]
 
 The script (located at `~/42/SpaceSuit/share_file/share.py`, aliased to `share-file` in `.zshrc`) prints the URL on stdout and the expiry timestamp on stderr.
 
-If the alias is missing for some reason, fall back to:
+**In agent/non-interactive shells the alias does not exist** (`.zshrc` aliases are not
+loaded there — hit 2026-08-13), so skip straight to the direct invocation:
 
 ```bash
 python3 ~/42/SpaceSuit/share_file/share.py <path> --duration <duration>
