@@ -15,7 +15,13 @@ data/test_data
 *.pyc
 *.pyo
 
-.claude
+# Ignore the .claude CONTENTS, not the directory: settings.local.json holds
+# per-device permission grants and session scratch that a public repo must
+# never carry, but settings.json is shared project config (the SessionStart
+# todo hook) and has to be tracked. The trailing /* matters -- ignoring bare
+# `.claude` stops git descending into it and the negation below never applies.
+.claude/*
+!.claude/settings.json
 .envrc
 .envrc.heuritech
 .secrets.sh

@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$HOME/42/GroundControl/state/todo.md\"; [ -f \"$f\" ] || exit 0; open=$(grep '^- \\[ \\]' \"$f\" | grep -v '\\[seven\\]' | grep -v '\\[groundcontrol\\]'); [ -n \"$open\" ] && printf 'Open system todos (offer briefly at session start; do not start them unasked):\\n%s\\n' \"$open\"; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}
