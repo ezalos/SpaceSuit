@@ -34,6 +34,7 @@ This skill follows the universal observability baseline (see
 | INFO     | **Any user feedback during the wrap-up run** (per universal baseline) | `wrap-up: feedback: '<paraphrase>'; phase=<phase>; changed <what>` |
 | INFO     | No deploy marker in repo                                   | `wrap-up: no deploy marker in <repo>; skipped`            |
 | INFO     | Docs synced or no drift (Phase 1a)                        | `wrap-up: docs synced: <files>` (or `no doc drift`)       |
+| INFO     | Todo sweep ran (Phase 1f)                                  | `wrap-up: todo sweep: <n> checked, <m> added, <k> pruned` (or `no todo changes`) |
 | WARNING  | Phase 3 tool/infra problem, slowdown, or friction          | `wrap-up: friction: <what>; slowed=<how>`                 |
 | WARNING  | Phase 3 re-orientation (Louis redirected a wrong default)  | `wrap-up: reorientation: <what>; root=<missing-doc\|stale-doc\|skill-default\|tool-default>` |
 | WARNING  | Phase 3 doc-debt (a doc confidently asserts something false/stale) | `wrap-up: doc-debt: <doc> asserts <falsehood>; found-by=<wrong-conclusion\|footgun\|dead-path>` |
@@ -163,6 +164,25 @@ claude-log wrap-up INFO "wrap-up: no deploy marker in <repo>; skipped"
    ```
    claude-log wrap-up WARNING "wrap-up: orphaned task <id>: <subject>"
    ```
+
+### 1f. System todo sweep
+
+Open `~/42/GroundControl/state/todo.md` (skip silently if absent on this
+machine). Three passes, scoped to THIS session:
+
+1. **Check off** items this session actually resolved (`- [ ]` → `- [x]`).
+2. **Add** loose ends the session surfaced that are system/repo work: one line
+   each, `- [ ] YYYY-MM-DD [tag] <ask> — <context>` (tags `[seven]`
+   `[groundcontrol]` `[spacesuit]`, untagged = general). NEVER add Louis's
+   personal todos or errands here — those go to Todoist.
+3. **Prune** checked lines from earlier sessions (git history is the archive).
+
+Stage and commit `state/todo.md` in GroundControl explicitly (GroundControl is
+an ezalos repo: push right after commit). Log:
+
+```
+claude-log wrap-up INFO "wrap-up: todo sweep: <n> checked, <m> added, <k> pruned"   # or: no todo changes
+```
 
 ## Phase 2: Remember It
 
@@ -318,6 +338,7 @@ output of the skill:
 - File placement: <fixes>  (or "no changes needed")
 - Deploy: <ran X / failed: ... / skipped (no marker)>
 - Tasks: <N completed, M flagged orphaned>
+- Tasks/todo: <n> checked, <m> added, <k> pruned
 
 ## Phase 2 — Remember It
 Applied (high-confidence):
