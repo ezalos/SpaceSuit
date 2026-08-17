@@ -24,7 +24,8 @@ use_proton() {
   local name ref val failed=""
   while IFS='=' read -r name ref; do
     # in-place resolution; on failure the var keeps its ref: self-describing, loud downstream
-    if val="$(proton-agent item view "$ref" 2>/dev/null)" && [ -n "$val" ]; then
+    if val="$(proton-agent item view "$ref" 2>/dev/null)" && [ -n "$val" ] \
+        && [ "$val" != "<concealed by Proton Pass>" ]; then
       export "$name=$val"
     else
       failed="$failed $name"

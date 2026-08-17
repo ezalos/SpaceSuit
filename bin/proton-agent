@@ -32,13 +32,24 @@ fi
 mkdir -p "$PROTON_PASS_SESSION_DIR" && chmod 700 "$PROTON_PASS_SESSION_DIR"
 if ! pass-cli info >/dev/null 2>&1; then
   if ! PROTON_PASS_PERSONAL_ACCESS_TOKEN="$(cat "$PAT_FILE")" pass-cli login >/dev/null 2>&1; then
-    # curl, not getent: must behave the same on macOS (BSD) and Linux
-    if ! curl -sf -m 3 -o /dev/null https://proton.me 2>/dev/null; then
-      echo "proton-agent: cannot reach Proton (offline?) for context '$CTX'" >&2
-    else
-      echo "proton-agent: login failed for context '$CTX' (token expired or revoked?)" >&2
+    # A stale/corrupt session store poisons even fresh PAT logins -- seen at
+    # ~09:00 on 2026-08-16 AND -17; both times moving .session aside fixed it
+    # instantly while the token was fine. Quarantine (never delete: forensics)
+    # and retry ONCE before blaming the token.
+    if [ -d "$PROTON_PASS_SESSION_DIR/.session" ]; then
+      mv "$PROTON_PASS_SESSION_DIR/.session" \
+         "$PROTON_PASS_SESSION_DIR/.session.stale-$(date +%Y%m%d-%H%M%S)"
+      echo "proton-agent: login failed with the existing session store; quarantined it and retrying (context '$CTX')" >&2
     fi
-    exit 1
+    if ! PROTON_PASS_PERSONAL_ACCESS_TOKEN="$(cat "$PAT_FILE")" pass-cli login >/dev/null 2>&1; then
+      # curl, not getent: must behave the same on macOS (BSD) and Linux
+      if ! curl -sf -m 3 -o /dev/null https://proton.me 2>/dev/null; then
+        echo "proton-agent: cannot reach Proton (offline?) for context '$CTX'" >&2
+      else
+        echo "proton-agent: login failed for context '$CTX' (token expired or revoked?)" >&2
+      fi
+      exit 1
+    fi
   fi
 fi
 exec pass-cli "$@"
