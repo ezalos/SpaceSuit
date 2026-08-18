@@ -1,0 +1,19 @@
+# ABOUTME: Disables GNOME Keyring's SSH agent autostart, which creates a socket nothing ever accepts.
+# ABOUTME: The working agent on this box is gcr-ssh-agent.socket; keyring keeps pkcs11 and secrets.
+#
+# /etc/xdg/autostart/gnome-keyring-ssh.desktop runs
+#   gnome-keyring-daemon --start --components=ssh
+# at every login. On Ubuntu the ssh component no longer services requests (it
+# moved to gcr-ssh-agent), but the call still leaves a LISTENING socket at
+# /run/user/1000/keyring/ssh and exports SSH_AUTH_SOCK pointing at it. Nothing
+# accepts, so every ssh from a session-spawned process blocks in connect()
+# forever -- before any network I/O, which is why ConnectTimeout never fires.
+#
+# Diagnosed 2026-08-18: it wedged the todo-capture path for 25h and leaked three
+# ssh processes, one alive for two days, with 11 connections queued on a backlog
+# of 10. Undo by deleting this file (use rip, not rm).
+[Desktop Entry]
+Type=Application
+Name=SSH Key Agent
+Exec=/usr/bin/gnome-keyring-daemon --start --components=ssh
+Hidden=true

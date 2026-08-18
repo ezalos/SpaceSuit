@@ -1127,6 +1127,46 @@
             "only_devices": null,
             "variants": null,
             "fanout": false
+        },
+        "10-ssh-auth-sock.conf": {
+            "alias": "10-ssh-auth-sock.conf",
+            "main": "dotfiles/10-ssh-auth-sock.conf",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/environment.d/10-ssh-auth-sock.conf",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/10-ssh-auth-sock.conf_TheBeast.ezalos_2026-08-18_18:59:06.180422",
+                            "datetime": "2026-08-18_18:59:06.180422"
+                        }
+                    ]
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
+        },
+        "gnome-keyring-ssh.desktop": {
+            "alias": "gnome-keyring-ssh.desktop",
+            "main": "dotfiles/gnome-keyring-ssh.desktop",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/autostart/gnome-keyring-ssh.desktop",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/gnome-keyring-ssh.desktop_TheBeast.ezalos_2026-08-18_18:59:06.428175",
+                            "datetime": "2026-08-18_18:59:06.428175"
+                        }
+                    ]
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
         }
     },
     "devices": {
