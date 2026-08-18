@@ -51,8 +51,20 @@ mismatched labels are the same defect class.
 
 ## Diagnose
 
-- `secrets check` in the repo: per-ref `ok | missing | denied | error`.
+- `secrets check` in the repo: per-ref `ok | missing | denied | error`. Since
+  2026-08-17 it inspects the resolved value in-process: an empty value or the
+  literal `<concealed by Proton Pass>` placeholder reports as `error`, never ok.
 - Command fails on a missing var in an agent shell / cron / script (direnv
   did not run there): `secrets run -- <same command>`.
 - `denied` = wrong context for that vault. That is enforcement, not a bug.
 - Offline: resolution fails fast and loud; refs stay refs. Retry online.
+- `proton-agent: login failed (token expired or revoked?)` almost never means
+  the token: a stale session store poisons fresh logins (~daily, seen
+  2026-08-16/17). proton-agent now quarantines `.session` and retries once by
+  itself — if it STILL fails after the "quarantined ... retrying" stderr line,
+  then suspect the PAT.
+- All resolution goes through `pass-cli item view` (reliable for every field
+  kind). Never reintroduce `pass-cli run` env-injection: it substitutes the
+  concealment placeholder for extra fields (Text always, Hidden per-session;
+  pass-cli 2.2.5 defect — diagnosis + upstream issue draft in GroundControl
+  `docs/plans/2026-08-16-proton-agent-text-field-resolution-handoff.md`).
