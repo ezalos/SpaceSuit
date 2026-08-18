@@ -177,6 +177,10 @@ machine). Three passes, scoped to THIS session:
    personal todos or errands here — those go to Todoist.
 3. **Prune** checked lines from earlier sessions (git history is the archive).
 
+Append todo lines with the Edit/Write tool, never a shell heredoc: Safety Net
+scans the full command text, so a todo line that NAMES a guarded command (a
+stash drop, an rm) blocks the whole append (hit 2026-08-18).
+
 Stage and commit `state/todo.md` in GroundControl explicitly (GroundControl is
 an ezalos repo: push right after commit). Log:
 
