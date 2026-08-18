@@ -126,6 +126,13 @@ on the share-file stack already being up (see `~/42/SpaceSuit/share_file/README.
 
   …and only then `apt-mark hold caddy` again.
 
+- **post-finish hooks are asynchronous.** tusd answers the client 204 before
+  the hook has moved the file, so an `ls /srv/upload/inbox/` fired straight
+  after an upload can show nothing, or only part of a batch — which reads
+  exactly like a broken hook. Confirm with
+  `sudo journalctl -u tusd --since -3min`: the hook logs one
+  `[post-finish] moved -> <path>` line per file.
+
 - **Native phone WebDAV clients are flaky.** Material Files (Android)
   in particular failed to negotiate the connection during initial
   setup. The browser UI at `/` is the recommended phone flow because

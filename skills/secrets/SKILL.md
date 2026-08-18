@@ -56,6 +56,14 @@ mismatched labels are the same defect class.
   literal `<concealed by Proton Pass>` placeholder reports as `error`, never ok.
 - Command fails on a missing var in an agent shell / cron / script (direnv
   did not run there): `secrets run -- <same command>`.
+- `secrets run` is fail-closed for the WHOLE `.envrc`: ONE unresolvable ref
+  refuses the exec (`... did not resolve to a usable value -- refusing to run
+  with a poisoned env`), even for a command that never reads it. Deliberate —
+  no partial environment (design: GroundControl
+  `docs/plans/2026-07-09-cross-functional-capabilities-design.md`). So a repo
+  with one stale ref cannot `secrets run` anything: `secrets check` names the
+  offender, then fix or delete that ref instead of routing around it. Do not
+  read this refusal as "the vault is down" — it fires on a single bad ref.
 - `denied` = wrong context for that vault. That is enforcement, not a bug.
 - Offline: resolution fails fast and loud; refs stay refs. Retry online.
 - `proton-agent: login failed (token expired or revoked?)` almost never means
