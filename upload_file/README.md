@@ -29,9 +29,18 @@ source of truth: `upload_file/tusd/post-finish` in this repo) moves the complete
 file into `/srv/upload/inbox/` under a **datetime-prefixed name**
 (`YYYY-MM-DD_HHMMSS_<name>`, `_N` on a same-second repeat) — so uploading
 `selection.json` five times keeps five distinct files; nothing is ever shadowed
-or lost at reception. `pull-uploads` preserves the server's prefix (it only
-stamps files that arrive without one). tus is also resumable — an interrupted
-upload continues instead of restarting.
+or lost at reception. tus is also resumable — an interrupted upload continues
+instead of restarting.
+
+**Who applies the prefix.** The browser UI stamps and sanitises the name itself
+and sends that as the tus `filename` metadata; the hook preserves any name that
+already carries a well-formed prefix and stamps everything else (native WebDAV
+PUTs, legacy clients). That ordering is what lets the UI print the real landing
+path in its `pull uploads then read "~/Inbox/<name>"` prompt — the name it shows
+is the name that lands. `pull-uploads` applies the same rule a third time for
+files that reach it unprefixed. The three sanitisers must agree; the contract is
+pinned by `tests/test_upload_naming.py`, which cross-checks the UI's namer
+against the hook's.
 
 The WebDAV `PUT /inbox/*` path still exists for native clients (iOS Files), but
 behind the tunnel it is capped at 100 MB (it can't chunk) — use the browser UI

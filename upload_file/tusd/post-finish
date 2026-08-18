@@ -3,22 +3,39 @@
 # ABOUTME: datetime-prefixed name so same-name uploads can never collide, shadow, or get lost.
 import sys, json, os, shutil, re, datetime
 INBOX = "/srv/upload/inbox"
-try:
+
+# A name the browser UI already stamped. Preserving it is what lets the UI print the
+# real landing path in its "pull uploads then read ..." prompt: the name it showed is
+# the name that lands. Anything else (native WebDAV PUT, legacy client) gets stamped here.
+PREFIXED = re.compile(r'^\d{4}-\d{2}-\d{2}_\d{6}_')
+
+
+def final_name(raw, now):
+    """The inbox name for an upload announced as `raw`. Sanitised, always prefixed."""
+    name = re.sub(r'[^\w.\- ]', '_', os.path.basename(raw or "")) or "upload"
+    if PREFIXED.match(name):
+        return name
+    return f"{now.strftime('%Y-%m-%d_%H%M%S')}_{name}"
+
+
+def main():
     up = json.load(sys.stdin)["Event"]["Upload"]
     src = up["Storage"]["Path"]
     if not src or not os.path.isfile(src):
         sys.stderr.write(f"[post-finish] refuse: not a regular file: {src!r}\n"); sys.exit(1)
-    name = (up.get("MetaData") or {}).get("filename") or os.path.basename(src)
-    name = re.sub(r'[^\w.\- ]', '_', os.path.basename(name)) or "upload"
-    # Datetime prefix AT RECEPTION (the server-side fix): every upload gets a unique, sortable
-    # name the moment it lands, so re-uploading "selection.json" five times keeps five files.
-    stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    name = final_name((up.get("MetaData") or {}).get("filename") or os.path.basename(src),
+                      datetime.datetime.now())
     base, ext = os.path.splitext(name)
-    dst = os.path.join(INBOX, f"{stamp}_{name}"); i = 2
+    dst = os.path.join(INBOX, name); i = 2
     while os.path.exists(dst):  # same name in the same second — vanishingly rare
-        dst = os.path.join(INBOX, f"{stamp}_{base}_{i}{ext}"); i += 1
+        dst = os.path.join(INBOX, f"{base}_{i}{ext}"); i += 1
     shutil.move(src, dst)
     if os.path.exists(src + ".info"): os.remove(src + ".info")
     sys.stderr.write(f"[post-finish] moved -> {dst}\n")
-except Exception as e:
-    sys.stderr.write(f"[post-finish] ERROR: {e}\n"); sys.exit(1)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        sys.stderr.write(f"[post-finish] ERROR: {e}\n"); sys.exit(1)

@@ -83,6 +83,20 @@ async function copyText(text) {
   return ok;
 }
 
+// The post-finish hook preserves a name that already carries a YYYY-MM-DD_HHMMSS_
+// prefix and stamps anything that arrives without one. Stamping here means the name
+// the prompt shows below IS the name that lands in the inbox.
+function finalName(file) {
+  const p2 = n => String(n).padStart(2, "0");
+  const d = new Date();
+  const stamp = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}_` +
+    `${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
+  // Mirror the hook's sanitiser ([^\w.\- ] -> _) so it passes through untouched.
+  const base = (file.name || "").split(/[\\/]/).pop()
+    .replace(/[^\p{L}\p{N}_.\- ]/gu, "_") || "upload";
+  return `${stamp}_${base}`;
+}
+
 function appendPath(filename) {
   const prompt = `pull uploads then read "~/Inbox/${filename}"`;
   const d = document.createElement("div");
@@ -118,19 +132,25 @@ drop.addEventListener("drop", ev => { input.files = ev.dataTransfer.files; updat
 
 function uploadFile(file) {
   return new Promise((resolve, reject) => {
+    let name = finalName(file); // reassigned below if this resumes an earlier attempt
     const upload = new tus.Upload(file, {
       endpoint: "/files/",
       chunkSize: CHUNK,
       retryDelays: [0, 1000, 3000, 5000, 10000],
       removeFingerprintOnSuccess: true,
-      metadata: { filename: file.name, filetype: file.type || "application/octet-stream" },
+      metadata: { filename: name, filetype: file.type || "application/octet-stream" },
       onProgress: (sent, total) => { prog.max = total; prog.value = sent; },
-      onSuccess: () => { append(`ok  ${file.name}`, "ok"); appendPath(file.name); resolve(); },
+      onSuccess: () => { append(`ok  ${file.name}`, "ok"); appendPath(name); resolve(); },
       onError: err => { append(`err ${file.name}: ${err}`, "err"); reject(err); },
     });
     // Resume if this exact file was interrupted before; otherwise start fresh.
     upload.findPreviousUploads().then(prev => {
-      if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
+      if (prev.length) {
+        // A resumed upload keeps the filename it was CREATED with server-side, so the
+        // prompt must name that one rather than a fresh stamp.
+        name = (prev[0].metadata && prev[0].metadata.filename) || name;
+        upload.resumeFromPreviousUpload(prev[0]);
+      }
       upload.start();
     });
   });
