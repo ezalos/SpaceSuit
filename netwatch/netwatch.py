@@ -117,6 +117,37 @@ def append_jsonl(path: Path, obj: dict) -> None:
         fh.write(json.dumps(obj, separators=(",", ":")) + "\n")
 
 
+def last_heartbeat_age(now_ts: float | None = None) -> float | None:
+    """Age in seconds of the newest heartbeat stamp in the ledger, or None.
+
+    Tail-reads the last 64 KiB only: the ledger is append-only and permanent,
+    so a full parse on every publish tick would grow with history forever.
+    Heartbeats land every HC_INTERVAL_S, so 64 KiB reaches days back.
+    """
+    try:
+        size = EVENTS.stat().st_size
+        with EVENTS.open("rb") as fh:
+            fh.seek(max(0, size - 65536))
+            tail = fh.read().decode(errors="replace")
+    except OSError:
+        return None
+    newest = None
+    for line in reversed(tail.splitlines()):
+        line = line.strip()
+        if not line or '"heartbeat"' not in line:
+            continue
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        if e.get("type") == "heartbeat":
+            newest = _ts(e.get("ts"))
+            break
+    if newest is None:
+        return None
+    return (now_ts if now_ts is not None else time.time()) - newest
+
+
 def read_jsonl(path: Path):
     if not path.exists():
         return
@@ -772,14 +803,19 @@ class Runner:
 
     # -- dead-man's switch ------------------------------------------------
     def heartbeat(self, s: dict) -> None:
-        """Stamp the ledger, then ping the external sink.
+        """Stamp the ledger. The sink ping lives in the PUBLISHER since 2026-08-18.
 
         The ledger stamp is what makes coverage computable from `events.jsonl`
         alone, long after the raw samples have rotated away — so "nothing was
         wrong then" stays provable rather than merely unrecorded.
 
-        The outbound ping is the dead-man's switch: it originates inside this
-        loop, so it stops if the *recorder* wedges, not only if the host dies.
+        The stamp is also the freshness signal the publisher's dead-man ping is
+        gated on. This loop used to send the sink ping itself (urllib,
+        in-process, no fork) — and sailed green through the 2026-08-11..16 TBM
+        wedge that froze process SPAWNING while 3352 publishes failed. Pinging
+        from the publisher, gated on a fresh stamp here, makes recorder-death,
+        publisher-death, and host-death all stop the same heartbeat.
+        (`fail_healthcheck` stays here: it is an ACTIVE alarm, not a pulse.)
         """
         t = time.monotonic()
         if self.last_hc_ping is not None and t - self.last_hc_ping < HC_INTERVAL_S:
@@ -787,15 +823,6 @@ class Runner:
         self.last_hc_ping = t
         append_jsonl(EVENTS, {"type": "heartbeat", "ts": s["ts"],
                               "host": socket.gethostname(), "state": s["state"]})
-        url = self.args.healthcheck_url
-        if not url:
-            return
-        try:
-            urllib.request.urlopen(url, timeout=10).read()
-        except Exception:
-            # A failed heartbeat usually *is* the network being down, which the
-            # sink notices by itself. Never let it kill the recorder.
-            pass
 
     # -- public IP changes -------------------------------------------------
     def check_public_ip(self, s: dict, force: bool = False) -> None:
@@ -1154,6 +1181,36 @@ def cmd_status(args) -> int:
     return 0
 
 
+def _publish_heartbeat(args) -> None:
+    """Dead-man's switch, publish-success edition (2026-08-18).
+
+    Fires ONLY after a successful push of FRESH recorder data: recorder dead
+    -> ledger stamps go stale -> no ping; publisher or host dead, or the push
+    failing -> no ping. All three trip the absence alarm on the same
+    healthchecks check. Predecessor design pinged from inside the recorder
+    loop and stayed green through a 5-day wedge that froze process spawning
+    while every publish failed.
+    """
+    url = args.healthcheck_url
+    if not url:
+        return
+    age = last_heartbeat_age()
+    if age is None or age > HC_INTERVAL_S * 2:
+        desc = "missing" if age is None else f"{int(age)}s old"
+        print(f"healthcheck ping withheld: newest recorder heartbeat is {desc} "
+              f"(limit {HC_INTERVAL_S * 2}s) -- letting the dead-man trip",
+              file=sys.stderr)
+        return
+    try:
+        urllib.request.urlopen(url, timeout=10).read()
+        if not args.quiet:
+            print("healthcheck pinged (fresh data published)")
+    except Exception:
+        # The sink being unreachable usually IS the network being down, which
+        # the sink notices by itself through the missing ping.
+        pass
+
+
 def cmd_publish(args) -> int:
     """Push this host's summary to the machine that serves the dashboard.
 
@@ -1180,6 +1237,7 @@ def cmd_publish(args) -> int:
             return 1
         if not args.quiet:
             print(f"published {len(payload)}B -> {dest}")
+        _publish_heartbeat(args)
         return 0
 
     host, _, path = args.remote.partition(":")
@@ -1205,6 +1263,7 @@ def cmd_publish(args) -> int:
         return 1
     if not args.quiet:
         print(f"published {len(payload)}B -> {args.remote}/{name}")
+    _publish_heartbeat(args)
     return 0
 
 
@@ -1845,6 +1904,11 @@ def main() -> int:
     pb.add_argument("--remote", default=os.environ.get(
         "NETWATCH_PUBLISH_REMOTE", "TinyButMighty:/srv/network"))
     pb.add_argument("--quiet", action="store_true")
+    pb.add_argument("--healthcheck-url",
+                    default=os.environ.get("NETWATCH_HEALTHCHECK_URL"),
+                    help="dead-man's-switch ping URL, fired only after a "
+                         "successful publish of fresh recorder data. Prefer "
+                         "the env var — keep it out of process listings.")
     pb.set_defaults(func=cmd_publish)
 
     bb = sub.add_parser("bufferbloat",
