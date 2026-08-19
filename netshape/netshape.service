@@ -1,0 +1,23 @@
+[Unit]
+# ABOUTME: Applies the declared egress cap (/etc/netshape.conf) at every boot.
+# ABOUTME: Enabled with EGRESS_MBIT=0 is the normal state: policy present, cap off.
+Description=netshape — declarative egress shaping (CAKE)
+Documentation=https://github.com/ezalos/SpaceSuit
+# A qdisc is attached to a network device, so the device has to exist first.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# The unit is the declaration "this host's egress policy is applied". Without
+# RemainAfterExit it would report inactive the moment it succeeded, and a
+# oneshot that always looks inactive cannot be reconciled against services.yaml.
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/netshape apply
+# `clear`, not `off`: stopping the enforcement must not rewrite the policy.
+ExecStop=/usr/local/bin/netshape clear
+# Shaping is a bounded tc call; if it cannot converge, failing loudly is right.
+# Retrying would only mask a config error, which the weekly drift check reports.
+
+[Install]
+WantedBy=multi-user.target

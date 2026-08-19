@@ -345,6 +345,116 @@ def test_bad_neighbour():
               [e for e in events(tmp) if e["type"] == "bad_neighbour"], [])
 
 
+def test_bad_neighbour_needs_perceptible_harm():
+    """The 2026-08-18 false positive, with its own numbers.
+
+    netwatch woke Louis to say he was ruining his father's household. It had
+    measured 1.1 ms idle -> 4.1 ms under a 48 Mb/s upload, on a line that has
+    carried 423 Mb/s: three milliseconds, on a link whose own active test grades
+    anything under twenty as "good neighbour". A ratio test with no absolute
+    floor cannot tell jitter from harm at fibre latencies.
+    """
+    print("bad-neighbour detection requires perceptible harm, not a ratio:")
+    with tempfile.TemporaryDirectory() as tmp:
+        r = make_runner(tmp)
+        r.args.no_telegram = True
+        for _ in range(nw.IMPACT_MIN_PER_SIDE + 5):
+            r.check_impact(sample(host={"tx_bps": 100_000, "conntrack": {}},
+                                  wan={"1.1.1.1": {"up": True, "rtt_ms": 1.1,
+                                                   "loss": 0.0}}))
+        for _ in range(nw.IMPACT_MIN_PER_SIDE + 5):
+            r.check_impact(sample(host={"tx_bps": 48_000_000, "conntrack": {}},
+                                  wan={"1.1.1.1": {"up": True, "rtt_ms": 4.1,
+                                                   "loss": 0.0}}))
+        check("3.6x of 1.1 ms is not a bad neighbour",
+              [e for e in events(tmp) if e["type"] == "bad_neighbour"], [])
+
+    # ...and the same ratio at latencies a person can feel still alerts, so the
+    # fix is a floor and not a mute button.
+    with tempfile.TemporaryDirectory() as tmp:
+        r = make_runner(tmp)
+        r.args.no_telegram = True
+        for _ in range(nw.IMPACT_MIN_PER_SIDE + 5):
+            r.check_impact(sample(host={"tx_bps": 100_000, "conntrack": {}},
+                                  wan={"1.1.1.1": {"up": True, "rtt_ms": 11.0,
+                                                   "loss": 0.0}}))
+        for _ in range(nw.IMPACT_MIN_PER_SIDE + 5):
+            r.check_impact(sample(host={"tx_bps": 48_000_000, "conntrack": {}},
+                                  wan={"1.1.1.1": {"up": True, "rtt_ms": 41.0,
+                                                   "loss": 0.0}}))
+        evs = [e for e in events(tmp) if e["type"] == "bad_neighbour"]
+        check("the same 3.6x at 11 ms -> 41 ms does alert", len(evs), 1)
+        check("the alert carries the rate that caused it",
+              evs[0].get("busy_mbps"), 48.0)
+        check("and the added milliseconds", evs[0].get("added_ms"), 30.0)
+        check("and the grade", evs[0].get("grade"), "B")
+
+    # A trickle is not load. On this fibre 10 Mb/s is 2% of the line, so the old
+    # fixed floor let near-idle samples into the "loaded" side and compared
+    # jitter against jitter.
+    with tempfile.TemporaryDirectory() as tmp:
+        r = make_runner(tmp)
+        r.args.no_telegram = True
+        for _ in range(nw.IMPACT_MIN_PER_SIDE + 5):
+            r.check_impact(sample(host={"tx_bps": 100_000, "conntrack": {}},
+                                  wan={"1.1.1.1": {"up": True, "rtt_ms": 10.0,
+                                                   "loss": 0.0}}))
+        # 12 Mb/s alongside a 900 Mb/s peak: over the absolute floor, nowhere
+        # near half the peak, so it must not count as loaded.
+        r.check_impact(sample(host={"tx_bps": 900_000_000, "conntrack": {}},
+                              wan={"1.1.1.1": {"up": True, "rtt_ms": 10.0,
+                                               "loss": 0.0}}))
+        for _ in range(nw.IMPACT_MIN_PER_SIDE + 5):
+            r.check_impact(sample(host={"tx_bps": 12_000_000, "conntrack": {}},
+                                  wan={"1.1.1.1": {"up": True, "rtt_ms": 90.0,
+                                                   "loss": 0.0}}))
+        check("a trickle next to a 900 Mb/s peak is not 'loaded'",
+              [e for e in events(tmp) if e["type"] == "bad_neighbour"], [])
+
+
+def test_bloat_grade_is_the_only_judge():
+    """One grader, three call sites. They used to disagree.
+
+    `bufferbloat` graded added milliseconds; `impact` and the live monitor
+    graded ratios. That is how a measurement the active test calls grade A
+    became a push notification calling it harm.
+    """
+    print("bloat grading (thresholds are perception, not arithmetic):")
+    check("+3 ms on fibre is an A", nw.bloat_grade(1.1, 4.1)[0], "A")
+    check("19 ms added is still an A", nw.bloat_grade(1.0, 20.0)[0], "A")
+    check("20 ms added crosses into B", nw.bloat_grade(1.0, 21.0)[0], "B")
+    check("60 ms added is a D", nw.bloat_grade(10.0, 70.0)[0], "D")
+    check("200 ms added is an F", nw.bloat_grade(10.0, 210.0)[0], "F")
+    check("a huge ratio at tiny latencies is still an A",
+          nw.bloat_grade(0.5, 5.0)[0], "A")
+    check("no added latency on a slow link is an A",
+          nw.bloat_grade(200.0, 205.0)[0], "A")
+
+    # The monitor must never contradict the grader: whatever it alerts on, the
+    # grader must agree is worse than an A.
+    with tempfile.TemporaryDirectory() as tmp:
+        for idle_ms, loaded_ms in ((1.1, 4.1), (2.0, 12.0), (10.0, 90.0),
+                                   (5.0, 24.0), (1.0, 3.5), (50.0, 150.0)):
+            r = make_runner(tmp + f"/{idle_ms}-{loaded_ms}")
+            r.args.no_telegram = True
+            for _ in range(nw.IMPACT_MIN_PER_SIDE + 5):
+                r.check_impact(sample(host={"tx_bps": 100_000, "conntrack": {}},
+                                      wan={"1.1.1.1": {"up": True,
+                                                       "rtt_ms": idle_ms,
+                                                       "loss": 0.0}}))
+            for _ in range(nw.IMPACT_MIN_PER_SIDE + 5):
+                r.check_impact(sample(host={"tx_bps": 40_000_000,
+                                            "conntrack": {}},
+                                      wan={"1.1.1.1": {"up": True,
+                                                       "rtt_ms": loaded_ms,
+                                                       "loss": 0.0}}))
+            alerted = bool([e for e in events(tmp + f"/{idle_ms}-{loaded_ms}")
+                            if e["type"] == "bad_neighbour"])
+            graded_harmful = nw.bloat_grade(idle_ms, loaded_ms)[0] != "A"
+            check(f"monitor and grader agree at {idle_ms}->{loaded_ms} ms",
+                  alerted, graded_harmful and loaded_ms >= nw.IMPACT_RATIO * idle_ms)
+
+
 def test_public_ip_probe_validation():
     print("public IP probe (a bad provider must not look like a change):")
     import urllib.request as _u
@@ -500,6 +610,8 @@ def main():
               test_router_restart_detection, test_bootid_restart,
               test_subinterval_flap_detection, test_coverage,
               test_alert_coalescing, test_bad_neighbour,
+              test_bad_neighbour_needs_perceptible_harm,
+              test_bloat_grade_is_the_only_judge,
               test_public_ip_probe_validation, test_public_ip_change,
               test_undeliverable_alert, test_human_dur):
         t()

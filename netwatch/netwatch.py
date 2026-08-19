@@ -86,6 +86,31 @@ IMPACT_WINDOW = 720          # samples retained (~1h at 5s)
 IMPACT_MIN_PER_SIDE = 60     # need this many idle and this many loaded
 IMPACT_RATIO = 3.0           # loaded p95 over idle p95 that counts as harm
 IMPACT_COOLDOWN_S = 21600    # at most one such alert per 6h
+IMPACT_IDLE_BPS = 1_000_000  # below this we count as doing nothing
+IMPACT_BUSY_BPS = 10_000_000 # absolute floor for "we were actually uploading"
+IMPACT_BUSY_FRACTION = 0.5   # ...and at least this much of the window's peak
+
+# What a person actually perceives, in MILLISECONDS OF ADDED round-trip time.
+#
+# Absolute, never a ratio. On fibre, idle RTT to the first hop is ~1 ms, so
+# ordinary scheduler jitter is a 3-4x "increase" that no human can perceive:
+# 2026-08-18 this fired on 1.1 ms -> 4.1 ms at 48 Mb/s on a line that has since
+# carried 423 Mb/s, and told Louis he was ruining his father's household.
+# Ratios describe the measurement; milliseconds describe the harm.
+#
+# The grade thresholds live here, once, because three call sites used to answer
+# the same question differently — `bufferbloat` graded in milliseconds while the
+# live monitor and `impact` graded in ratios, so the monitor alerted on what the
+# grader called an A.
+BLOAT_GRADES = (
+    (20.0, "A", "Good neighbour. Safe to run on a shared line."),
+    (60.0, "B", "Noticeable. Calls and games will feel it a bit;"
+                " browsing is fine."),
+    (200.0, "D", "Bad neighbour. Video calls stutter and pages"
+                 " hang for everyone else while this uploads."),
+    (float("inf"), "F", "Severe. This will make the household's internet"
+                        " feel broken whenever the machine is busy."),
+)
 
 
 # ---------------------------------------------------------------- utilities
@@ -109,6 +134,21 @@ def human_dur(seconds: float) -> str:
         return f"{h}h{rem // 60:02d}m"
     d, h = divmod(h, 24)
     return f"{d}d{h:02d}h"
+
+
+def bloat_grade(idle_p95: float, loaded_p95: float) -> tuple[str, str]:
+    """Grade our own load by how much latency it adds, as a person feels it.
+
+    The single place that decides whether a measurement is harm. `bufferbloat`
+    (active test), `impact` (ledger analysis) and the live monitor must all
+    answer this the same way, or the machine alerts on numbers its own grader
+    calls fine.
+    """
+    added = (loaded_p95 or 0.0) - (idle_p95 or 0.0)
+    for limit, grade, verdict in BLOAT_GRADES:
+        if added < limit:
+            return grade, verdict
+    raise AssertionError("BLOAT_GRADES must end with an unbounded row")
 
 
 def append_jsonl(path: Path, obj: dict) -> None:
@@ -895,6 +935,11 @@ class Runner:
         Bufferbloat is invisible to the person causing it — their transfer runs
         at full speed. It is only visible to whoever else is trying to use the
         line. In a family home that person will not file a bug report.
+
+        Two conditions, deliberately: the load must multiply latency (ratio)
+        AND add enough of it for a human to notice (`bloat_grade`). Either one
+        alone lies — a ratio is meaningless when idle RTT is 1 ms, and a busy
+        line 20 ms slower than idle is normal on a link that starts at 200 ms.
         """
         host = s.get("host") or {}
         tx = host.get("tx_bps")
@@ -908,32 +953,49 @@ class Runner:
         if len(self.impact_window) > IMPACT_WINDOW:
             self.impact_window.pop(0)
 
-        idle = [r for bps, r in self.impact_window if bps < 1_000_000]
-        busy = [r for bps, r in self.impact_window if bps >= 10_000_000]
+        # "Busy" is relative to what this line has been seen to carry, not a
+        # fixed rate. 10 Mb/s is a saturated ADSL uplink and 2% of this fibre;
+        # the same constant cannot mean "loaded" on both.
+        peak = max(bps for bps, _ in self.impact_window)
+        busy_floor = max(IMPACT_BUSY_BPS, IMPACT_BUSY_FRACTION * peak)
+        idle = [r for bps, r in self.impact_window if bps < IMPACT_IDLE_BPS]
+        busy = [(bps, r) for bps, r in self.impact_window if bps >= busy_floor]
         if len(idle) < IMPACT_MIN_PER_SIDE or len(busy) < IMPACT_MIN_PER_SIDE:
             return
-        idle_p95, busy_p95 = _pct(idle, 95), _pct(busy, 95)
+        idle_p95, busy_p95 = _pct(idle, 95), _pct([r for _, r in busy], 95)
         if not idle_p95 or not busy_p95 or busy_p95 < IMPACT_RATIO * idle_p95:
+            return
+        grade, _verdict = bloat_grade(idle_p95, busy_p95)
+        if grade == "A":
             return
         t = time.monotonic()
         if self.last_impact_alert is not None and \
                 t - self.last_impact_alert < IMPACT_COOLDOWN_S:
             return
         self.last_impact_alert = t
+        busy_mbps = _pct([bps for bps, _ in busy], 95) / 1e6
         ev = {
             "type": "bad_neighbour",
             "ts": s["ts"],
             "idle_p95_ms": round(idle_p95, 1),
             "loaded_p95_ms": round(busy_p95, 1),
+            "added_ms": round(busy_p95 - idle_p95, 1),
             "ratio": round(busy_p95 / idle_p95, 1),
+            "busy_mbps": round(busy_mbps, 1),
+            "grade": grade,
         }
         self.emit_event(ev)
+        # The rate belongs in the message. Without it the reader cannot judge
+        # the finding, and "you are ruining the household" is not a claim to
+        # make unfalsifiable.
         self.notify(
             f"📶 This host is degrading the network for everyone else.\n"
-            f"Latency idle: {idle_p95:.0f} ms → under our upload: {busy_p95:.0f} ms "
-            f"({ev['ratio']}x)\n"
+            f"Latency idle: {idle_p95:.0f} ms → under our {busy_mbps:.0f} Mb/s "
+            f"upload: {busy_p95:.0f} ms (+{ev['added_ms']:.0f} ms, "
+            f"{ev['ratio']}x) — grade {grade}\n"
             f"Other people's calls and browsing will feel this.\n"
-            f"Fix: shape this host's egress, or move the transfer off-peak.",
+            f"Fix: netshape set {max(1, int(busy_mbps * 0.9))} to shape this"
+            f" host's egress, or move the transfer off-peak.",
             force=True,
         )
 
@@ -1500,18 +1562,22 @@ def cmd_impact(args) -> int:
         print("  Not enough busy samples yet.")
         return 0
     ratio = worst / idle[1]
+    grade, verdict = bloat_grade(idle[1], worst)
     print(f"  Idle p95 latency : {idle[1]:.1f} ms")
     print(f"  Busy p95 latency : {worst:.1f} ms   ({ratio:.1f}x idle)")
-    if ratio >= 4:
-        print("\n  ⚠ SEVERE bufferbloat. When this host is busy, everyone else on"
-              "\n  the network feels it — calls stutter, pages hang. Shape this"
-              "\n  host's egress before putting it in someone else's home.")
-    elif ratio >= 2:
-        print("\n  ⚠ Noticeable bufferbloat. Latency roughly doubles under load."
-              "\n  Tolerable for browsing, irritating for calls and gaming.")
-    else:
-        print("\n  ✓ This host's traffic is NOT meaningfully degrading latency."
+    print(f"  Added by our load: +{worst - idle[1]:.1f} ms")
+    # Graded in added milliseconds, by the same function the active test and the
+    # live monitor use. A ratio is left in the table above because it is useful
+    # context, but it is not what decides the verdict: on fibre, idle RTT is
+    # ~1 ms and jitter alone reads as "latency quadrupled".
+    print(f"\n  Grade {grade} — {verdict}")
+    if grade == "A":
+        print("  ✓ This host's traffic is NOT meaningfully degrading latency."
               "\n  Good neighbour: safe to run alongside other people's usage.")
+    else:
+        print("  ⚠ Shape this host's egress — `netshape set"
+              " <90% of the loaded rate>` — or move the"
+              "\n  transfer off-peak.")
     return 0
 
 
@@ -1666,17 +1732,7 @@ def cmd_bufferbloat(args) -> int:
         return 1
 
     # Thresholds in absolute added latency: what a person actually perceives.
-    if bloat < 20:
-        grade, verdict = "A", "Good neighbour. Safe to run on a shared line."
-    elif bloat < 60:
-        grade, verdict = "B", ("Noticeable. Calls and games will feel it a bit;"
-                               " browsing is fine.")
-    elif bloat < 200:
-        grade, verdict = "D", ("Bad neighbour. Video calls stutter and pages"
-                               " hang for everyone else while this uploads.")
-    else:
-        grade, verdict = "F", ("Severe. This will make the household's internet"
-                               " feel broken whenever the machine is busy.")
+    grade, verdict = bloat_grade(idle_p95, load_p95)
     print(f"Grade: {grade} — {verdict}")
 
     if grade == "A":

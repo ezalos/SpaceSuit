@@ -1,0 +1,356 @@
+#!/usr/bin/env python3
+# ABOUTME: Declarative egress shaper — one number in /etc/netshape.conf, CAKE on the wire.
+# ABOUTME: netshape status|apply|set <Mbit|off>. The systemd unit runs `apply` at boot.
+"""Make this host the managed bottleneck instead of the router's dumb buffer.
+
+A machine that saturates a household's uplink is a bad neighbour twice over:
+every other device's packets queue behind its transfer (bufferbloat), and a
+consumer gateway asked to sustain line rate for hours may simply fall over — an
+SFR NB6VAC did exactly that at 677 Mb/s on 2026-08-03, taking the whole house
+off the internet. Shaping our own egress *below* the real uplink moves the queue
+to where CAKE can manage it, and puts a ceiling on what we ask the router to do.
+
+The design goal is one number. `EGRESS_MBIT` in the config file is the whole
+policy: 0 means no shaping, anything else is a cap in Mbit/s. Everything
+else — which interface, how to reach the same state again after a reboot,
+whether the wire actually matches what was declared — is this tool's problem.
+
+Three properties matter more than features:
+
+  * **Idempotent.** `apply` converges; running it twice changes nothing. That is
+    what makes it safe as a boot unit and as a drift repair.
+  * **Declared state is the truth.** The config file is authoritative and the
+    live qdisc is checked against it (`status`, and GroundControl's
+    `monitoring/tools/shaping-drift` in the weekly sweep). A cap that silently
+    vanished on a NetworkManager restart is worse than no cap, because everyone
+    believes it is there.
+  * **It cannot strand the machine.** TheBeast is only ever reachable over the
+    network. A typo that shapes egress to 1 Kbit would end the session and the
+    ability to fix it, so caps below MIN_MBIT are refused, and any apply that
+    costs us the gateway is rolled back automatically.
+
+Deliberately NOT here (YAGNI, and each would need its own measurement):
+
+  * Ingress shaping. It needs an IFB device and only helps when *our* downloads
+    are the problem; the measured problem is upload.
+  * DSCP priority tiers. CAKE's default flow isolation already stops one bulk
+    transfer from starving an interactive flow, which is the whole benefit for a
+    single host. `OPTIONS=diffserv4` is there if a real measurement ever wants it.
+  * LAN exemption. The cap applies to everything leaving this NIC, including
+    traffic to the Pi on the same wire. Nothing here pushes LAN transfers that
+    care, and the alternative (HTB classes filtered on the gateway's MAC) is a
+    lot of machinery for a cost nobody has measured.
+"""
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+CONF = Path(os.environ.get("NETSHAPE_CONF", "/etc/netshape.conf"))
+
+DEFAULTS = {
+    "IFACE": "auto",
+    "EGRESS_MBIT": "0",
+    # besteffort: ignore DSCP and give every flow a fair share. Predictable, and
+    # nothing on this host marks its traffic. nat: look through masquerading so
+    # a docker container's flows are attributed to the container, not to all of
+    # them together as one host.
+    "OPTIONS": "besteffort nat",
+    # Reachability canary. Empty means "the default route's gateway".
+    "PROBE": "",
+}
+
+# Floor for a cap, in Mbit/s. Not a performance opinion — a lockout guard. Below
+# this an interactive SSH session over the shaped interface becomes unusable,
+# which on a machine nobody can walk up to means the mistake is unfixable.
+MIN_MBIT = 10
+
+OK, FINDING, BROKE = 0, 1, 2
+
+
+# ------------------------------------------------------------------ config
+
+def read_conf(path: Path = CONF) -> dict:
+    """Parse KEY=VALUE. Never executed as shell — it is read by root."""
+    conf = dict(DEFAULTS)
+    if not path.exists():
+        return conf
+    for raw in path.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if key in DEFAULTS:
+            conf[key] = value.strip().strip('"').strip("'")
+    return conf
+
+
+def write_conf(key: str, value: str, path: Path = CONF) -> None:
+    """Set one key, keeping every comment and every other line as it was.
+
+    The file is where a human reads the policy, so the reasoning written around
+    the number has to survive the tool editing it.
+    """
+    if key not in DEFAULTS:
+        raise ValueError(f"unknown setting {key!r}")
+    lines = path.read_text().splitlines() if path.exists() else []
+    out, replaced = [], False
+    for line in lines:
+        if re.match(rf"\s*{re.escape(key)}\s*=", line) and not \
+                line.strip().startswith("#"):
+            out.append(f"{key}={value}")
+            replaced = True
+        else:
+            out.append(line)
+    if not replaced:
+        out.append(f"{key}={value}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(out) + "\n")
+
+
+def declared_mbit(conf: dict) -> int:
+    raw = (conf.get("EGRESS_MBIT") or "0").strip().lower()
+    if raw in ("", "off", "none", "no", "unlimited"):
+        return 0
+    try:
+        mbit = int(float(raw))
+    except ValueError:
+        raise ValueError(f"EGRESS_MBIT={raw!r} is not a number of Mbit/s")
+    if mbit < 0:
+        raise ValueError(f"EGRESS_MBIT={raw!r} is negative")
+    return mbit
+
+
+# ------------------------------------------------------------------ the wire
+
+def run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if check and proc.returncode != 0:
+        raise RuntimeError(f"{' '.join(cmd)} -> {proc.returncode}: "
+                           f"{proc.stderr.strip() or proc.stdout.strip()}")
+    return proc
+
+
+def default_route() -> tuple[str | None, str | None]:
+    """(iface, gateway) of the default route, or (None, None)."""
+    proc = run(["ip", "-j", "route", "show", "default"], check=False)
+    if proc.returncode != 0:
+        return None, None
+    try:
+        routes = json.loads(proc.stdout or "[]")
+    except json.JSONDecodeError:
+        return None, None
+    for route in routes:
+        if route.get("dev"):
+            return route["dev"], route.get("gateway")
+    return None, None
+
+
+def resolve_iface(conf: dict) -> str:
+    iface = (conf.get("IFACE") or "auto").strip()
+    if iface and iface != "auto":
+        return iface
+    dev, _ = default_route()
+    if not dev:
+        raise RuntimeError("IFACE=auto but there is no default route to read it"
+                           " from. Name the interface in the config instead.")
+    return dev
+
+
+def live_root_qdisc(iface: str) -> dict:
+    """{'kind': 'cake', 'mbit': 380} for the root qdisc, mbit None if uncapped."""
+    proc = run(["tc", "-j", "qdisc", "show", "dev", iface])
+    qdiscs = json.loads(proc.stdout or "[]")
+    for q in qdiscs:
+        if not q.get("root"):
+            continue
+        # tc reports CAKE's bandwidth in BYTES per second.
+        raw = (q.get("options") or {}).get("bandwidth")
+        mbit = None
+        if isinstance(raw, (int, float)):
+            mbit = int(round(raw * 8 / 1e6))
+        return {"kind": q.get("kind"), "mbit": mbit}
+    return {"kind": None, "mbit": None}
+
+
+def gateway_reachable(gw: str | None) -> bool | None:
+    """True/False, or None when there is nothing to probe."""
+    if not gw:
+        return None
+    if not shutil.which("ping"):
+        return None
+    proc = run(["ping", "-n", "-c", "1", "-W", "2", gw], check=False)
+    return proc.returncode == 0
+
+
+def apply_cmd(iface: str, mbit: int, options: str) -> list[str]:
+    """The one tc invocation. Separate so tests can assert on it directly."""
+    if mbit <= 0:
+        return ["tc", "qdisc", "del", "dev", iface, "root"]
+    cmd = ["tc", "qdisc", "replace", "dev", iface, "root", "cake",
+           "bandwidth", f"{mbit}Mbit"]
+    cmd += [tok for tok in (options or "").split() if tok]
+    return cmd
+
+
+def in_sync(live: dict, mbit: int) -> bool:
+    if mbit <= 0:
+        # Off is "not shaped by us", whatever the kernel's default happens to
+        # be on this device type — fq_codel on a real NIC, noqueue on a dummy.
+        return live.get("kind") != "cake"
+    return live.get("kind") == "cake" and live.get("mbit") == mbit
+
+
+# ------------------------------------------------------------------ commands
+
+def cmd_status(args) -> int:
+    conf = read_conf()
+    mbit = declared_mbit(conf)
+    iface = resolve_iface(conf)
+    live = live_root_qdisc(iface)
+    synced = in_sync(live, mbit)
+    if args.json:
+        print(json.dumps({"iface": iface, "declared_mbit": mbit,
+                          "live_kind": live["kind"], "live_mbit": live["mbit"],
+                          "in_sync": synced, "conf": str(CONF)}))
+        return OK if synced else FINDING
+    declared = f"{mbit} Mbit/s" if mbit else "off (no cap)"
+    live_txt = live["kind"] or "none"
+    if live["mbit"]:
+        live_txt += f" at {live['mbit']} Mbit/s"
+    print(f"netshape — {iface}")
+    print(f"  config    {CONF}")
+    print(f"  declared  {declared}")
+    print(f"  live      {live_txt}")
+    if synced:
+        print("  ✓ the wire matches the config")
+        return OK
+    print("  ⚠ DRIFT — the wire does not match the config. `netshape apply`"
+          " fixes it.")
+    return FINDING
+
+
+def cmd_apply(args) -> int:
+    conf = read_conf()
+    mbit = declared_mbit(conf)
+    iface = resolve_iface(conf)
+    if 0 < mbit < MIN_MBIT and not args.force:
+        print(f"refusing to shape {iface} to {mbit} Mbit/s: below the"
+              f" {MIN_MBIT} Mbit/s floor, and this machine is only reachable"
+              f" over the network. --force if you mean it.", file=sys.stderr)
+        return FINDING
+
+    live = live_root_qdisc(iface)
+    if in_sync(live, mbit):
+        print(f"netshape: {iface} already "
+              f"{'at ' + str(mbit) + ' Mbit/s' if mbit else 'unshaped'}"
+              f" — nothing to do")
+        return OK
+
+    gw = conf.get("PROBE") or default_route()[1]
+    before = gateway_reachable(gw)
+
+    cmd = apply_cmd(iface, mbit, conf["OPTIONS"])
+    # `del root` on an already-unshaped device is an error we do not care about:
+    # the desired state is "no cake", and that is where we already are.
+    run(cmd, check=(mbit > 0))
+    print(f"netshape: {' '.join(cmd)}")
+
+    # Rollback canary. Only meaningful if the gateway answered beforehand —
+    # reverting a good change because the line was already down would be its own
+    # kind of damage.
+    if mbit > 0 and before is True and gateway_reachable(gw) is False:
+        run(["tc", "qdisc", "del", "dev", iface, "root"], check=False)
+        print(f"netshape: the gateway {gw} stopped answering under this cap —"
+              f" REVERTED to the unshaped default.", file=sys.stderr)
+        return FINDING
+
+    live = live_root_qdisc(iface)
+    if not in_sync(live, mbit):
+        print(f"netshape: applied but the wire reads {live} — expected"
+              f" {'cake at ' + str(mbit) + 'Mbit' if mbit else 'no cake'}",
+              file=sys.stderr)
+        return BROKE
+    return OK
+
+
+def cmd_clear(args) -> int:
+    """Unshape the wire, leaving the config alone.
+
+    This is what `systemctl stop netshape` must do. `off` is the other thing —
+    a policy change that persists — and a unit's ExecStop has no business
+    rewriting the policy it was asked to stop enforcing.
+    """
+    iface = resolve_iface(read_conf())
+    run(["tc", "qdisc", "del", "dev", iface, "root"], check=False)
+    live = live_root_qdisc(iface)
+    if live.get("kind") == "cake":
+        print(f"netshape: {iface} is still shaped ({live})", file=sys.stderr)
+        return BROKE
+    print(f"netshape: {iface} unshaped (config unchanged)")
+    return OK
+
+
+def cmd_set(args) -> int:
+    value = str(args.value).strip().lower()
+    if value in ("off", "0", "none"):
+        mbit = 0
+    else:
+        try:
+            mbit = int(float(value))
+        except ValueError:
+            print(f"netshape set: {args.value!r} is neither a number of Mbit/s"
+                  f" nor 'off'", file=sys.stderr)
+            return FINDING
+        if mbit < MIN_MBIT and not args.force:
+            print(f"netshape set: {mbit} Mbit/s is below the {MIN_MBIT} Mbit/s"
+                  f" lockout floor. --force if you mean it.", file=sys.stderr)
+            return FINDING
+    write_conf("EGRESS_MBIT", str(mbit))
+    print(f"netshape: EGRESS_MBIT={mbit} in {CONF}")
+    return cmd_apply(args)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(
+        description="Declarative egress shaping. One number, in "
+                    f"{CONF}.")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    st = sub.add_parser("status", help="does the wire match the config?")
+    st.add_argument("--json", action="store_true")
+    st.set_defaults(func=cmd_status)
+
+    ap_ = sub.add_parser("apply", help="make the wire match the config")
+    ap_.add_argument("--force", action="store_true",
+                     help=f"allow a cap below {MIN_MBIT} Mbit/s")
+    ap_.set_defaults(func=cmd_apply)
+
+    se = sub.add_parser("set", help="set the cap in Mbit/s (or 'off') and apply")
+    se.add_argument("value")
+    se.add_argument("--force", action="store_true")
+    se.set_defaults(func=cmd_set)
+
+    off = sub.add_parser("off", help="turn the policy off (writes the config)")
+    off.set_defaults(func=cmd_set, value="off", force=False)
+
+    cl = sub.add_parser("clear", help="unshape the wire now, keep the config"
+                                      " (this is what `systemctl stop` runs)")
+    cl.set_defaults(func=cmd_clear)
+
+    args = ap.parse_args(argv)
+    try:
+        return args.func(args)
+    except (RuntimeError, ValueError) as exc:
+        print(f"netshape: {exc}", file=sys.stderr)
+        return BROKE
+
+
+if __name__ == "__main__":
+    sys.exit(main())
