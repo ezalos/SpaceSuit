@@ -80,9 +80,14 @@ def set_config(dotfiles_dir="dotfiles"):
 def resolve_main_path(main: str) -> str:
     """Resolve a dotfile's `main` field to an absolute filesystem path.
 
-    Absolute `main` values (external-source registry entries -- e.g. a
+    `~/`-prefixed values expand against the CURRENT DEVICE's home
+    (config.home, not a hardcoded user): this is the portable form for
+    external-source entries shared across devices whose home roots differ
+    (/home/ezalos vs /Users/ezalos — the 2026-08-18 Mac dangling-symlink
+    incident). Absolute `main` values (external-source registry entries -- e.g. a
     dotfile whose real copy lives in a private repo outside ~/Setup) are
-    used as-is. Relative `main` values join with the current project root
+    used as-is, but are inherently single-OS; prefer `~/`. Relative `main`
+    values join with the current project root
     (~/Setup), matching the legacy convention where `main` is always
     `dotfiles/<something>`.
 
@@ -92,6 +97,8 @@ def resolve_main_path(main: str) -> str:
     string concatenation), and the external-source use case deserves a
     documented contract.
     """
+    if main == "~" or main.startswith("~/"):
+        return Path(config.home).joinpath(main[2:]).as_posix()
     if os.path.isabs(main):
         return main
     return Path(config.project_path).joinpath(main).as_posix()

@@ -1391,3 +1391,98 @@ def test_check_skills_integrity_flags_dangling(tmp_path):
     (skills / "bad").symlink_to(tmp_path / "gone")
     dangling = _check_skills_integrity(skills)
     assert [Path(p).name for p in dangling] == ["bad"]
+
+# --------------------- home-relative (~/) main paths --------------------- #
+# `main` values pointing outside the repo used to be absolute paths, which broke
+# the moment a second OS was involved (/home/ezalos vs /Users/ezalos — the
+# 2026-08-18 Mac dangling-symlink incident). The portable form is ~/-prefixed,
+# expanded against the current device's home at resolve time.
+
+@pytest.mark.run(order=54)
+def test_resolve_main_path_tilde_expands_to_device_home(setup_test_environment, monkeypatch, tmp_path):
+    from src_dotfiles.config import resolve_main_path
+    monkeypatch.setitem(config, 'home', tmp_path.as_posix())
+    assert resolve_main_path("~/42/Private/dotfiles/identity_file") == \
+        f"{tmp_path.as_posix()}/42/Private/dotfiles/identity_file"
+
+@pytest.mark.run(order=55)
+def test_resolve_main_path_absolute_and_relative_unchanged(setup_test_environment):
+    from src_dotfiles.config import resolve_main_path
+    assert resolve_main_path("/abs/elsewhere/file") == "/abs/elsewhere/file"
+    assert resolve_main_path("test_dotfiles/x") == \
+        Path(config.project_path).joinpath("test_dotfiles/x").as_posix()
+
+@pytest.mark.run(order=56)
+def test_deploy_with_tilde_main_targets_home(setup_test_environment, monkeypatch, tmp_path):
+    monkeypatch.setitem(config, 'home', tmp_path.as_posix())
+    source = tmp_path / "42" / "Private" / "dotfiles" / "identity_file"
+    source.parent.mkdir(parents=True)
+    source.write_text("identity content")
+    deploy_path = tmp_path / ".identity_file"
+
+    model = DotFileModel(
+        alias="tilde_main_test",
+        main="~/42/Private/dotfiles/identity_file",
+        deploy={config.identifier: DeployedDotFile(deploy_path=str(deploy_path), backups=[])},
+    )
+    DotFile(model, config.identifier).deploy()
+
+    assert deploy_path.is_symlink()
+    assert os.readlink(str(deploy_path)) == source.as_posix()
+    assert deploy_path.read_text() == "identity content"
+
+@pytest.mark.run(order=57)
+def test_deploy_with_tilde_variant_targets_home(setup_test_environment, monkeypatch, tmp_path):
+    monkeypatch.setitem(config, 'home', tmp_path.as_posix())
+    variant = tmp_path / "42" / "Private" / "dotfiles" / "identity_file.mydevice"
+    variant.parent.mkdir(parents=True)
+    variant.write_text("variant content")
+    deploy_path = tmp_path / ".identity_variant"
+
+    model = DotFileModel(
+        alias="tilde_variant_test",
+        main="~/42/Private/dotfiles/identity_file",
+        deploy={config.identifier: DeployedDotFile(deploy_path=str(deploy_path), backups=[])},
+        variants={config.identifier: "~/42/Private/dotfiles/identity_file.mydevice"},
+    )
+    DotFile(model, config.identifier).deploy()
+
+    assert deploy_path.is_symlink()
+    assert os.readlink(str(deploy_path)) == variant.as_posix()
+    assert deploy_path.read_text() == "variant content"
+
+@pytest.mark.run(order=58)
+def test_translate_leaves_tilde_main_unchanged(setup_test_environment):
+    # A ~ main is portable by construction; the dotfiles-dir segment swap that
+    # translation applies to repo-relative mains would corrupt it. The path here
+    # deliberately contains the original device's dotfiles_dir_path as a substring.
+    model = DotFileModel(
+        alias="tilde_translate_test",
+        main=f"~/42/Private/{config.dotfiles_dir}/identity_file",
+        deploy={config.identifier: DeployedDotFile(
+            deploy_path=f"{config.home}/.tilde_translate_test", backups=[])},
+    )
+    target_device = DevicesData(
+        identifier="target_device",
+        home_path="/home/target",
+        dotfiles_dir_path="test_dotfiles_target",
+    )
+    translated = DotFile(model, config.identifier).translate_to_device(config.device_data, target_device)
+    assert translated.data.main == f"~/42/Private/{config.dotfiles_dir}/identity_file"
+    assert translated.data.deploy["target_device"].deploy_path == "/home/target/.tilde_translate_test"
+
+@pytest.mark.run(order=59)
+def test_copy_as_main_resolves_tilde_main(setup_test_environment, monkeypatch, tmp_path):
+    monkeypatch.setitem(config, 'home', tmp_path.as_posix())
+    deployed = tmp_path / "deployed_file"
+    deployed.write_text("live content")
+
+    model = DotFileModel(
+        alias="tilde_copy_test",
+        main="~/copied_main",
+        deploy={config.identifier: DeployedDotFile(deploy_path=str(deployed), backups=[])},
+    )
+    DotFile(model, config.identifier).copy_as_main()
+
+    assert (tmp_path / "copied_main").exists()
+    assert (tmp_path / "copied_main").read_text() == "live content"

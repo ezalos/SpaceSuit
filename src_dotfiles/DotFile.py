@@ -230,15 +230,16 @@ class DotFile:
         Args:
             force (bool): Whether to overwrite existing main file
         """
-        logger.info(f"Copying {self.data.deploy[self.identifier].deploy_path} as main to {self.data.main}")
-        if os.path.exists(self.data.main):
+        main_abs = resolve_main_path(self.data.main)
+        logger.info(f"Copying {self.data.deploy[self.identifier].deploy_path} as main to {main_abs}")
+        if os.path.exists(main_abs):
             logger.warning(f'File {self.data.deploy[self.identifier].deploy_path} already exist in Setup')
             if not force:
                 return
 
         if os.path.exists(self.data.deploy[self.identifier].deploy_path):
-            shutil.copy(self.data.deploy[self.identifier].deploy_path, self.data.main)
-            logger.info(f'{self.data.main} has been added as main for {self.data.deploy[self.identifier].deploy_path}')
+            shutil.copy(self.data.deploy[self.identifier].deploy_path, main_abs)
+            logger.info(f'{main_abs} has been added as main for {self.data.deploy[self.identifier].deploy_path}')
 
     def translate_to_device(self, original_device: DevicesData, target_device: DevicesData) -> "DotFile":
         """Create a new DotFile instance with paths translated for the target device.
@@ -265,8 +266,11 @@ class DotFile:
         logger.debug(f"Translated path: {new_path}")
 
         # Translate main path (e.g., dotfiles/.zshrc -> test_dotfiles/.zshrc)
+        # ~/-prefixed mains are portable by construction (resolved against each
+        # device's home at deploy time); swapping their dotfiles-dir segment
+        # would corrupt an external-repo path, so they pass through unchanged.
         new_main = self.data.main
-        if original_device.dotfiles_dir_path in new_main:
+        if not new_main.startswith("~") and original_device.dotfiles_dir_path in new_main:
             new_main = new_main.replace(
                 original_device.dotfiles_dir_path,
                 target_device.dotfiles_dir_path,

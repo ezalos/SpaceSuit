@@ -619,7 +619,7 @@
         },
         "claude_md": {
             "alias": "claude_md",
-            "main": "/home/ezalos/42/GroundControl/dotfiles/claude_md",
+            "main": "~/42/GroundControl/dotfiles/claude_md",
             "deploy": {
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.claude/CLAUDE.md",
@@ -650,13 +650,13 @@
                 "Louiss.MacBook.Pro.3.local.ezalos"
             ],
             "variants": {
-                "TheBeast.ezalos": "/home/ezalos/42/GroundControl/dotfiles/claude_md.thebeast"
+                "TheBeast.ezalos": "~/42/GroundControl/dotfiles/claude_md.thebeast"
             },
             "fanout": false
         },
         "claude_settings": {
             "alias": "claude_settings",
-            "main": "/home/ezalos/42/GroundControl/dotfiles/claude_settings",
+            "main": "~/42/GroundControl/dotfiles/claude_settings",
             "deploy": {
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.claude/settings.json",
@@ -696,7 +696,7 @@
                 "Louiss.MacBook.Pro.3.local.ezalos"
             ],
             "variants": {
-                "TinyButMighty.ezalos": "/home/ezalos/42/GroundControl/dotfiles/claude_settings.tbm"
+                "TinyButMighty.ezalos": "~/42/GroundControl/dotfiles/claude_settings.tbm"
             },
             "fanout": false
         },
@@ -732,7 +732,7 @@
         },
         "nginx.conf": {
             "alias": "nginx.conf",
-            "main": "/home/ezalos/42/GroundControl/hosts/configs/nginx.conf",
+            "main": "~/42/GroundControl/hosts/configs/nginx.conf",
             "deploy": {
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/etc/nginx/nginx.conf",
@@ -781,6 +781,10 @@
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.config/git/template/hooks/pre-commit",
                     "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.config/git/template/hooks/pre-commit",
+                    "backups": []
                 }
             },
             "only_devices": [
@@ -807,6 +811,10 @@
                 },
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.config/git-identity/scrub.py",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.config/git-identity/scrub.py",
                     "backups": []
                 }
             },
@@ -835,6 +843,10 @@
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.config/git-identity/test_scrub.py",
                     "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.config/git-identity/test_scrub.py",
+                    "backups": []
                 }
             },
             "only_devices": [
@@ -856,6 +868,10 @@
                 },
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.claude/skills",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.claude/skills",
                     "backups": []
                 }
             },
@@ -879,6 +895,10 @@
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.config/glow",
                     "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.config/glow",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -887,7 +907,7 @@
         },
         "serve-slides.service": {
             "alias": "serve-slides.service",
-            "main": "/home/ezalos/42/GroundControl/hosts/configs/serve-slides.service",
+            "main": "~/42/GroundControl/hosts/configs/serve-slides.service",
             "deploy": {
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.config/systemd/user/serve-slides.service",
@@ -916,6 +936,10 @@
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.config/direnv/direnvrc",
                     "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.config/direnv/direnvrc",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -937,6 +961,10 @@
                 },
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.local/bin/gh",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.local/bin/gh",
                     "backups": []
                 }
             },
@@ -964,6 +992,10 @@
                 },
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.config/git-identity/gh-contexts-bootstrap.sh",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.config/git-identity/gh-contexts-bootstrap.sh",
                     "backups": []
                 }
             },
@@ -998,7 +1030,7 @@
         },
         "agents-dashboard.service": {
             "alias": "agents-dashboard.service",
-            "main": "/home/ezalos/42/GroundControl/hosts/configs/agents-dashboard.service",
+            "main": "~/42/GroundControl/hosts/configs/agents-dashboard.service",
             "deploy": {
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.config/systemd/user/agents-dashboard.service",
@@ -1058,7 +1090,7 @@
         },
         "lock-session-on-login.service": {
             "alias": "lock-session-on-login.service",
-            "main": "/home/ezalos/42/GroundControl/hosts/configs/lock-session-on-login.service",
+            "main": "~/42/GroundControl/hosts/configs/lock-session-on-login.service",
             "deploy": {
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.config/systemd/user/lock-session-on-login.service",
@@ -1121,6 +1153,10 @@
                 },
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.claude/hooks/block-outbound-comms.sh",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.claude/hooks/block-outbound-comms.sh",
                     "backups": []
                 }
             },
