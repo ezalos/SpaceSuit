@@ -1,6 +1,6 @@
 ---
 name: open-local-port
-description: Use when Louis asks to open an external port on his home network — e.g. "open port 9000", "expose service X to the internet", "add a NAT rule", "forward port", "let people reach my dev server". Wraps the SFR Box NAT manager and (when HTTP-shaped) the TinyButMighty nginx reverse proxy.
+description: Use when Louis asks to open an external port on his home network — e.g. "open port 9000", "expose service X to the internet", "add a NAT rule", "forward port", "let people reach my dev server". Wraps the Livebox NAT adapter and (when HTTP-shaped) the TinyButMighty nginx reverse proxy.
 allowed-tools: Read, Edit, Write, Bash, Grep, AskUserQuestion
 ---
 
@@ -20,7 +20,7 @@ This skill follows the universal observability baseline (see `docs/plans/2026-04
 |---|---|---|
 | CRITICAL | `open-port add` fails (router unreachable, auth, etc.) | `open-local-port: nat add failed for <name>: <reason>` |
 | CRITICAL | `nginx -t` fails after writing new config | `open-local-port: nginx config invalid for <name>: <stderr-tail>` |
-| WARNING | `SFR_BOX_PASSWORD` missing from env at start | `open-local-port: SFR_BOX_PASSWORD not in env; asked Louis to source ~/.secrets.sh` |
+| WARNING | router password could not be resolved from Proton Pass | `open-local-port: livebox password unresolved; asked Louis` |
 | WARNING | Requested ext_port or name already in NAT rules | `open-local-port: collision: <port-or-name> already taken by rule <id>` |
 | WARNING | Requested reserved port 80/443 without explicit confirmation | `open-local-port: reserved port <port> requested; confirmed with Louis` |
 | WARNING | Asked to re-enable disabled rule 1 (ssh ext 22) | `open-local-port: re-enable of disabled ssh ext 22 requested; confirmed with Louis` |
@@ -41,16 +41,18 @@ claude-log open-local-port CRITICAL "open-local-port: nat add failed for comfyui
 
 # open-local-port
 
-Opens an external port on Louis's SFR Box and (when relevant) wires up the nginx reverse proxy on TinyButMighty so Internet traffic reaches a service on the LAN.
+Opens an external port on Louis's home gateway (a **Livebox**) and (when relevant) wires up the nginx reverse proxy on TinyButMighty so Internet traffic reaches a service on the LAN.
+
+> **Retargeted 2026-08-19.** The site's gateway changed with the 2026-08-06 move: it was an SFR NB6VAC, it is now a Livebox. The old `open-port` CLI and `nat_manager/nat.py` speak the NB6VAC API only and are retired — `open-port` now refuses with a pointer. Use `network/routers/livebox`.
 
 ## Network architecture (memorize)
 
 ```
-Internet ──► SFR Box (<gateway>) ──► TinyButMighty (<proxy-host>, nginx) ──► TheBeast (<workstation>, services)
+Internet ──► Livebox (<gateway>) ──► TinyButMighty (<proxy-host>, nginx) ──► TheBeast (<workstation>, services)
                                   └──► TheBeast (<workstation>) directly  (e.g. SSH on ext <ext-ssh-port>)
 ```
 
-Public IP: redacted (see `~/42/GroundControl/network/routers/nat_manager/README.md`). TinyButMighty runs nginx on port 80 already (slides). Most HTTP services follow the proxied path; SSH-to-TheBeast goes direct on port <ext-ssh-port>.
+Public IP: never written down — read it from `~/.local/state/netwatch/public_ip.json`. Site truth (gateway model, LAN, live rules) lives in GroundControl `network/sites/`. TinyButMighty runs nginx on port 80 already (slides). Most HTTP services follow the proxied path; SSH-to-TheBeast goes direct on port <ext-ssh-port>.
 
 ## Inputs to gather
 
@@ -60,7 +62,7 @@ Use AskUserQuestion if any are missing:
 |---|---|
 | `name` | rule name, **≤20 chars**, e.g. `comfyui`, `share_https` |
 | `ext_port` | external port (1-65535) |
-| `dst` | `74` (TinyButMighty) or `96` (TheBeast). Last octet only also accepted by `open-port`. |
+| `dst` | Full LAN address of the target host. The Livebox CLI needs the whole address, not a last octet. |
 | `dst_port` | usually same as `ext_port`; on `74` it's the nginx listen port |
 | `proto` | `tcp` (default), `udp`, or `both` |
 | `service_kind` | `tcp-stream` (raw passthrough) or `http` (so we add nginx) |
@@ -70,7 +72,7 @@ Use AskUserQuestion if any are missing:
 ### 1. List current rules first (collision check)
 
 ```bash
-open-port list
+~/42/GroundControl/network/routers/livebox list
 ```
 
 If the chosen `ext_port` or `name` is already taken, surface that to Louis before doing anything else.
@@ -78,12 +80,19 @@ If the chosen `ext_port` or `name` is already taken, surface that to Louis befor
 ### 2. Add the NAT rule
 
 ```bash
-open-port add <name> <ext_port> <dst> <dst_port> --proto <proto>
+~/42/GroundControl/network/routers/livebox add <name> <ext_port> <target_ip> [<dst_port>] --protocol <tcp|udp>
 ```
 
-Requires `SFR_BOX_PASSWORD` (and optionally `SFR_BOX_LOGIN`) in env — sourced from `~/.secrets.sh` by `.zshrc`. If unset, ask Louis to source it; do not prompt for the password directly.
+Note the differences from the retired `open-port`: `--protocol` not `--proto`,
+and `target_ip` is a **full LAN address**, not a last octet.
 
-Re-run `open-port list` to confirm.
+The wrapper fetches the router password from Proton Pass per invocation and
+hands it to the child through the environment only — never argv, never disk.
+There is no `SFR_BOX_PASSWORD` and no `~/.secrets.sh` step any more. If it
+cannot resolve the secret, surface that to Louis; never prompt for the
+password directly.
+
+Re-run `livebox list` to confirm.
 
 ### 3. (HTTP only) Add nginx server block on TinyButMighty
 

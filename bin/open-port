@@ -1,6 +1,29 @@
 #!/usr/bin/env bash
-# ABOUTME: Front door for the SFR Box NAT manager; cwd-agnostic via `secrets run`.
-# ABOUTME: Wraps ~/42/GroundControl/network/routers/nat_manager/nat.py under uv; no direnv, no cd required.
+# ABOUTME: Retired front door for the old SFR Box NAT manager; the site now runs a Livebox.
+# ABOUTME: Refuses rather than retargets — the two CLIs take different argument orders.
+#
+# The workstation moved 2026-08-06 and the SFR NB6VAC stayed behind. This
+# wrapper drove nat_manager/nat.py, which speaks the NB6VAC's challenge-response
+# API and cannot talk to a Livebox at all.
+#
+# It refuses instead of silently forwarding to the new tool on purpose: the
+# argument orders differ (this took `<name> <ext> <last-octet> <int>`, the
+# Livebox CLI takes `<name> <external> <target_ip> [internal]`), so a silent
+# retarget would quietly create WRONG rules rather than fail.
 set -euo pipefail
-cd "$HOME/42/GroundControl/network/routers/nat_manager"
-exec secrets run -- uv run python nat.py "$@"
+
+cat >&2 <<'MSG'
+open-port is retired: this site's gateway is a Livebox, not an SFR Box.
+
+Use the current adapter instead:
+
+  ~/42/GroundControl/network/routers/livebox list
+  ~/42/GroundControl/network/routers/livebox add <name> <external> <target_ip> [internal] [--protocol tcp|udp]
+  ~/42/GroundControl/network/routers/livebox delete <name>
+
+It fetches the router password from Proton Pass per invocation; there is no
+SFR_BOX_PASSWORD and no ~/.secrets.sh step any more.
+
+Site truth (gateway, LAN, live rules): GroundControl network/sites/.
+MSG
+exit 2
