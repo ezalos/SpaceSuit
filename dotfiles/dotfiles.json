@@ -18,10 +18,6 @@
                         }
                     ]
                 },
-                "louiss.macbook.pro.3.home.ezalos": {
-                    "deploy_path": "/Users/ezalos/.config/neofetch/config.conf",
-                    "backups": []
-                },
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.config/neofetch/config.conf",
                     "backups": []
@@ -65,10 +61,6 @@
                 },
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.zshrc",
-                    "backups": []
-                },
-                "louiss.macbook.pro.3.home.ezalos": {
-                    "deploy_path": "/Users/ezalos/.zshrc",
                     "backups": []
                 },
                 "TinyButMighty.ezalos": {
@@ -119,10 +111,6 @@
                 },
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.vimrc",
-                    "backups": []
-                },
-                "louiss.macbook.pro.3.home.ezalos": {
-                    "deploy_path": "/Users/ezalos/.vimrc",
                     "backups": []
                 },
                 "TinyButMighty.ezalos": {
@@ -246,10 +234,6 @@
                     "deploy_path": "/home/ezalos/.bashrc",
                     "backups": []
                 },
-                "louiss.macbook.pro.3.home.ezalos": {
-                    "deploy_path": "/Users/ezalos/.bashrc",
-                    "backups": []
-                },
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.bashrc",
                     "backups": [
@@ -305,10 +289,6 @@
                         }
                     ]
                 },
-                "louiss.macbook.pro.3.home.ezalos": {
-                    "deploy_path": "/Users/ezalos/.config/terminator/config",
-                    "backups": []
-                },
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.config/terminator/config",
                     "backups": []
@@ -352,10 +332,6 @@
                 },
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.p10k.zsh",
-                    "backups": []
-                },
-                "louiss.macbook.pro.3.home.ezalos": {
-                    "deploy_path": "/Users/ezalos/.p10k.zsh",
                     "backups": []
                 },
                 "TinyButMighty.ezalos": {
@@ -403,10 +379,6 @@
                     "deploy_path": "/home/ezalos/.gdbinit",
                     "backups": []
                 },
-                "louiss.macbook.pro.3.home.ezalos": {
-                    "deploy_path": "/Users/ezalos/.gdbinit",
-                    "backups": []
-                },
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.gdbinit",
                     "backups": []
@@ -450,10 +422,6 @@
                 },
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.jupyter/jupyter_notebook_config.py",
-                    "backups": []
-                },
-                "louiss.macbook.pro.3.home.ezalos": {
-                    "deploy_path": "/Users/ezalos/.jupyter/jupyter_notebook_config.py",
                     "backups": []
                 },
                 "TinyButMighty.ezalos": {
@@ -501,10 +469,6 @@
                     "deploy_path": "/home/ezalos/.warp/launch_configurations/launch_config.yaml",
                     "backups": []
                 },
-                "louiss.macbook.pro.3.home.ezalos": {
-                    "deploy_path": "/Users/ezalos/.warp/launch_configurations/launch_config.yaml",
-                    "backups": []
-                },
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.warp/launch_configurations/launch_config.yaml",
                     "backups": []
@@ -548,10 +512,6 @@
                 },
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.tmux.conf",
-                    "backups": []
-                },
-                "louiss.macbook.pro.3.home.ezalos": {
-                    "deploy_path": "/Users/ezalos/.tmux.conf",
                     "backups": []
                 },
                 "TinyButMighty.ezalos": {
@@ -1212,29 +1172,14 @@
             "home_path": "/home/ezalos",
             "dotfiles_dir_path": "dotfiles"
         },
-        "Louiss.MBP.ezalos": {
-            "identifier": "Louiss.MBP.ezalos",
-            "home_path": "/Users/ezalos",
-            "dotfiles_dir_path": "dotfiles"
-        },
         "TheBeast.ezalos": {
             "identifier": "TheBeast.ezalos",
             "home_path": "/home/ezalos",
             "dotfiles_dir_path": "dotfiles"
         },
-        "Louiss.MBP.lan.ezalos": {
-            "identifier": "Louiss.MBP.lan.ezalos",
-            "home_path": "/Users/ezalos",
-            "dotfiles_dir_path": "dotfiles"
-        },
         "MacBook.Pro.de.Louis.local.louis": {
             "identifier": "MacBook.Pro.de.Louis.local.louis",
             "home_path": "/Users/louis",
-            "dotfiles_dir_path": "dotfiles"
-        },
-        "louiss.macbook.pro.3.home.ezalos": {
-            "identifier": "louiss.macbook.pro.3.home.ezalos",
-            "home_path": "/Users/ezalos",
             "dotfiles_dir_path": "dotfiles"
         },
         "TinyButMighty.ezalos": {
