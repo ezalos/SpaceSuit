@@ -696,7 +696,8 @@
                 "Louiss.MacBook.Pro.3.local.ezalos"
             ],
             "variants": {
-                "TinyButMighty.ezalos": "~/42/GroundControl/dotfiles/claude_settings.tbm"
+                "TinyButMighty.ezalos": "~/42/GroundControl/dotfiles/claude_settings.tbm",
+                "Louiss.MacBook.Pro.3.local.ezalos": "~/42/GroundControl/dotfiles/claude_settings.mac"
             },
             "fanout": false
         },
