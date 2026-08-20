@@ -610,7 +610,8 @@
                 "Louiss.MacBook.Pro.3.local.ezalos"
             ],
             "variants": {
-                "TheBeast.ezalos": "~/42/GroundControl/dotfiles/claude_md.thebeast"
+                "TheBeast.ezalos": "~/42/GroundControl/dotfiles/claude_md.thebeast",
+                "Louiss.MacBook.Pro.3.local.ezalos": "~/42/GroundControl/dotfiles/claude_md.mac"
             },
             "fanout": false
         },
