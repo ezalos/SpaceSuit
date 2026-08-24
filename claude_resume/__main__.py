@@ -16,6 +16,22 @@ from .snapshots import list_snapshots, read_panes
 from .titles import TitleResolver
 
 
+# Claude Code >= 2.1 interposes a "resume from summary or full session?" dialog
+# when a resumed session looks expensive (age >= CLAUDE_CODE_RESUME_THRESHOLD_MINUTES,
+# default 70, AND estimated tokens >= CLAUDE_CODE_RESUME_TOKEN_THRESHOLD, default
+# 100k — read from the environment in the 2.1.241 bundle). The dialog is purely an
+# offer to compact: "continue" (full session as-is) is a no-op, so raising both
+# thresholds out of reach IS auto-selecting the full restore — with no TUI
+# keystroke-driving to break on updates. If a future Claude Code renames these
+# variables, the unknown assignments are inert and the dialog simply shows again
+# in the pane: it degrades to today's behaviour, never to a wrong keypress.
+#
+# Shell prefix assignments, NOT `env VAR=x claude`: `env` resolves claude from
+# PATH, silently bypassing a user's `claude()` wrapper function and its flags.
+RESUME_FULL_SESSION_ENV = ("CLAUDE_CODE_RESUME_THRESHOLD_MINUTES=999999999 "
+                           "CLAUDE_CODE_RESUME_TOKEN_THRESHOLD=999999999 ")
+
+
 def resume_commands(assignment: dict, projects_dir: Path) -> list:
     """The exact command each pane should be sent, skipping panes with no choice.
 
@@ -29,9 +45,9 @@ def resume_commands(assignment: dict, projects_dir: Path) -> list:
         if not sid:
             continue
         if transcript_path(pane.cwd, sid, projects_dir) is None:
-            out.append((pane, "claude --resume"))
+            out.append((pane, RESUME_FULL_SESSION_ENV + "claude --resume"))
         else:
-            out.append((pane, f"claude --resume '{sid}'"))
+            out.append((pane, RESUME_FULL_SESSION_ENV + f"claude --resume '{sid}'"))
     return out
 
 

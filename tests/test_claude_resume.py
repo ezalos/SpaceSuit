@@ -513,12 +513,33 @@ def test_render_handles_zero_panes():
 def test_resume_command_uses_the_chosen_id(tmp_path):
     from claude_resume.__main__ import resume_commands
     make_transcripts(tmp_path, "/home/e/Alfred", [("c1", 1000)])
-    assert dict(resume_commands({P0: "c1"}, tmp_path))[P0] == "claude --resume 'c1'"
+    assert dict(resume_commands({P0: "c1"}, tmp_path))[P0].endswith(
+        "claude --resume 'c1'")
 
 
 def test_resume_command_degrades_to_picker_when_file_is_gone(tmp_path):
     from claude_resume.__main__ import resume_commands
-    assert dict(resume_commands({P0: "ghost"}, tmp_path))[P0] == "claude --resume"
+    assert dict(resume_commands({P0: "ghost"}, tmp_path))[P0].endswith(
+        "claude --resume")
+
+
+def test_resume_command_suppresses_the_resume_from_summary_dialog(tmp_path):
+    """Every resume must carry the threshold overrides, as a shell prefix.
+
+    The overrides keep Claude Code's "resume from summary or full session"
+    dialog from firing, so the pane resumes the full session as-is. They must
+    be prefix assignments (VAR=x claude ...), not `env VAR=x claude ...`:
+    `env` resolves claude from PATH and would silently bypass a user's
+    `claude()` shell wrapper function.
+    """
+    from claude_resume.__main__ import resume_commands
+    make_transcripts(tmp_path, "/home/e/Alfred", [("c1", 1000)])
+    for chosen in ({P0: "c1"}, {P0: "ghost"}):
+        cmd = dict(resume_commands(chosen, tmp_path))[P0]
+        assert not cmd.startswith("env ")
+        prefix = cmd.split("claude --resume")[0]
+        assert "CLAUDE_CODE_RESUME_THRESHOLD_MINUTES=" in prefix
+        assert "CLAUDE_CODE_RESUME_TOKEN_THRESHOLD=" in prefix
 
 
 def test_resume_command_skips_panes_with_no_choice(tmp_path):
