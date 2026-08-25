@@ -46,6 +46,7 @@ This skill follows the universal observability baseline (see
 | CRITICAL | Phase 5 loose end that causes harm if forgotten            | `wrap-up: loose-end CRITICAL: <what>; risk=<what breaks>`  |
 | WARNING  | Phase 5 loose end (ordinary)                               | `wrap-up: loose-end: <what>; captured=<todo\|louis\|none>` |
 | INFO     | Phase 5 found nothing outstanding                          | `wrap-up: no loose ends`                                   |
+| INFO     | Phase 5 fixed an item on the spot instead of capturing it  | `wrap-up: loose-end resolved: <what>; proof=<what was run>` |
 
 Log via the `claude-log` helper script — concrete invocations look like:
 
@@ -369,17 +370,52 @@ actually get forgotten:
 8. **Files left dangling** — uncommitted work that belongs to this session,
    scratchpad files meant to land somewhere, half-renamed paths.
 
-### Dedup, then capture
+### Resolve what is safe and certain, THEN capture the rest
 
-A loose end that is system/repo work should already be in `state/todo.md` from
-Phase 1f. If it is not, **add it there now** (same format) rather than only
-naming it in the report — the report scrolls away, the todo file does not. Mark
-each item in the report with where it landed: `captured=todo`, `captured=louis`
-(it needs his decision or his hands), or `captured=none` (deliberately just
-noted, say why).
+Capturing is the fallback, not the goal. Work each item against this bar first:
+
+**FIX IT NOW when ALL four hold:**
+- **Unambiguous** — exactly one obviously-correct outcome; you are not guessing
+  what Louis wants.
+- **Confined** — files and repos already in play. No sudo, no credential, no
+  external service, nothing that leaves the machine.
+- **Provable now** — you can run something and read a result that shows it is
+  done.
+- **Reversible** — it is a git commit that can be reverted.
+
+Typical yes: patching a doc this session proved wrong, recording a finding that
+exists only in chat, ticking a stale checkbox, fixing a cross-link, re-running a
+probe to confirm a claim, committing a file this session left dangling.
+
+**NEVER auto-fix**, regardless of how obvious it looks:
+- anything needing root/sudo, credentials, vault writes, or a provider console
+- anything that leaves the machine — email, messages, posts, comments. Louis
+  hits send, always
+- another session's uncommitted files (see `concurrent-agents-in-groundcontrol`)
+- anything whose correctness depends on what Louis intended
+- anything you cannot prove finished before the report is written
+
+Do the FIX-IT-NOW items, with proof, and list them under **Resolved** in the
+report — not under loose ends, because they are no longer loose.
+
+**Then capture what is left.** A remaining loose end that is system/repo work
+should already be in `state/todo.md` from Phase 1f. If it is not, **add it there
+now** (same format) rather than only naming it in the report — the report
+scrolls away, the todo file does not. Mark each item with where it landed:
+`captured=todo`, `captured=louis` (needs his decision or his hands), or
+`captured=none` (deliberately just noted — say why, and prefer todo over none;
+an item recorded nowhere is an item lost).
+
+**`captured=` says where it was WRITTEN DOWN, never that it was done.** Say so
+plainly in the report so the distinction is not mistaken for progress.
+
+If the list of remaining items is long or Louis wants them cleared rather than
+recorded, point him at **`/loose-ends`** — the companion skill that enumerates
+across the session, `state/todo.md` and live drift probes, validates the list
+with him, and then resolves as much as it can on the spot.
 
 Do not restate items already fully handled by Phases 1–4. This phase lists what
-is OPEN, not what was done.
+is OPEN, plus what it just closed.
 
 ### The CRITICAL tag
 
@@ -451,6 +487,10 @@ No action needed:
 2. <description> — <reason>
 
 ## Phase 5 — Loose ends
+Resolved on the spot (<n>):
+- <what> — proof: <what was run> · <commit>
+
+Still open — `captured=` is where it was WRITTEN DOWN, not that it is done:
 - CRITICAL: <what> — <what breaks if forgotten> · next: <action> (captured=<todo|louis|none>)
 - <what> — next: <action> (captured=<todo|louis|none>)
 (or "nothing outstanding")
