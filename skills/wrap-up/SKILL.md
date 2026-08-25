@@ -1,15 +1,18 @@
 ---
 name: wrap-up
-description: Use when Louis says "wrap up", "close session", "end session", "wrap things up", "close out this task", or invokes /wrap-up. Runs end-of-session checklist for shipping, memory, and self-improvement. Auto-applies routine actions, gates ambiguous memory placements for review, and produces one consolidated report.
+description: Use when Louis says "wrap up", "close session", "end session", "wrap things up", "close out this task", or invokes /wrap-up. Runs end-of-session checklist for shipping, memory, self-improvement, and a final loose-ends sweep for anything started, promised or handed over but not finished. Auto-applies routine actions, gates ambiguous memory placements for review, and produces one consolidated report.
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Skill, AskUserQuestion, TaskCreate, TaskUpdate, TaskList
 ---
 
 # Session Wrap-Up
 
-Run four phases in order. Each is conversational and inline — no separate
+Run five phases in order. Each is conversational and inline — no separate
 documents. All phases auto-apply (with the confidence gate in Phase 2).
 Present one consolidated report at the end.
+
+Phase 5 runs LAST on purpose: it sweeps the session for anything left hanging,
+including anything the earlier phases themselves failed to land.
 
 ## Observability
 
@@ -40,6 +43,9 @@ This skill follows the universal observability baseline (see
 | WARNING  | Phase 3 doc-debt (a doc confidently asserts something false/stale) | `wrap-up: doc-debt: <doc> asserts <falsehood>; found-by=<wrong-conclusion\|footgun\|dead-path>` |
 | INFO     | Nothing notable to report (Phase 3)                        | `wrap-up: no friction/reorientation this session`         |
 | INFO     | Nothing to improve                                         | `wrap-up: no self-improvement findings`                   |
+| CRITICAL | Phase 5 loose end that causes harm if forgotten            | `wrap-up: loose-end CRITICAL: <what>; risk=<what breaks>`  |
+| WARNING  | Phase 5 loose end (ordinary)                               | `wrap-up: loose-end: <what>; captured=<todo\|louis\|none>` |
+| INFO     | Phase 5 found nothing outstanding                          | `wrap-up: no loose ends`                                   |
 
 Log via the `claude-log` helper script — concrete invocations look like:
 
@@ -327,6 +333,86 @@ No action needed:
    <reason — already documented / out of scope / etc.>
 ```
 
+## Phase 5: Loose Ends
+
+The safety net. Phases 1–4 each capture one KIND of leftover; this phase asks
+the different question: **what did this session start, promise, discover or hand
+over that is not finished, and is not already captured anywhere?**
+
+Run it last, so it also catches the wrap-up's own misses — a commit a hook
+blocked, a deploy that exited non-zero, a todo that failed to push, a memory
+placement that was skipped. If an earlier phase reported a failure, it is a
+loose end until it is fixed or explicitly handed to Louis.
+
+### Sweep the whole session for these
+
+Re-read the session with each of these in mind. They are the shapes that
+actually get forgotten:
+
+1. **Commands handed to Louis, never confirmed run.** Any `sudo`/deploy/root
+   line given to him — did output come back proving it ran? "I gave him the
+   line" is not "it ran". Re-check the live state (`cmp` the installed copy,
+   re-run the drift probe) rather than assuming.
+2. **Claims made but never verified.** Anywhere you said "should work", "expect
+   exit 0", "that will fix it" and never saw the result. Verify now or list it.
+3. **Deferred offers.** Every "say the word and I'll…", "want me to…?", "left
+   that alone" — an offer Louis never answered is a loose end, not a closed
+   thread.
+4. **Findings surfaced but not acted on**, including other workstreams' (a
+   failing unit in another repo, a stale doc out of scope). Out-of-scope is a
+   reason not to FIX it, never a reason not to RECORD it.
+5. **Questions asked of Louis that he never answered.**
+6. **Work explicitly scoped out**, with the reason — he decides whether the
+   scope-down stands.
+7. **Tests or tools left failing, skipped, or unrun**; anything whose proof was
+   deferred.
+8. **Files left dangling** — uncommitted work that belongs to this session,
+   scratchpad files meant to land somewhere, half-renamed paths.
+
+### Dedup, then capture
+
+A loose end that is system/repo work should already be in `state/todo.md` from
+Phase 1f. If it is not, **add it there now** (same format) rather than only
+naming it in the report — the report scrolls away, the todo file does not. Mark
+each item in the report with where it landed: `captured=todo`, `captured=louis`
+(it needs his decision or his hands), or `captured=none` (deliberately just
+noted, say why).
+
+Do not restate items already fully handled by Phases 1–4. This phase lists what
+is OPEN, not what was done.
+
+### The CRITICAL tag
+
+Prefix an item with `CRITICAL:` when forgetting it can cause harm rather than
+just delay. Use it sparingly — it is worthless if it decorates everything.
+
+Warrants CRITICAL:
+- A security, alerting or backup fix that exists in the repo but is **not
+  deployed** — the protection everyone believes is live, is not.
+- A service, guard, or monitor left stopped, failing, or disabled.
+- Anything touching credentials, secrets, or data integrity left half-done.
+- A known-wrong doc or alert still in place that will mislead the next session.
+- Something that blocks another workstream or a scheduled job.
+
+Does NOT warrant CRITICAL: ordinary unfinished work, style cleanups, nice-to-
+haves, anything already captured and scheduled.
+
+Log one line per item:
+
+```
+claude-log wrap-up CRITICAL "wrap-up: loose-end CRITICAL: <what>; risk=<what breaks>"
+claude-log wrap-up WARNING  "wrap-up: loose-end: <what>; captured=<todo|louis|none>"
+```
+
+If the sweep genuinely finds nothing open, say so plainly and log:
+
+```
+claude-log wrap-up INFO "wrap-up: no loose ends"
+```
+
+"Nothing outstanding" is a real and good answer — but only after actually
+walking the eight shapes above. Do not default to it.
+
 ## Final consolidated report
 
 After all four phases complete, present this single report as the final
@@ -363,6 +449,11 @@ Applied:
 
 No action needed:
 2. <description> — <reason>
+
+## Phase 5 — Loose ends
+- CRITICAL: <what> — <what breaks if forgotten> · next: <action> (captured=<todo|louis|none>)
+- <what> — next: <action> (captured=<todo|louis|none>)
+(or "nothing outstanding")
 
 ## Self-observability
 <count> entries written to ~/.claude/lessons.md this run.
