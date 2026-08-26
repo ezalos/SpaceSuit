@@ -345,6 +345,24 @@ blocked, a deploy that exited non-zero, a todo that failed to push, a memory
 placement that was skipped. If an earlier phase reported a failure, it is a
 loose end until it is fixed or explicitly handed to Louis.
 
+### Scope: THIS SESSION ONLY
+
+**Sweep only what this session touched, promised, discovered or handed over.**
+Do NOT walk the standing backlog in `state/todo.md`, and do NOT run global drift
+probes hunting for pre-existing problems. An item that was already open before
+this session began is not this session's loose end.
+
+That boundary is deliberate, and it is the difference between the two skills:
+
+| | scope | posture |
+|---|---|---|
+| **wrap-up phase 5** | this session only | close out cleanly, fast |
+| **`/loose-ends`** | global — session + `state/todo.md` + live drift probes | clear the backlog, with a validation gate |
+
+Wrap-up runs when Louis is leaving, so it must stay quick and predictable.
+Dragging a 20-item backlog into it turns "close the session" into an open-ended
+work session he did not ask for. `/loose-ends` is where that belongs.
+
 ### Sweep the whole session for these
 
 Re-read the session with each of these in mind. They are the shapes that
@@ -409,10 +427,20 @@ an item recorded nowhere is an item lost).
 **`captured=` says where it was WRITTEN DOWN, never that it was done.** Say so
 plainly in the report so the distinction is not mistaken for progress.
 
-If the list of remaining items is long or Louis wants them cleared rather than
-recorded, point him at **`/loose-ends`** — the companion skill that enumerates
-across the session, `state/todo.md` and live drift probes, validates the list
-with him, and then resolves as much as it can on the spot.
+### Hand off to `/loose-ends`
+
+After capturing, count the open items in `state/todo.md` and end the phase by
+offering the handoff — one line, in the final report. **A count, not a sweep:**
+`grep -c '^- \[ \]'` and stop. Reading them, classifying them or fixing them is
+the scope violation the section above forbids; the number is only there to tell
+Louis whether the offer is worth taking.
+
+> `state/todo.md` has **N** open items. Run `/loose-ends` to work through them?
+
+Offer it; do **not** invoke it. `/loose-ends` has its own validation gate, and
+firing it from inside wrap-up would either skip that gate or nest an approval
+inside a report Louis is reading to finish up. He decides whether the session
+ends or continues.
 
 Do not restate items already fully handled by Phases 1–4. This phase lists what
 is OPEN, plus what it just closed.
@@ -497,6 +525,10 @@ Still open — `captured=` is where it was WRITTEN DOWN, not that it is done:
 
 ## Self-observability
 <count> entries written to ~/.claude/lessons.md this run.
+
+## Backlog
+`state/todo.md` has <N> open items. Run `/loose-ends` to work through them?
+(omit this line when the backlog is empty)
 
 ## Session résumé
 <1-3 plain-language lines: what this session was about and where it ended

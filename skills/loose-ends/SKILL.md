@@ -18,9 +18,19 @@ to decide what to do, and everything after it exists to prove it was done.
 > that is *blocked on a named future event*, and the wrong home for work that is
 > merely unstarted.
 
-`wrap-up` phase 5 CAPTURES loose ends at session end. This skill CLEARS them, on
-demand, with a validation gate. They are deliberately separate: wrap-up runs when
-Louis is leaving, this runs when he has appetite to actually finish things.
+**Scope: global.** This skill looks everywhere — the current conversation, the
+standing backlog in `state/todo.md`, and live drift probes. That is the opposite
+of `wrap-up` phase 5, which is deliberately confined to the session it is closing.
+
+| | scope | posture |
+|---|---|---|
+| **wrap-up phase 5** | this session only | close out cleanly, fast |
+| **this skill** | global | clear the backlog, with a validation gate |
+
+Wrap-up runs when Louis is leaving and must stay quick; this runs when he has
+appetite to actually finish things, and may take as long as that needs. Wrap-up
+ends by offering `/loose-ends` when the backlog is non-empty — arriving here from
+that offer is the normal path.
 
 ## Observability
 
