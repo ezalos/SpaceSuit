@@ -1168,11 +1168,6 @@
         }
     },
     "devices": {
-        "ezalos.TM1704.ezalos": {
-            "identifier": "ezalos.TM1704.ezalos",
-            "home_path": "/home/ezalos",
-            "dotfiles_dir_path": "dotfiles"
-        },
         "TheBeast.ezalos": {
             "identifier": "TheBeast.ezalos",
             "home_path": "/home/ezalos",
