@@ -96,6 +96,21 @@ machine). Every open `- [ ]` line is a candidate. **Most of them are candidates
 for DO NOW, not for staying put** — the backlog is where actionable work goes to
 be forgotten, and working it down is half this skill's value.
 
+**A todo line is a claim, not a fact.** Several sessions write here, and a line
+can be stale in two directions. Check both before classifying it:
+
+- **Already done.** Someone else may have fixed it without ticking the box. On
+  the first run of this skill, the legacy-ngrok item had been fully resolved by
+  another session five days earlier — re-handing it to Louis would have been
+  worse than useless. Probe the live state; if it is done, tick it and move on.
+- **Wrongly diagnosed.** The line may name the wrong cause. On that same run the
+  granola-sweep entry blamed the CLI invocation, when the real problem was that
+  `jobs/granola_sweep.md` does not exist and never has been in git. Acting on the
+  written cause would have produced a confident non-fix.
+
+Verify first, then classify. Correcting a wrong line in place is itself a
+resolution worth reporting.
+
 ### 1c. Live drift probes
 
 Cheap, read-only, and they surface things nobody wrote down:
