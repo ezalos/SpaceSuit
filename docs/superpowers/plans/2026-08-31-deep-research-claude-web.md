@@ -699,7 +699,7 @@ where the separator before the id is a middle dot. The parser tolerates either.
 Append to `tests/test_deep_research.py`:
 
 ```python
-import subprocess
+import json as _json_mod
 from types import SimpleNamespace
 
 from deep_research.launcher import (
@@ -819,15 +819,66 @@ def test_launch_refuses_to_overwrite_an_existing_run(tmp_path):
         )
 
 
-def test_session_alive_reads_the_agents_listing():
-    def alive_runner(cmd, **kwargs):
-        return SimpleNamespace(returncode=0, stdout="8c969912  running\n", stderr="")
+AGENTS_JSON = _json_mod.dumps(
+    [
+        {
+            "pid": 1,
+            "id": "4c00ef07",
+            "kind": "background",
+            "sessionId": "4c00ef07-0c5c-4c7c-bad5-478c1fb7f234",
+            "name": "a finished run",
+            "status": "idle",
+            "state": "done",
+        },
+        {
+            "pid": 2,
+            "id": "8c969912",
+            "kind": "background",
+            "sessionId": "8c969912-1111-2222-3333-444444444444",
+            "name": "a live run",
+            "status": "busy",
+            "state": "running",
+        },
+    ]
+)
 
-    def dead_runner(cmd, **kwargs):
-        return SimpleNamespace(returncode=0, stdout="other111  running\n", stderr="")
 
-    assert session_alive("8c969912", runner=alive_runner) is True
-    assert session_alive("8c969912", runner=dead_runner) is False
+def _agents_runner(payload: str, returncode: int = 0):
+    def run(cmd, **kwargs):
+        assert cmd == ["claude", "agents", "--json"]
+        return SimpleNamespace(returncode=returncode, stdout=payload, stderr="")
+
+    return run
+
+
+def test_session_alive_is_true_for_a_running_background_session():
+    assert session_alive("8c969912", runner=_agents_runner(AGENTS_JSON)) is True
+
+
+def test_session_alive_is_false_once_the_state_is_done():
+    assert session_alive("4c00ef07", runner=_agents_runner(AGENTS_JSON)) is False
+
+
+def test_session_alive_is_false_when_the_id_is_absent():
+    assert session_alive("deadbeef", runner=_agents_runner(AGENTS_JSON)) is False
+
+
+def test_session_alive_matches_on_the_session_id_prefix():
+    payload = _json_mod.dumps(
+        [{"sessionId": "abc12345-0000-0000-0000-000000000000", "state": "running"}]
+    )
+    assert session_alive("abc12345", runner=_agents_runner(payload)) is True
+
+
+def test_session_alive_is_false_rather_than_raising_when_claude_is_missing():
+    def missing(cmd, **kwargs):
+        raise FileNotFoundError("claude")
+
+    assert session_alive("8c969912", runner=missing) is False
+
+
+def test_session_alive_is_false_on_unparseable_output():
+    assert session_alive("8c969912", runner=_agents_runner("not json")) is False
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -844,6 +895,7 @@ Create `deep_research/launcher.py`:
 # ABOUTME: The only impure module; the subprocess runner is injected so logic stays testable.
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 from datetime import datetime
@@ -878,11 +930,40 @@ def parse_session_id(stdout: str) -> str:
     return match.group(1)
 
 
+# `claude agents` refuses a non-TTY stdout and tells you to use --json instead, so the
+# JSON listing is the only form usable from a script. A background entry looks like:
+#   {"id": "4c00ef07", "kind": "background", "sessionId": "4c00ef07-0c5c-...",
+#    "status": "idle", "state": "done"}
+# `status` stays "idle" after a run finishes, so `state` is the liveness field.
+DEAD_STATES = {"done", "exited", "stopped", "failed", "killed"}
+
+
 def session_alive(session_id: str, runner=subprocess.run) -> bool:
-    result = runner(
-        ["claude", "agents"], capture_output=True, text=True, check=False
-    )
-    return session_id in (result.stdout or "")
+    try:
+        result = runner(
+            ["claude", "agents", "--json"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return False
+    if result.returncode != 0:
+        return False
+    try:
+        entries = json.loads(result.stdout or "[]")
+    except (json.JSONDecodeError, TypeError):
+        return False
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        matches = entry.get("id") == session_id or str(
+            entry.get("sessionId", "")
+        ).startswith(session_id)
+        if matches:
+            return str(entry.get("state", "")).lower() not in DEAD_STATES
+    return False
 
 
 def launch(
@@ -941,7 +1022,7 @@ def launch(
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd ~/42/SpaceSuit && uv run pytest tests/test_deep_research.py -v`
-Expected: 26 passed
+Expected: 31 passed
 
 - [ ] **Step 5: Commit**
 
@@ -1073,7 +1154,7 @@ from pathlib import Path
 from .charter import CharterError, parse_charter
 from .launcher import LaunchError, launch, session_alive
 from .manifest import Manifest, find_runs, read_manifest
-from .status import REPORT_NAME, RESULT_NAME, RunState, resolve_state
+from .status import DONE_SENTINEL, REPORT_NAME, RESULT_NAME, RunState, resolve_state
 
 DEFAULT_RUNS_ROOT = Path.home() / "research-runs"
 DEFAULT_NOTIFY = Path.home() / ".claude" / "skills" / "notify-louis" / "notify.sh"
@@ -1087,8 +1168,13 @@ def _find(runs_root: Path, run_id: str) -> Manifest | None:
 
 
 def _state(m: Manifest) -> RunState:
+    # Short-circuit on the sentinel before probing liveness: a finished run needs no
+    # subprocess, which also keeps the unit tests from spawning a real claude.
+    out = Path(m.out_dir)
+    if (out / DONE_SENTINEL).exists():
+        return RunState.DONE
     alive = m.status == "running" and session_alive(m.bg_session_id)
-    return resolve_state(Path(m.out_dir), session_alive=alive)
+    return resolve_state(out, session_alive=alive)
 
 
 def cmd_launch(args: argparse.Namespace) -> int:
@@ -1281,7 +1367,7 @@ chmod +x ~/42/SpaceSuit/dotfiles/bin/deep-research
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd ~/42/SpaceSuit && uv run pytest tests/test_deep_research.py -v`
-Expected: 31 passed
+Expected: 36 passed
 
 - [ ] **Step 5: Verify the CLI runs end to end without a launch**
 
@@ -1382,7 +1468,7 @@ markers = [
 - [ ] **Step 3: Run the fast suite and confirm the slow test is skipped**
 
 Run: `cd ~/42/SpaceSuit && uv run pytest tests/test_deep_research.py tests/test_deep_research_integration.py -v -m "not slow"`
-Expected: 31 passed, 1 deselected
+Expected: 36 passed, 1 deselected
 
 - [ ] **Step 4: Run the real integration test**
 
