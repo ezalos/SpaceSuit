@@ -356,6 +356,7 @@ from typing import Iterable
 
 MANIFEST_NAME = "run.json"
 SLUG_MAX = 40
+FALLBACK_SLUG = "untitled"
 
 
 @dataclass(frozen=True)
@@ -373,7 +374,10 @@ class Manifest:
 
 def slugify(text: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
-    return slug[:SLUG_MAX].rstrip("-")
+    slug = slug[:SLUG_MAX].rstrip("-")
+    # A question of pure punctuation would otherwise yield an empty slug, making a run id
+    # that ends in a bare dash and collides with every other such run in the same second.
+    return slug or FALLBACK_SLUG
 
 
 def make_run_id(question: str, now: datetime) -> str:
@@ -399,7 +403,11 @@ def find_runs(root: Path) -> list[Manifest]:
     for path in sorted(root.rglob(MANIFEST_NAME)):
         try:
             runs.append(read_manifest(path.parent))
-        except (json.JSONDecodeError, TypeError, OSError):
+        # ValueError covers both json.JSONDecodeError and UnicodeDecodeError (an
+        # undecodable run.json); TypeError covers a JSON object whose keys do not match
+        # the Manifest fields. One corrupt file must never take down discovery, because
+        # launch() calls find_runs for its concurrency cap.
+        except (ValueError, TypeError, OSError):
             continue
     return runs
 
