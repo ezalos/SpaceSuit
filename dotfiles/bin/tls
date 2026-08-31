@@ -2,6 +2,20 @@
 # ABOUTME: Terminal view of every tmux window and its Claude session.
 # ABOUTME: Thin wrapper; the grid lives in ~/42/SpaceSuit/agents_dashboard/termview.py.
 set -uo pipefail
+# Nothing below may hardcode /home/ezalos: this wrapper deploys to the Linux
+# boxes (/home/ezalos) and to the Macs (/Users/ezalos, /Users/louis).
+#
+# uv is looked up on PATH first, then at the absolute ~/.local/bin/uv. That
+# absolute fallback is what keeps this working from cron and systemd units,
+# whose PATH does not include ~/.local/bin.
+setup_dir="${PATH_SETUP_DIR:-$HOME/42/SpaceSuit}"
+uv_bin="$(command -v uv || true)"
+[ -x "$uv_bin" ] || uv_bin="$HOME/.local/bin/uv"
+if [ ! -x "$uv_bin" ]; then
+  echo "tls: uv not found (looked on PATH and at $HOME/.local/bin/uv)" >&2
+  exit 127
+fi
+
 # --directory (not --project) changes cwd before running: pyproject.toml has
 # no [build-system], so `agents_dashboard` is never installed into .venv and
 # `python -m agents_dashboard` only resolves via cwd. --project alone picks
@@ -12,7 +26,7 @@ set -uo pipefail
 # failure is unmistakable, not just numerically non-zero. `set -e` is
 # deliberately NOT set - it would abort the script the instant the command
 # below fails, before the diagnostic below ever ran.
-/home/ezalos/.local/bin/uv run --directory /home/ezalos/42/SpaceSuit \
+"$uv_bin" run --directory "$setup_dir" \
   python -m agents_dashboard tls "$@"
 status=$?
 if [ "$status" -ne 0 ]; then

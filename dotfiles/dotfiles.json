@@ -1097,10 +1097,15 @@
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.local/bin/tls",
                     "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.local/bin/tls",
+                    "backups": []
                 }
             },
             "only_devices": [
-                "TheBeast.ezalos"
+                "TheBeast.ezalos",
+                "Louiss.MacBook.Pro.3.local.ezalos"
             ],
             "variants": null,
             "fanout": false
