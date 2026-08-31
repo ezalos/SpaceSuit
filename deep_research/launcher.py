@@ -124,7 +124,11 @@ def launch(
 
     now = now or datetime.now().astimezone()
     out_dir.mkdir(parents=True, exist_ok=True)
-    charter_path = out_dir / "charter.md"
+    # SKILL.md has the operator write their own charter to <out>/charter.md and pass
+    # that same path as --charter. Rendering back onto "charter.md" would overwrite
+    # that input file, silently dropping anything outside the seven known fields (e.g.
+    # a "## Notes for me" section). Write the normalised copy under a different name.
+    charter_path = out_dir / "charter.rendered.md"
     charter_path.write_text(render_charter(charter), encoding="utf-8")
 
     prompt = build_runner_prompt(charter, out_dir, notify_script=notify_script)

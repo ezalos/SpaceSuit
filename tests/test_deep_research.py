@@ -123,7 +123,6 @@ from pathlib import Path
 from deep_research.manifest import (
     MANIFEST_NAME,
     Manifest,
-    active_runs,
     find_runs,
     make_run_id,
     read_manifest,
@@ -178,11 +177,6 @@ def test_find_runs_discovers_nested_manifests_and_skips_junk(tmp_path):
 
     found = {m.run_id for m in find_runs(tmp_path)}
     assert found == {"a", "b"}
-
-
-def test_active_runs_counts_only_running():
-    runs = [_manifest(run_id="a"), _manifest(run_id="b", status="done")]
-    assert [m.run_id for m in active_runs(runs)] == ["a"]
 
 
 def test_slugify_punctuation_only_falls_back_to_untitled():
@@ -352,7 +346,8 @@ def test_launch_writes_a_manifest_and_returns_it(tmp_path):
     assert m.model == "fable" and m.effort == "max"
     assert m.status == "running"
     assert read_manifest(out) == m
-    assert (out / "charter.md").exists()
+    assert (out / "charter.rendered.md").exists()
+    assert m.charter == str(out / "charter.rendered.md")
 
     cmd = calls[0]
     assert cmd[:2] == ["claude", "--bg"]
@@ -530,6 +525,30 @@ def test_launch_refuses_to_overwrite_an_existing_run(tmp_path):
         )
 
 
+def test_launch_does_not_overwrite_an_existing_charter_file(tmp_path):
+    # SKILL.md tells the operator to write their charter to <out>/charter.md and pass
+    # that same path as --charter. If launch() ever renders back onto that path, it
+    # silently destroys anything outside the seven known fields (e.g. operator notes).
+    out = tmp_path / "run"
+    out.mkdir(parents=True)
+    charter_path = out / "charter.md"
+    original_text = CHARTER_TEXT + "\n## Notes for me\ndistinctive-marker-line\n"
+    charter_path.write_text(original_text, encoding="utf-8")
+
+    def fake_runner(cmd, **kwargs):
+        return SimpleNamespace(returncode=0, stdout=BG_STDOUT, stderr="")
+
+    launch(
+        parse_charter(CHARTER_TEXT),
+        out_dir=out,
+        runs_root=tmp_path,
+        now=datetime(2026, 8, 31, 14, 30, 22),
+        runner=fake_runner,
+    )
+
+    assert "distinctive-marker-line" in charter_path.read_text(encoding="utf-8")
+
+
 AGENTS_JSON = _json_mod.dumps(
     [
         {
@@ -667,6 +686,68 @@ def test_list_prints_every_run(tmp_path, capsys):
     assert main(["list", "--runs-root", str(tmp_path)]) == 0
     printed = capsys.readouterr().out
     assert "r1" in printed and "r2" in printed
+
+
+def test_list_shows_done_for_a_run_with_a_done_sentinel(tmp_path, capsys):
+    # m.status is written once at launch and never rewritten, so it always reads
+    # "running". list must report the real, on-disk state, not the stale field.
+    out = tmp_path / "run"
+    write_manifest(out, _manifest(run_id="r1", out_dir=str(out)))
+    (out / "DONE").write_text("", encoding="utf-8")
+
+    rc = main(["list", "--runs-root", str(tmp_path)])
+    assert rc == 0
+    printed = capsys.readouterr().out
+    assert "done" in printed
+    assert "running" not in printed
+
+
+def test_cmd_launch_derives_runs_root_from_out_so_the_cap_counts_existing_runs(
+    tmp_path, monkeypatch, capsys
+):
+    # SKILL.md documents `deep-research launch --charter <out>/charter.md --out <out>`
+    # with no --runs-root, which defaults to ~/research-runs. The manifest itself always
+    # lands under --out regardless of runs_root, so discoverability alone does not
+    # exercise the bug; the observable break is the concurrency cap, which counts runs
+    # under runs_root. Two sibling runs already live under <out>'s parent: pre-fix the
+    # cap looks under ~/research-runs (empty here), sees zero, and never fires;
+    # post-fix it looks under the derived root, sees both, and refuses.
+    from deep_research import __main__ as dr_main
+
+    parent = tmp_path / "runs"
+    parent.mkdir()
+    for i in range(CONCURRENCY_CAP):
+        d = parent / f"busy{i}"
+        write_manifest(
+            d, _manifest(run_id=f"busy{i}", out_dir=str(d), bg_session_id="8c969912")
+        )
+
+    agents_payload = _json_mod.dumps(
+        [{"id": "8c969912", "sessionId": "8c969912-0000", "state": "running"}]
+    )
+
+    def fake_runner(cmd, **kw):
+        if cmd == ["claude", "agents", "--json"]:
+            return SimpleNamespace(returncode=0, stdout=agents_payload, stderr="")
+        return SimpleNamespace(returncode=0, stdout=BG_STDOUT, stderr="")
+
+    charter_path = tmp_path / "charter.md"
+    charter_path.write_text(CHARTER_TEXT, encoding="utf-8")
+
+    real_launch = dr_main.launch
+
+    def fake_launch(charter, out_dir, runs_root, **kwargs):
+        return real_launch(
+            charter, out_dir=out_dir, runs_root=runs_root, runner=fake_runner, **kwargs
+        )
+
+    monkeypatch.setattr(dr_main, "launch", fake_launch)
+
+    rc = dr_main.main(
+        ["launch", "--charter", str(charter_path), "--out", str(parent / "new")]
+    )
+    assert rc == 1
+    assert "already running" in capsys.readouterr().err
 
 
 def test_collect_on_a_done_run_missing_run_result_is_never_clean(tmp_path, capsys):

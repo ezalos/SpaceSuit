@@ -41,12 +41,20 @@ def cmd_launch(args: argparse.Namespace) -> int:
         print(f"cannot read charter: {exc}", file=sys.stderr)
         return 2
 
+    # When the operator does not pin a runs root, derive it from --out. Otherwise the
+    # run lands outside the default root: status and collect would not find it, and the
+    # concurrency cap would count zero runs and never fire.
+    if args.runs_root == str(DEFAULT_RUNS_ROOT):
+        runs_root = Path(args.out).resolve().parent
+    else:
+        runs_root = Path(args.runs_root)
+
     notify = str(DEFAULT_NOTIFY) if DEFAULT_NOTIFY.exists() else None
     try:
         m = launch(
             charter,
             out_dir=Path(args.out),
-            runs_root=Path(args.runs_root),
+            runs_root=runs_root,
             model=args.model,
             effort=args.effort,
             notify_script=notify,
@@ -59,7 +67,8 @@ def cmd_launch(args: argparse.Namespace) -> int:
     print(f"launched {m.run_id}")
     print(f"  session {m.bg_session_id} ({m.model}, effort {m.effort})")
     print(f"  output  {m.out_dir}")
-    print(f"  watch   deep-research status {m.run_id}")
+    print(f"  watch   deep-research status {m.run_id} --runs-root {runs_root}")
+    print(f"  collect deep-research collect {m.run_id} --runs-root {runs_root}")
     return 0
 
 
@@ -164,7 +173,7 @@ def cmd_list(args: argparse.Namespace) -> int:
         print("no runs found")
         return 0
     for m in runs:
-        print(f"{m.run_id}  {m.status}  {m.model}/{m.effort}  {m.out_dir}")
+        print(f"{m.run_id}  {_state(m).value}  {m.model}/{m.effort}  {m.out_dir}")
     return 0
 
 

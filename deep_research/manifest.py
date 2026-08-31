@@ -8,7 +8,6 @@ import re
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
 
 MANIFEST_NAME = "run.json"
 SLUG_MAX = 40
@@ -66,7 +65,3 @@ def find_runs(root: Path) -> list[Manifest]:
         except (ValueError, TypeError, OSError):
             continue
     return runs
-
-
-def active_runs(runs: Iterable[Manifest]) -> list[Manifest]:
-    return [m for m in runs if m.status == "running"]

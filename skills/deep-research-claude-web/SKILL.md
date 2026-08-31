@@ -68,6 +68,12 @@ A charter with a made-up purpose produces a report answering nobody's question.
 deep-research launch --charter <out>/charter.md --out <out>
 ```
 
+No `--runs-root` is needed: launch derives it from `<out>`'s parent directory whenever
+`--runs-root` is not given, so the run is always discoverable by that same derived root.
+`launch` prints the exact `status` and `collect` follow-up commands, each with the
+`--runs-root` it derived - use those printed commands verbatim rather than guessing the
+root yourself.
+
 Defaults are `--model fable --effort max`, which is what to use unless there is a reason
 not to. Propose `--model opus --effort high` when the charter has more than 8
 sub-questions or the cap is already reached, and say plainly what is being traded away.
@@ -82,9 +88,13 @@ holding it and offer either waiting or `--force` - never force silently.
 ## Phase 3: Collect
 
 ```bash
-deep-research status            # all runs
-deep-research collect <run-id>  # summary, exits non-zero when anything needs attention
+deep-research status --runs-root <runs-root>            # all runs
+deep-research collect <run-id> --runs-root <runs-root>  # summary, non-zero on trouble
 ```
+
+Use the `--runs-root` that `launch` printed for this run. Without it, both commands fall
+back to the default `~/research-runs` and will report "no runs found" for a run launched
+under a different `--out`.
 
 `collect` exits 1 when sources went unverified, questions went unanswered, or the run did
 not finish. **Report every unverified source by name.** Never present a run with
