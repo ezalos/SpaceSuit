@@ -956,15 +956,17 @@ from datetime import datetime
 from pathlib import Path
 
 from .charter import Charter, render_charter
+from typing import Iterable
+
 from .manifest import (
     MANIFEST_NAME,
     Manifest,
-    active_runs,
     find_runs,
     make_run_id,
     write_manifest,
 )
 from .runner import build_runner_prompt
+from .status import DONE_SENTINEL
 
 CONCURRENCY_CAP = 2
 
@@ -1020,6 +1022,25 @@ def session_alive(session_id: str, runner=subprocess.run) -> bool:
     return False
 
 
+def running_runs(runs: Iterable[Manifest], runner=subprocess.run) -> list[Manifest]:
+    """The runs that are genuinely still going.
+
+    A manifest's `status` field is written once, at launch, and nothing ever rewrites
+    it, so trusting it would count every run ever started as still running: two
+    finished runs would wedge the concurrency cap permanently. Judge from the disk
+    sentinel first (no subprocess for a finished run), then from the live session list.
+    """
+    live: list[Manifest] = []
+    for m in runs:
+        if m.status != "running":
+            continue
+        if (Path(m.out_dir) / DONE_SENTINEL).exists():
+            continue
+        if session_alive(m.bg_session_id, runner=runner):
+            live.append(m)
+    return live
+
+
 def launch(
     charter: Charter,
     out_dir: Path,
@@ -1031,11 +1052,17 @@ def launch(
     force: bool = False,
     runner=subprocess.run,
 ) -> Manifest:
-    out_dir = Path(out_dir)
+    # resolve() before anything is recorded: the manifest's out_dir is read back later
+    # by status/collect, potentially from a different working directory.
+    out_dir = Path(out_dir).resolve()
     if (out_dir / MANIFEST_NAME).exists():
         raise LaunchError(f"{out_dir} already holds a run; use a fresh directory")
 
-    running = active_runs(find_runs(Path(runs_root))) if Path(runs_root).exists() else []
+    running = (
+        running_runs(find_runs(Path(runs_root)), runner=runner)
+        if Path(runs_root).exists()
+        else []
+    )
     if len(running) >= CONCURRENCY_CAP and not force:
         ids = ", ".join(m.run_id for m in running)
         raise LaunchError(
