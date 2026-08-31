@@ -213,3 +213,30 @@ def test_find_runs_skips_manifest_with_mismatched_keys(tmp_path):
 
     found = {m.run_id for m in find_runs(tmp_path)}
     assert found == {"good"}
+
+
+from deep_research.status import (
+    DONE_SENTINEL,
+    REPORT_NAME,
+    RunState,
+    resolve_state,
+)
+
+
+def test_done_sentinel_wins_even_if_the_session_is_gone(tmp_path):
+    (tmp_path / DONE_SENTINEL).write_text("", encoding="utf-8")
+    (tmp_path / REPORT_NAME).write_text("# report", encoding="utf-8")
+    assert resolve_state(tmp_path, session_alive=False) is RunState.DONE
+
+
+def test_no_sentinel_but_session_alive_is_running(tmp_path):
+    assert resolve_state(tmp_path, session_alive=True) is RunState.RUNNING
+
+
+def test_dead_session_with_a_partial_report_is_incomplete(tmp_path):
+    (tmp_path / REPORT_NAME).write_text("# half a report", encoding="utf-8")
+    assert resolve_state(tmp_path, session_alive=False) is RunState.INCOMPLETE
+
+
+def test_dead_session_with_nothing_written_is_lost(tmp_path):
+    assert resolve_state(tmp_path, session_alive=False) is RunState.LOST
