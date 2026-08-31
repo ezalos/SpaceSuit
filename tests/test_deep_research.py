@@ -240,3 +240,42 @@ def test_dead_session_with_a_partial_report_is_incomplete(tmp_path):
 
 def test_dead_session_with_nothing_written_is_lost(tmp_path):
     assert resolve_state(tmp_path, session_alive=False) is RunState.LOST
+
+
+from deep_research.runner import build_runner_prompt
+
+
+def test_runner_prompt_carries_the_question_and_every_sub_question():
+    c = parse_charter(CHARTER_TEXT)
+    prompt = build_runner_prompt(c, Path("/runs/x"))
+    assert c.question in prompt
+    for q in c.must_answer:
+        assert q in prompt
+
+
+def test_runner_prompt_states_the_output_contract_with_absolute_paths():
+    prompt = build_runner_prompt(parse_charter(CHARTER_TEXT), Path("/runs/x"))
+    assert "/runs/x/report.md" in prompt
+    assert "/runs/x/sources.md" in prompt
+    assert "/runs/x/run-result.json" in prompt
+    assert "/runs/x/DONE" in prompt
+
+
+def test_runner_prompt_demands_fetched_and_quoted_citations():
+    prompt = build_runner_prompt(parse_charter(CHARTER_TEXT), Path("/runs/x")).lower()
+    assert "verbatim" in prompt
+    assert "bare domain" in prompt
+    assert "webfetch" in prompt
+
+
+def test_runner_prompt_orders_the_sentinel_last():
+    prompt = build_runner_prompt(parse_charter(CHARTER_TEXT), Path("/runs/x"))
+    assert prompt.index("report.md") < prompt.index("/runs/x/DONE")
+    assert "last" in prompt.lower()
+
+
+def test_runner_prompt_includes_notify_only_when_a_script_is_given():
+    c = parse_charter(CHARTER_TEXT)
+    assert "notify.sh" not in build_runner_prompt(c, Path("/runs/x"))
+    with_notify = build_runner_prompt(c, Path("/runs/x"), notify_script="/n/notify.sh")
+    assert "/n/notify.sh" in with_notify
