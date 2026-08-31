@@ -181,3 +181,35 @@ def test_find_runs_discovers_nested_manifests_and_skips_junk(tmp_path):
 def test_active_runs_counts_only_running():
     runs = [_manifest(run_id="a"), _manifest(run_id="b", status="done")]
     assert [m.run_id for m in active_runs(runs)] == ["a"]
+
+
+def test_slugify_punctuation_only_falls_back_to_untitled():
+    assert slugify("?!...") == "untitled"
+    rid = make_run_id("?!...", datetime(2026, 8, 31, 14, 30, 22))
+    assert not rid.endswith("-")
+
+
+def test_find_runs_skips_undecodable_manifest(tmp_path):
+    good = tmp_path / "run-good"
+    good.mkdir()
+    write_manifest(good, _manifest(run_id="good", out_dir=str(good)))
+
+    bad = tmp_path / "run-bad"
+    bad.mkdir()
+    (bad / MANIFEST_NAME).write_bytes(b"\xff\xfe\x00binary")
+
+    found = {m.run_id for m in find_runs(tmp_path)}
+    assert found == {"good"}
+
+
+def test_find_runs_skips_manifest_with_mismatched_keys(tmp_path):
+    good = tmp_path / "run-good"
+    good.mkdir()
+    write_manifest(good, _manifest(run_id="good", out_dir=str(good)))
+
+    bad = tmp_path / "run-bad"
+    bad.mkdir()
+    (bad / MANIFEST_NAME).write_text('{"foo": "bar"}', encoding="utf-8")
+
+    found = {m.run_id for m in find_runs(tmp_path)}
+    assert found == {"good"}
