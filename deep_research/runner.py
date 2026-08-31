@@ -26,6 +26,10 @@ Citation rules, which are absolute:
 - Every source entry quotes the page verbatim, proving it says what you cite it for.
 - If a source cannot be fetched and quoted, list it under unverified in
   run-result.json and say so in the report. Never silently downgrade it.
+- An unverified source may NEVER back an [n] marker. Listing a source as unverified is
+  not permission to cite it anyway: drop the claim it would have supported, and send the
+  must-answer question it belonged to to unanswered instead. Every [n] marker in the
+  report must point to a source you fetched and quoted.
 """
 
 
@@ -34,7 +38,10 @@ def build_runner_prompt(
     out_dir: Path,
     notify_script: str | None = None,
 ) -> str:
-    out = Path(out_dir)
+    # resolve(), not just Path(): the prompt promises absolute paths, and the detached
+    # agent's working directory need not match the caller's, so a relative path would
+    # land the output files somewhere the poller never looks.
+    out = Path(out_dir).resolve()
     must = "\n".join(f"- {q}" for q in charter.must_answer)
     scope = "\n".join(f"- {s}" for s in charter.out_of_scope) or "- nothing excluded"
 

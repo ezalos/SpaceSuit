@@ -1,6 +1,8 @@
 # ABOUTME: Tests the deep_research package pure logic: charter, manifest, status, runner prompt.
 # ABOUTME: No subprocesses and no network; the real claude --bg launch is covered separately.
 
+import re
+
 import pytest
 
 from deep_research.charter import Charter, CharterError, parse_charter, render_charter
@@ -279,3 +281,24 @@ def test_runner_prompt_includes_notify_only_when_a_script_is_given():
     assert "notify.sh" not in build_runner_prompt(c, Path("/runs/x"))
     with_notify = build_runner_prompt(c, Path("/runs/x"), notify_script="/n/notify.sh")
     assert "/n/notify.sh" in with_notify
+
+
+def test_runner_prompt_makes_a_relative_out_dir_absolute():
+    # The prompt promises absolute paths, and the detached agent's cwd need not match
+    # the caller's, so a relative path would strand the files where nobody polls.
+    # Pull the path the prompt actually emits and assert it is absolute; a plain
+    # substring check cannot work, since the resolved path still ENDS with the
+    # relative one.
+    prompt = build_runner_prompt(parse_charter(CHARTER_TEXT), Path("relative/out"))
+    emitted = re.search(r"^1\. (\S*report\.md)\s*$", prompt, re.MULTILINE)
+    assert emitted, f"no report.md line in prompt:\n{prompt}"
+    assert Path(emitted.group(1)).is_absolute()
+    assert emitted.group(1) == str((Path.cwd() / "relative" / "out" / "report.md"))
+
+
+def test_runner_prompt_forbids_citing_an_unverified_source():
+    # Listing a source as unverified must not be a licence to cite it anyway: without
+    # this rule an agent can satisfy every other line and still ship an uncited claim.
+    prompt = build_runner_prompt(parse_charter(CHARTER_TEXT), Path("/runs/x"))
+    assert "unverified source may NEVER back an [n] marker" in prompt
+    assert "unanswered" in prompt
