@@ -2051,10 +2051,10 @@ class TestTermView:
         return PaneRecord(**base)
 
     def test_non_claude_row_shows_cwd_with_home_collapsed(self):
-        w = [WindowRecord(2, 0, "zsh", "/home/ezalos/42/Alfred", 940.0, None)]
+        w = [WindowRecord(2, 0, "zsh", str(Path.home() / "42" / "Alfred"), 940.0, None)]
         out = termview.render_terminal(self._snap(w), color=False, now=1000.0)
         assert "~/42/Alfred" in out
-        assert "/home/ezalos" not in out
+        assert str(Path.home()) not in out
 
     def test_non_claude_row_has_no_claude_columns(self):
         w = [WindowRecord(2, 0, "zsh", "/tmp", 940.0, None)]
@@ -2167,7 +2167,7 @@ class TestTermView:
             activity=500.0,
             windows=[
                 WindowRecord(0, 0, "claude", "/tmp", 1000.0 - 15 * 3600, idle_pane),
-                WindowRecord(2, 0, "zsh", "/home/ezalos/42/Alfred", 1000.0 - 9 * 60, None),
+                WindowRecord(2, 0, "zsh", str(Path.home() / "42" / "Alfred"), 1000.0 - 9 * 60, None),
             ],
         )
         detached = SessionCard(
@@ -2512,7 +2512,7 @@ class TestTermView:
         budget, but it fits easily in the 57-column continuation width, so
         it must land there whole - never hard-broken into `V-Jayg` / `ent`.
         """
-        w = [WindowRecord(1, 0, "zsh", "/home/ezalos/42/V-Jaygent", 1000.0, None)]
+        w = [WindowRecord(1, 0, "zsh", str(Path.home() / "42" / "V-Jaygent"), 1000.0, None)]
         out = termview.render_terminal(self._snap(w), width=65, color=False, now=1000.0)
         lines = out.splitlines()
         row_idx = next(i for i, l in enumerate(lines) if l.lstrip().startswith("1.0"))
