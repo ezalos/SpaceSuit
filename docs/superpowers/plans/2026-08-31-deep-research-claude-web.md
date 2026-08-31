@@ -1383,18 +1383,26 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="deep-research",
-        description="Launch and collect detached deep research runs.",
-    )
-    parser.add_argument(
+    # --runs-root must work both before AND after the subcommand (every call site in
+    # the tests and in real usage puts it after, e.g. `status --runs-root X`), so it is
+    # registered on a shared parent rather than only on the top-level parser: argparse
+    # only hands remaining tokens to the chosen subparser, and a subparser with no
+    # matching option would reject them as unrecognized.
+    runs_root_parent = argparse.ArgumentParser(add_help=False)
+    runs_root_parent.add_argument(
         "--runs-root",
         default=str(DEFAULT_RUNS_ROOT),
         help=f"where runs are discovered (default: {DEFAULT_RUNS_ROOT})",
     )
+
+    parser = argparse.ArgumentParser(
+        prog="deep-research",
+        description="Launch and collect detached deep research runs.",
+        parents=[runs_root_parent],
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("launch", help="start a detached research run")
+    p = sub.add_parser("launch", help="start a detached research run", parents=[runs_root_parent])
     p.add_argument("--charter", required=True, help="path to the charter Markdown file")
     p.add_argument("--out", required=True, help="output directory for this run")
     p.add_argument("--model", default="fable")
@@ -1402,19 +1410,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--force", action="store_true", help="ignore the concurrency cap")
     p.set_defaults(func=cmd_launch)
 
-    p = sub.add_parser("status", help="show run state")
+    p = sub.add_parser("status", help="show run state", parents=[runs_root_parent])
     p.add_argument("run_id", nargs="?")
     p.set_defaults(func=cmd_status)
 
-    p = sub.add_parser("collect", help="summarise a finished run and flag problems")
+    p = sub.add_parser("collect", help="summarise a finished run and flag problems", parents=[runs_root_parent])
     p.add_argument("run_id")
     p.set_defaults(func=cmd_collect)
 
-    p = sub.add_parser("stop", help="stop a running run")
+    p = sub.add_parser("stop", help="stop a running run", parents=[runs_root_parent])
     p.add_argument("run_id")
     p.set_defaults(func=cmd_stop)
 
-    p = sub.add_parser("list", help="list every known run")
+    p = sub.add_parser("list", help="list every known run", parents=[runs_root_parent])
     p.set_defaults(func=cmd_list)
     return parser
 
