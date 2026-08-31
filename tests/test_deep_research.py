@@ -365,8 +365,16 @@ def test_launch_refuses_past_the_concurrency_cap(tmp_path):
         d = tmp_path / f"busy{i}"
         write_manifest(d, _manifest(run_id=f"busy{i}", out_dir=str(d)))
 
+    agents_payload = _json_mod.dumps(
+        [{"id": "8c969912", "sessionId": "8c969912-0000", "state": "running"}]
+    )
+
     def fake_runner(cmd, **kwargs):
-        raise AssertionError("must not spawn past the cap")
+        if cmd == ["claude", "agents", "--json"]:
+            return SimpleNamespace(returncode=0, stdout=agents_payload, stderr="")
+        if cmd[:2] == ["claude", "--bg"]:
+            raise AssertionError("must not spawn past the cap")
+        raise AssertionError(f"unexpected command: {cmd}")
 
     with pytest.raises(LaunchError, match="already running"):
         launch(
@@ -382,7 +390,13 @@ def test_force_overrides_the_cap(tmp_path):
         d = tmp_path / f"busy{i}"
         write_manifest(d, _manifest(run_id=f"busy{i}", out_dir=str(d)))
 
+    agents_payload = _json_mod.dumps(
+        [{"id": "8c969912", "sessionId": "8c969912-0000", "state": "running"}]
+    )
+
     def fake_runner(cmd, **kwargs):
+        if cmd == ["claude", "agents", "--json"]:
+            return SimpleNamespace(returncode=0, stdout=agents_payload, stderr="")
         return SimpleNamespace(returncode=0, stdout=BG_STDOUT, stderr="")
 
     m = launch(
@@ -393,6 +407,98 @@ def test_force_overrides_the_cap(tmp_path):
         runner=fake_runner,
     )
     assert m.status == "running"
+
+
+def test_finished_run_does_not_count_against_the_cap(tmp_path):
+    # A manifest's status is written once, at launch, and nothing rewrites it: two
+    # finished runs must not wedge the cap just because their run.json still says
+    # "running". A DONE sentinel on disk is enough to prove a run is over without
+    # even asking the agents list, so the fake runner here answers only claude --bg.
+    for i in range(CONCURRENCY_CAP):
+        d = tmp_path / f"busy{i}"
+        write_manifest(d, _manifest(run_id=f"busy{i}", out_dir=str(d)))
+        (d / DONE_SENTINEL).write_text("", encoding="utf-8")
+
+    def fake_runner(cmd, **kwargs):
+        assert cmd[:2] == ["claude", "--bg"], f"unexpected command: {cmd}"
+        return SimpleNamespace(returncode=0, stdout=BG_STDOUT, stderr="")
+
+    m = launch(
+        parse_charter(CHARTER_TEXT),
+        out_dir=tmp_path / "new",
+        runs_root=tmp_path,
+        runner=fake_runner,
+    )
+    assert m.status == "running"
+
+
+def test_dead_session_does_not_count_against_the_cap(tmp_path):
+    for i in range(CONCURRENCY_CAP):
+        d = tmp_path / f"busy{i}"
+        write_manifest(d, _manifest(run_id=f"busy{i}", out_dir=str(d)))
+
+    agents_payload = _json_mod.dumps(
+        [{"id": "8c969912", "sessionId": "8c969912-0000", "state": "done"}]
+    )
+
+    def fake_runner(cmd, **kwargs):
+        if cmd == ["claude", "agents", "--json"]:
+            return SimpleNamespace(returncode=0, stdout=agents_payload, stderr="")
+        assert cmd[:2] == ["claude", "--bg"], f"unexpected command: {cmd}"
+        return SimpleNamespace(returncode=0, stdout=BG_STDOUT, stderr="")
+
+    m = launch(
+        parse_charter(CHARTER_TEXT),
+        out_dir=tmp_path / "new",
+        runs_root=tmp_path,
+        runner=fake_runner,
+    )
+    assert m.status == "running"
+
+
+def test_two_genuinely_live_runs_still_block_the_cap(tmp_path):
+    for i in range(CONCURRENCY_CAP):
+        d = tmp_path / f"busy{i}"
+        write_manifest(d, _manifest(run_id=f"busy{i}", out_dir=str(d)))
+
+    agents_payload = _json_mod.dumps(
+        [{"id": "8c969912", "sessionId": "8c969912-0000", "state": "running"}]
+    )
+
+    def fake_runner(cmd, **kwargs):
+        if cmd == ["claude", "agents", "--json"]:
+            return SimpleNamespace(returncode=0, stdout=agents_payload, stderr="")
+        raise AssertionError(f"must not spawn past the cap: {cmd}")
+
+    with pytest.raises(LaunchError, match="already running"):
+        launch(
+            parse_charter(CHARTER_TEXT),
+            out_dir=tmp_path / "new",
+            runs_root=tmp_path,
+            runner=fake_runner,
+        )
+
+
+def test_launch_stores_an_absolute_out_dir_when_handed_a_relative_path(tmp_path, monkeypatch):
+    # The CLI passes Path(args.out) straight through, so a relative --out is the normal
+    # case. The manifest's out_dir is read back later by status/collect, potentially
+    # from a different working directory, so it must be resolved before it is recorded.
+    monkeypatch.chdir(tmp_path)
+
+    def fake_runner(cmd, **kwargs):
+        return SimpleNamespace(returncode=0, stdout=BG_STDOUT, stderr="")
+
+    m = launch(
+        parse_charter(CHARTER_TEXT),
+        out_dir=Path("new"),
+        runs_root=Path("."),
+        now=datetime(2026, 8, 31, 14, 30, 22),
+        runner=fake_runner,
+    )
+
+    assert Path(m.out_dir).is_absolute()
+    assert Path(m.out_dir) == (tmp_path / "new").resolve()
+    assert Path(m.charter).is_absolute()
 
 
 def test_launch_raises_when_claude_exits_nonzero(tmp_path):
