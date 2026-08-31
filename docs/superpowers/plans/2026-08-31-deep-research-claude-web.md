@@ -161,18 +161,36 @@ class Charter:
     out_of_scope: tuple[str, ...]
 
 
+_FENCE_RE = re.compile(r"^(```|~~~)[^\n]*\n.*?^\1[^\n]*$", re.MULTILINE | re.DOTALL)
+
+
+def _mask_fences(text: str) -> str:
+    # A "## " line inside a fenced code block is sample text, not a section boundary.
+    # Blank fenced regions to spaces, preserving length and newlines so the match
+    # offsets still index the original string.
+    return _FENCE_RE.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
+
+
 def _section(text: str, heading: str) -> str:
     pattern = rf"^##\s+{re.escape(heading)}\s*$(.*?)(?=^##\s|\Z)"
-    match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
-    return match.group(1).strip() if match else ""
+    match = re.search(pattern, _mask_fences(text), re.MULTILINE | re.DOTALL)
+    if not match:
+        return ""
+    # Slice the ORIGINAL text at the masked match's offsets so fenced content survives.
+    return text[match.start(1) : match.end(1)].strip()
 
 
 def _bullets(block: str) -> tuple[str, ...]:
-    return tuple(
-        line.lstrip("-").strip()
-        for line in block.splitlines()
-        if line.lstrip().startswith("-") and line.lstrip("- ").strip()
-    )
+    # Strip indentation FIRST: "  - item".lstrip("-") is a no-op, because the leading
+    # space blocks the strip, which would leak the dash into the parsed value.
+    items = []
+    for line in block.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("-"):
+            value = stripped[1:].strip()
+            if value:
+                items.append(value)
+    return tuple(items)
 
 
 def _labelled(block: str, label: str) -> str:
@@ -1637,8 +1655,15 @@ Expected: prints `no runs found`
 
 - [ ] **Step 6: Run the full fast suite one more time**
 
-Run: `cd ~/42/SpaceSuit && uv run pytest tests/ -v -m "not slow"`
-Expected: the whole repo suite passes, including the pre-existing tests.
+Run: `cd ~/42/SpaceSuit && uv run pytest tests/ -q -m "not slow"`
+Expected: every test passes EXCEPT one pre-existing, unrelated failure that was
+already red before this work started:
+`tests/test_secrets_cli.py::test_run_resolves_refs_into_child_env` (the secrets CLI
+resolving a `pass://` ref, which needs the vault unlocked). Baseline measured at
+commit 0004c0b: 439 passed, 1 failed.
+
+Do NOT fix, skip, or delete that test. It is out of scope for this plan and belongs
+to the repo owner. Confirm it is the ONLY failure; any other failure is yours.
 
 - [ ] **Step 7: Commit and push**
 
