@@ -667,3 +667,49 @@ def test_list_prints_every_run(tmp_path, capsys):
     assert main(["list", "--runs-root", str(tmp_path)]) == 0
     printed = capsys.readouterr().out
     assert "r1" in printed and "r2" in printed
+
+
+def test_collect_on_a_done_run_missing_run_result_is_never_clean(tmp_path, capsys):
+    # The runner prompt writes run-result.json BEFORE the DONE sentinel, so a DONE run
+    # missing it broke its own completion contract. We know nothing about whether any
+    # source was verified, which must never read as a clean exit.
+    out = tmp_path / "run"
+    write_manifest(out, _manifest(run_id="r1", out_dir=str(out)))
+    (out / "DONE").write_text("", encoding="utf-8")
+    (out / "report.md").write_text("# findings", encoding="utf-8")
+
+    rc = main(["collect", "r1", "--runs-root", str(tmp_path)])
+    printed = capsys.readouterr().out
+    assert rc == 1
+    assert "run-result.json" in printed
+
+
+def test_collect_on_a_done_run_missing_everything_is_never_clean(tmp_path, capsys):
+    out = tmp_path / "run"
+    write_manifest(out, _manifest(run_id="r1", out_dir=str(out)))
+    (out / "DONE").write_text("", encoding="utf-8")
+
+    rc = main(["collect", "r1", "--runs-root", str(tmp_path)])
+    assert rc == 1
+
+
+import subprocess
+
+
+def test_stop_reports_a_message_instead_of_a_traceback_when_claude_is_missing(
+    tmp_path, capsys, monkeypatch
+):
+    out = tmp_path / "run"
+    write_manifest(out, _manifest(run_id="r1", out_dir=str(out)))
+
+    def missing(cmd, **kwargs):
+        raise FileNotFoundError("claude")
+
+    # Patching subprocess.run itself, not the unit under test: cmd_stop has no
+    # injected runner (unlike launcher.session_alive), so this is the same posture
+    # as test_session_alive_is_false_rather_than_raising_when_claude_is_missing.
+    monkeypatch.setattr(subprocess, "run", missing)
+
+    rc = main(["stop", "r1", "--runs-root", str(tmp_path)])
+    assert rc == 1
+    assert "cannot run claude" in capsys.readouterr().err

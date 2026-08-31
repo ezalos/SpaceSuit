@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .charter import CharterError, parse_charter
 from .launcher import LaunchError, launch, session_alive
-from .manifest import Manifest, find_runs, read_manifest
+from .manifest import Manifest, find_runs
 from .status import DONE_SENTINEL, REPORT_NAME, RESULT_NAME, RunState, resolve_state
 
 DEFAULT_RUNS_ROOT = Path.home() / "research-runs"
@@ -96,8 +96,12 @@ def cmd_collect(args: argparse.Namespace) -> int:
 
     result_path = out / RESULT_NAME
     if not result_path.exists():
+        # Never 0 here. The runner prompt requires run-result.json to be written before
+        # the DONE sentinel, so a finished run missing it broke its own contract and we
+        # have no idea whether any source was verified. That needs attention by
+        # definition, which is exactly what exit 1 means.
         print("  no run-result.json; the run did not report on its own sources")
-        return 0 if state is RunState.DONE else 1
+        return 1
 
     try:
         result = json.loads(result_path.read_text(encoding="utf-8"))
@@ -135,12 +139,18 @@ def cmd_stop(args: argparse.Namespace) -> int:
     if m is None:
         print(f"no run named {args.run_id}", file=sys.stderr)
         return 2
-    result = subprocess.run(
-        ["claude", "stop", m.bg_session_id],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["claude", "stop", m.bg_session_id],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        # Same posture as launcher.session_alive: a missing claude binary is a message,
+        # not a traceback, because a scripted caller reads our exit code.
+        print(f"cannot run claude: {exc}", file=sys.stderr)
+        return 1
     if result.returncode != 0:
         print(f"stop failed: {result.stderr or result.stdout}", file=sys.stderr)
         return 1
