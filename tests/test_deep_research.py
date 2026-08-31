@@ -302,3 +302,185 @@ def test_runner_prompt_forbids_citing_an_unverified_source():
     prompt = build_runner_prompt(parse_charter(CHARTER_TEXT), Path("/runs/x"))
     assert "unverified source may NEVER back an [n] marker" in prompt
     assert "unanswered" in prompt
+
+
+import json as _json_mod
+from types import SimpleNamespace
+
+from deep_research.launcher import (
+    CONCURRENCY_CAP,
+    LaunchError,
+    launch,
+    parse_session_id,
+    session_alive,
+)
+
+BG_STDOUT = (
+    "Starting background service\n"
+    "backgrounded · 8c969912\n"
+    "  claude agents             list sessions\n"
+    "  claude attach 8c969912    open in this terminal\n"
+)
+
+
+def test_parse_session_id_reads_the_backgrounded_line():
+    assert parse_session_id(BG_STDOUT) == "8c969912"
+
+
+def test_parse_session_id_rejects_output_without_an_id():
+    with pytest.raises(LaunchError, match="session id"):
+        parse_session_id("error: could not start background service\n")
+
+
+def test_launch_writes_a_manifest_and_returns_it(tmp_path):
+    calls = []
+
+    def fake_runner(cmd, **kwargs):
+        calls.append(cmd)
+        return SimpleNamespace(returncode=0, stdout=BG_STDOUT, stderr="")
+
+    out = tmp_path / "run"
+    m = launch(
+        parse_charter(CHARTER_TEXT),
+        out_dir=out,
+        runs_root=tmp_path,
+        now=datetime(2026, 8, 31, 14, 30, 22),
+        runner=fake_runner,
+    )
+
+    assert m.bg_session_id == "8c969912"
+    assert m.model == "fable" and m.effort == "max"
+    assert m.status == "running"
+    assert read_manifest(out) == m
+    assert (out / "charter.md").exists()
+
+    cmd = calls[0]
+    assert cmd[:2] == ["claude", "--bg"]
+    assert "--model" in cmd and cmd[cmd.index("--model") + 1] == "fable"
+    assert "--effort" in cmd and cmd[cmd.index("--effort") + 1] == "max"
+
+
+def test_launch_refuses_past_the_concurrency_cap(tmp_path):
+    for i in range(CONCURRENCY_CAP):
+        d = tmp_path / f"busy{i}"
+        write_manifest(d, _manifest(run_id=f"busy{i}", out_dir=str(d)))
+
+    def fake_runner(cmd, **kwargs):
+        raise AssertionError("must not spawn past the cap")
+
+    with pytest.raises(LaunchError, match="already running"):
+        launch(
+            parse_charter(CHARTER_TEXT),
+            out_dir=tmp_path / "new",
+            runs_root=tmp_path,
+            runner=fake_runner,
+        )
+
+
+def test_force_overrides_the_cap(tmp_path):
+    for i in range(CONCURRENCY_CAP):
+        d = tmp_path / f"busy{i}"
+        write_manifest(d, _manifest(run_id=f"busy{i}", out_dir=str(d)))
+
+    def fake_runner(cmd, **kwargs):
+        return SimpleNamespace(returncode=0, stdout=BG_STDOUT, stderr="")
+
+    m = launch(
+        parse_charter(CHARTER_TEXT),
+        out_dir=tmp_path / "new",
+        runs_root=tmp_path,
+        force=True,
+        runner=fake_runner,
+    )
+    assert m.status == "running"
+
+
+def test_launch_raises_when_claude_exits_nonzero(tmp_path):
+    def fake_runner(cmd, **kwargs):
+        return SimpleNamespace(returncode=1, stdout="", stderr="boom")
+
+    with pytest.raises(LaunchError, match="boom"):
+        launch(
+            parse_charter(CHARTER_TEXT),
+            out_dir=tmp_path / "run",
+            runs_root=tmp_path,
+            runner=fake_runner,
+        )
+
+
+def test_launch_refuses_to_overwrite_an_existing_run(tmp_path):
+    out = tmp_path / "run"
+    write_manifest(out, _manifest(out_dir=str(out)))
+
+    def fake_runner(cmd, **kwargs):
+        raise AssertionError("must not spawn over an existing run")
+
+    with pytest.raises(LaunchError, match="already holds"):
+        launch(
+            parse_charter(CHARTER_TEXT),
+            out_dir=out,
+            runs_root=tmp_path / "elsewhere",
+            runner=fake_runner,
+        )
+
+
+AGENTS_JSON = _json_mod.dumps(
+    [
+        {
+            "pid": 1,
+            "id": "4c00ef07",
+            "kind": "background",
+            "sessionId": "4c00ef07-0c5c-4c7c-bad5-478c1fb7f234",
+            "name": "a finished run",
+            "status": "idle",
+            "state": "done",
+        },
+        {
+            "pid": 2,
+            "id": "8c969912",
+            "kind": "background",
+            "sessionId": "8c969912-1111-2222-3333-444444444444",
+            "name": "a live run",
+            "status": "busy",
+            "state": "running",
+        },
+    ]
+)
+
+
+def _agents_runner(payload: str, returncode: int = 0):
+    def run(cmd, **kwargs):
+        assert cmd == ["claude", "agents", "--json"]
+        return SimpleNamespace(returncode=returncode, stdout=payload, stderr="")
+
+    return run
+
+
+def test_session_alive_is_true_for_a_running_background_session():
+    assert session_alive("8c969912", runner=_agents_runner(AGENTS_JSON)) is True
+
+
+def test_session_alive_is_false_once_the_state_is_done():
+    assert session_alive("4c00ef07", runner=_agents_runner(AGENTS_JSON)) is False
+
+
+def test_session_alive_is_false_when_the_id_is_absent():
+    assert session_alive("deadbeef", runner=_agents_runner(AGENTS_JSON)) is False
+
+
+def test_session_alive_matches_on_the_session_id_prefix():
+    payload = _json_mod.dumps(
+        [{"sessionId": "abc12345-0000-0000-0000-000000000000", "state": "running"}]
+    )
+    assert session_alive("abc12345", runner=_agents_runner(payload)) is True
+
+
+def test_session_alive_is_false_rather_than_raising_when_claude_is_missing():
+    def missing(cmd, **kwargs):
+        raise FileNotFoundError("claude")
+
+    assert session_alive("8c969912", runner=missing) is False
+
+
+def test_session_alive_is_false_on_unparseable_output():
+    assert session_alive("8c969912", runner=_agents_runner("not json")) is False
