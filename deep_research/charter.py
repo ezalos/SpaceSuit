@@ -21,18 +21,36 @@ class Charter:
     out_of_scope: tuple[str, ...]
 
 
+_FENCE_RE = re.compile(r"^(```|~~~)[^\n]*\n.*?^\1[^\n]*$", re.MULTILINE | re.DOTALL)
+
+
+def _mask_fences(text: str) -> str:
+    # A "## " line inside a fenced code block is sample text, not a section boundary.
+    # Blank fenced regions to spaces, preserving length and newlines so the match
+    # offsets still index the original string.
+    return _FENCE_RE.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
+
+
 def _section(text: str, heading: str) -> str:
     pattern = rf"^##\s+{re.escape(heading)}\s*$(.*?)(?=^##\s|\Z)"
-    match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
-    return match.group(1).strip() if match else ""
+    match = re.search(pattern, _mask_fences(text), re.MULTILINE | re.DOTALL)
+    if not match:
+        return ""
+    # Slice the ORIGINAL text at the masked match's offsets so fenced content survives.
+    return text[match.start(1) : match.end(1)].strip()
 
 
 def _bullets(block: str) -> tuple[str, ...]:
-    return tuple(
-        line.lstrip("-").strip()
-        for line in block.splitlines()
-        if line.lstrip().startswith("-") and line.lstrip("- ").strip()
-    )
+    # Strip indentation FIRST: "  - item".lstrip("-") is a no-op, because the leading
+    # space blocks the strip, which would leak the dash into the parsed value.
+    items = []
+    for line in block.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("-"):
+            value = stripped[1:].strip()
+            if value:
+                items.append(value)
+    return tuple(items)
 
 
 def _labelled(block: str, label: str) -> str:
