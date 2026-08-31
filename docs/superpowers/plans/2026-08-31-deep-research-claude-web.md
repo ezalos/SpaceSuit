@@ -591,9 +591,14 @@ def test_runner_prompt_includes_notify_only_when_a_script_is_given():
 def test_runner_prompt_makes_a_relative_out_dir_absolute():
     # The prompt promises absolute paths, and the detached agent's cwd need not match
     # the caller's, so a relative path would strand the files where nobody polls.
+    # Pull the path the prompt actually emits and assert it is absolute; a plain
+    # substring check cannot work, since the resolved path still ENDS with the
+    # relative one.
     prompt = build_runner_prompt(parse_charter(CHARTER_TEXT), Path("relative/out"))
-    assert "relative/out/report.md" not in prompt
-    assert str((Path.cwd() / "relative/out" / "report.md").resolve()) in prompt
+    emitted = re.search(r"^1\. (\S*report\.md)\s*$", prompt, re.MULTILINE)
+    assert emitted, f"no report.md line in prompt:\n{prompt}"
+    assert Path(emitted.group(1)).is_absolute()
+    assert emitted.group(1) == str((Path.cwd() / "relative" / "out" / "report.md"))
 
 
 def test_runner_prompt_forbids_citing_an_unverified_source():
