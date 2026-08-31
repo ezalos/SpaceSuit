@@ -1,6 +1,6 @@
 ---
 name: secrets
-description: Use when adding an API key or secret to a project, creating or editing a .envrc, wiring a new repo's environment, or when a command fails on a missing secret/env var (e.g. "add my HF token", "set up secrets here", "HF_TOKEN not set", "where does this key go"). Routes config vs vaulted secrets, generates pass:// ref lines, and diagnoses resolution failures.
+description: Use when adding an API key or secret to a project, creating or editing a .envrc, wiring a new repo's environment, when a command fails on a missing secret/env var, or when direnv/cd into a repo is SLOW (e.g. "add my HF token", "set up secrets here", "HF_TOKEN not set", "where does this key go", "direnv takes forever in this repo", "why is my shell slow here"). Routes config vs vaulted secrets, generates pass:// ref lines, and diagnoses resolution failures and cost.
 ---
 
 # Secrets: wiring and diagnosing
@@ -13,15 +13,34 @@ Gray zone defaults to config unless the value alone grants access:
 account ID = config; webhook URL with an embedded token = secret.
 Exception: anything ALREADY in a vault is always a ref, even config-shaped.
 
+## Which repo owns the ref (ask BEFORE wiring)
+
+A shared infra credential belongs to the repo that owns its tooling — the
+Cloudflare token to GroundControl `network/domains/`, and so on. Another repo
+gets its own ref line ONLY if something in it actually reads the var: grep for
+the name first. A ref nobody consumes is not free — it is a second place to
+rotate, a second thing to audit, and in `resolve` mode a per-shell tax. Delete
+it and point the doc at the owning repo instead (Markdowns2Teach carried a dead
+Cloudflare ref for ~7 weeks this way, 2026-08-31).
+
 ## Wire a repo (choose the mode first)
 
-- **Project repo** (dev work, arbitrary commands need real values):
-  `proton-envrc <ctx> --resolve >> .envrc && direnv allow`
-  Refs resolve into the shell env on cd. The `use proton <ctx> resolve` line
-  must stay AFTER the export lines.
-- **Capability repo** (a tool wraps every secret use):
+**Default to capability mode.** Resolve mode is opt-in and costs real time:
+direnv re-runs `.envrc` in EVERY fresh terminal entering the repo, and each ref
+is a `proton-agent item view` round-trip — measured **~7s per ref, warm session**
+(2026-08-31). Three refs = a ~20s pause on every new shell. Capability mode is
+~0.02s.
+
+- **Capability repo** (DEFAULT — a tool wraps every secret use):
   `proton-envrc <ctx> >> .envrc && direnv allow`
   Refs stay refs. The tool (or its front door) runs `secrets run -- <cmd>`.
+- **Project repo** (only when arbitrary ad-hoc commands need real values in the
+  ambient env — e.g. an MCP server config that expands `${VAR}`, or a CLI you
+  run by hand all day):
+  `proton-envrc <ctx> --resolve >> .envrc && direnv allow`
+  Refs resolve into the shell env on cd. The `use proton <ctx> resolve` line
+  must stay AFTER the export lines. Prefer wrapping the consumer in
+  `secrets run --` and dropping back to capability mode.
 
 Contexts = PAT files: `ls ~/.claude/channels/proton-pass/*.pat`. One context
 = one vault. Cross-context refs fail `denied` by design; do not work around.
@@ -51,6 +70,14 @@ mismatched labels are the same defect class.
 
 ## Diagnose
 
+- **`cd` into the repo is slow / "direnv is taking a while to execute"**: that is
+  `resolve` mode paying ~7s per `pass://` ref, in every fresh terminal. Time it
+  with `env -u DIRENV_DIFF -u DIRENV_WATCHES -u DIRENV_FILE -u DIRENV_DIR direnv
+  export zsh >/dev/null` (a plain `direnv export` on an already-loaded shell
+  returns instantly and proves nothing). Then grep each ref's var name across the
+  repo: unused ones get deleted (see ownership, above), and the rest usually move
+  to capability mode. Only keep `resolve` for a consumer that genuinely needs the
+  ambient value and cannot be wrapped in `secrets run --`.
 - `secrets check` in the repo: per-ref `ok | missing | denied | error`. Since
   2026-08-17 it inspects the resolved value in-process: an empty value or the
   literal `<concealed by Proton Pass>` placeholder reports as `error`, never ok.
