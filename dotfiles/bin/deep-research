@@ -3,4 +3,7 @@
 # ABOUTME: Runs through uv from the repo so the package resolves without installation.
 set -euo pipefail
 REPO="${SPACESUIT_REPO:-$HOME/42/SpaceSuit}"
-exec uv run --project "$REPO" python -m deep_research "$@"
+# PYTHONPATH rather than --directory: the package is not installed into the venv, so the
+# repo root must be on sys.path, but the working directory must stay the CALLER's, or a
+# relative --out would resolve against the repo instead of where the user is standing.
+PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}" exec uv run --project "$REPO" python -m deep_research "$@"

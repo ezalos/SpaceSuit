@@ -1170,6 +1170,19 @@
             ],
             "variants": null,
             "fanout": false
+        },
+        "deep_research": {
+            "alias": "deep_research",
+            "main": "dotfiles/bin/deep-research",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/deep-research",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
         }
     },
     "devices": {
