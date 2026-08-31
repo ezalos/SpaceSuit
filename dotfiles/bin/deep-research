@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# ABOUTME: Thin wrapper putting the deep_research CLI on PATH.
+# ABOUTME: Runs through uv from the repo so the package resolves without installation.
+set -euo pipefail
+REPO="${SPACESUIT_REPO:-$HOME/42/SpaceSuit}"
+exec uv run --project "$REPO" python -m deep_research "$@"

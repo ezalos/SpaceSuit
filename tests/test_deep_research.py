@@ -590,3 +590,80 @@ def test_session_alive_is_false_rather_than_raising_when_claude_is_missing():
 
 def test_session_alive_is_false_on_unparseable_output():
     assert session_alive("8c969912", runner=_agents_runner("not json")) is False
+
+
+from deep_research.__main__ import main
+
+
+def test_status_reports_done_for_a_finished_run(tmp_path, capsys):
+    out = tmp_path / "run"
+    write_manifest(out, _manifest(run_id="r1", out_dir=str(out)))
+    (out / "DONE").write_text("", encoding="utf-8")
+
+    rc = main(["status", "--runs-root", str(tmp_path)])
+    assert rc == 0
+    assert "done" in capsys.readouterr().out
+
+
+def test_collect_shouts_about_unverified_sources(tmp_path, capsys):
+    out = tmp_path / "run"
+    write_manifest(out, _manifest(run_id="r1", out_dir=str(out)))
+    (out / "DONE").write_text("", encoding="utf-8")
+    (out / "report.md").write_text("# findings", encoding="utf-8")
+    (out / "run-result.json").write_text(
+        _json_mod.dumps(
+            {
+                "status": "partial",
+                "sources_total": 3,
+                "sources_verified": 2,
+                "unanswered": ["what does it cost"],
+                "unverified": [{"url": "https://x.test/a", "reason": "404"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    rc = main(["collect", "r1", "--runs-root", str(tmp_path)])
+    printed = capsys.readouterr().out
+    assert rc == 1
+    assert "https://x.test/a" in printed
+    assert "UNVERIFIED" in printed.upper()
+    assert "what does it cost" in printed
+
+
+def test_collect_is_clean_for_a_fully_verified_run(tmp_path, capsys):
+    out = tmp_path / "run"
+    write_manifest(out, _manifest(run_id="r1", out_dir=str(out)))
+    (out / "DONE").write_text("", encoding="utf-8")
+    (out / "report.md").write_text("# findings", encoding="utf-8")
+    (out / "run-result.json").write_text(
+        _json_mod.dumps(
+            {
+                "status": "complete",
+                "sources_total": 3,
+                "sources_verified": 3,
+                "unanswered": [],
+                "unverified": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    rc = main(["collect", "r1", "--runs-root", str(tmp_path)])
+    assert rc == 0
+    assert "report.md" in capsys.readouterr().out
+
+
+def test_collect_errors_on_an_unknown_run(tmp_path, capsys):
+    rc = main(["collect", "nope", "--runs-root", str(tmp_path)])
+    assert rc == 2
+    assert "nope" in capsys.readouterr().err
+
+
+def test_list_prints_every_run(tmp_path, capsys):
+    for rid in ("r1", "r2"):
+        d = tmp_path / rid
+        write_manifest(d, _manifest(run_id=rid, out_dir=str(d)))
+    assert main(["list", "--runs-root", str(tmp_path)]) == 0
+    printed = capsys.readouterr().out
+    assert "r1" in printed and "r2" in printed
