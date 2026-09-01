@@ -17,7 +17,13 @@ MAX_BYTES = 5_000_000
 
 # Content that is present in the markup but is not readable page text. A quote must
 # never be satisfied by a string that only exists inside a script or a stylesheet.
-_NON_TEXT_TAGS = {"script", "style", "noscript", "template", "sup"}
+_NON_TEXT_TAGS = {"script", "style", "noscript", "template"}
+
+# A <sup> holding a bracketed number is a footnote marker ("Lisbon[1] is the capital"),
+# which no reader treats as prose and no agent transcribes. Any OTHER <sup> is real
+# content: dropping it wholesale would turn "10<sup>6</sup> square metres" into
+# "10 square metres" and VERIFY a quote that is wrong by a factor of a million.
+_FOOTNOTE_MARKER_RE = re.compile(r"^\s*\[\s*\d+\s*\]\s*$")
 
 # Content types we can meaningfully read as text. A PDF decoded as UTF-8 and shoved
 # through an HTML parser yields garbage that no quote matches, which would come back as
@@ -76,10 +82,13 @@ class _TextExtractor(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.chunks: list[str] = []
         self._suppress = 0
+        self._in_sup = 0
 
     def handle_starttag(self, tag, attrs):
         if tag in _NON_TEXT_TAGS:
             self._suppress += 1
+        elif tag == "sup":
+            self._in_sup += 1
         elif tag in _BLOCK_TAGS:
             # A block boundary renders as whitespace. Without this, "<p>foo</p><p>bar</p>"
             # reads as "foobar" and a quote spanning two paragraphs falsely fails.
@@ -88,12 +97,17 @@ class _TextExtractor(HTMLParser):
     def handle_endtag(self, tag):
         if tag in _NON_TEXT_TAGS and self._suppress:
             self._suppress -= 1
+        elif tag == "sup" and self._in_sup:
+            self._in_sup -= 1
         elif tag in _BLOCK_TAGS:
             self.chunks.append(" ")
 
     def handle_data(self, data):
-        if not self._suppress:
-            self.chunks.append(data)
+        if self._suppress:
+            return
+        if self._in_sup and _FOOTNOTE_MARKER_RE.match(data):
+            return  # a citation marker, not prose
+        self.chunks.append(data)
 
 
 def normalize(text: str) -> str:

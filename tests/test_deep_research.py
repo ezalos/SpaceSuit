@@ -1158,3 +1158,20 @@ def test_fetch_really_talks_to_an_http_server(tmp_path):
         assert "404" in missing.detail
     finally:
         server.shutdown()
+
+
+def test_sup_drops_footnote_markers_but_keeps_exponents_and_ordinals():
+    # Dropping every <sup> would turn "10^6 square metres" into "10 square metres" and
+    # VERIFY a quote wrong by a factor of a million.
+    assert normalize("<p>Lisbon<sup>[1]</sup> is the capital.</p>") == "Lisbon is the capital."
+    assert "10" + "6" in normalize("<p>The area is 10<sup>6</sup> square metres.</p>")
+    assert "4th quarter" in normalize("<p>The 4<sup>th</sup> quarter.</p>")
+
+
+def test_an_exponent_quote_is_not_falsely_verified_against_the_stripped_number():
+    page = "<html><body><p>The area is 10<sup>6</sup> square metres exactly.</p></body></html>"
+    v = verify_sources(
+        [{"n": 1, "url": "https://x.test/a", "quote": "The area is 10 square metres exactly."}],
+        fetcher=_fetcher({"https://x.test/a": (200, page)}),
+    )[0]
+    assert v.kind is VerdictKind.CONTRADICTED
