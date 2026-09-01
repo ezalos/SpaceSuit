@@ -9,7 +9,7 @@ import urllib.request
 from dataclasses import dataclass
 from enum import Enum
 from html.parser import HTMLParser
-from typing import Callable, Iterable
+from typing import Callable, Iterable, NamedTuple
 
 USER_AGENT = "deep-research-verifier/1.0 (+citation check)"
 TIMEOUT_SECONDS = 20
@@ -17,7 +17,12 @@ MAX_BYTES = 5_000_000
 
 # Content that is present in the markup but is not readable page text. A quote must
 # never be satisfied by a string that only exists inside a script or a stylesheet.
-_NON_TEXT_TAGS = {"script", "style", "noscript", "template"}
+_NON_TEXT_TAGS = {"script", "style", "noscript", "template", "sup"}
+
+# Content types we can meaningfully read as text. A PDF decoded as UTF-8 and shoved
+# through an HTML parser yields garbage that no quote matches, which would come back as
+# the accusatory CONTRADICTED rather than the honest "could not check".
+_READABLE_TYPES = ("text/html", "application/xhtml", "text/plain", "application/xml", "text/xml")
 
 # Publishers routinely render typographic punctuation while an agent transcribes the
 # ASCII form it read. Folding both sides prevents false CONTRADICTED verdicts on
@@ -149,17 +154,32 @@ def _looks_like_a_bare_domain(url: str) -> bool:
     return path.strip("/") == ""
 
 
-def fetch(url: str, timeout: int | None = None) -> tuple[int, str]:
-    """Fetch a URL, returning (status, body). Raises OSError when unreachable."""
+class Fetched(NamedTuple):
+    status: int
+    body: str
+    content_type: str = ""
+    truncated: bool = False
+
+
+def fetch(url: str, timeout: int | None = None) -> Fetched:
+    """Fetch a URL. Raises OSError when unreachable; an HTTP error returns its status."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=timeout or TIMEOUT_SECONDS) as response:
-            raw = response.read(MAX_BYTES)
+            # Read one byte past the cap so a truncated page is detectable rather than
+            # silently short, which would read as a missing quote.
+            raw = response.read(MAX_BYTES + 1)
+            truncated = len(raw) > MAX_BYTES
             charset = response.headers.get_content_charset() or "utf-8"
-            return response.status, raw.decode(charset, errors="replace")
+            return Fetched(
+                response.status,
+                raw[:MAX_BYTES].decode(charset, errors="replace"),
+                (response.headers.get_content_type() or "").lower(),
+                truncated,
+            )
     except urllib.error.HTTPError as exc:
         # An HTTP error still carries a status, which is more useful than "unreachable".
-        return exc.code, ""
+        return Fetched(exc.code, "", "", False)
 
 
 def verify_source(
@@ -189,14 +209,23 @@ def verify_source(
         )
 
     try:
-        status, body = fetcher(url, timeout=timeout)
+        fetched = Fetched(*fetcher(url, timeout=timeout))
     except Exception as exc:  # network stack raises a wide family; none should crash us
         return Verdict(n, url, quote, VerdictKind.UNVERIFIABLE, f"fetch failed: {exc}")
 
-    if status != 200:
-        return Verdict(n, url, quote, VerdictKind.UNVERIFIABLE, f"HTTP {status}")
+    if fetched.status != 200:
+        return Verdict(n, url, quote, VerdictKind.UNVERIFIABLE, f"HTTP {fetched.status}")
 
-    page = normalize(body)
+    ctype = fetched.content_type
+    if ctype and not any(ctype.startswith(t) for t in _READABLE_TYPES):
+        # Not a text document we can read. Say so honestly instead of accusing the
+        # citation of being wrong because we cannot parse a PDF.
+        return Verdict(
+            n, url, quote, VerdictKind.UNVERIFIABLE,
+            f"cannot read content type {ctype}; check this one by hand",
+        )
+
+    page = normalize(fetched.body)
     if not page:
         return Verdict(n, url, quote, VerdictKind.UNVERIFIABLE, "page had no readable text")
 
@@ -207,6 +236,13 @@ def verify_source(
         return Verdict(
             n, url, quote, VerdictKind.VERIFIED, "quote found, differing only in case"
         )
+    if fetched.truncated:
+        # The quote may well live in the part we never read, so absence is not evidence.
+        return Verdict(
+            n, url, quote, VerdictKind.UNVERIFIABLE,
+            "page exceeded the read limit; the quote may be in the unread part",
+        )
+
     span = longest_common_span(needle, page)
     detail = f"matched {len(span)} of {len(needle)} characters"
     if span:

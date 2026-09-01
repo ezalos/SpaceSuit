@@ -112,14 +112,26 @@ Each source comes back as one of three things, and the last two both exit 1:
 - **confirmed** - the quote is on the page.
 - **CONTRADICTED** - the page loaded but does not contain the quote. Treat this as the
   citation being wrong until proven otherwise. Do not pass the claim on.
-- **UNVERIFIABLE** - nobody could check it: a 4xx/5xx, a timeout, a JS-only page, or a
-  bare domain (which the citation contract forbids anyway). Bot-blocked publishers land
-  here routinely, so this is a "you decide", not automatically a fabrication.
+- **UNVERIFIABLE** - nobody could check it: a 4xx/5xx, a timeout, a bare domain (which
+  the citation contract forbids anyway), a non-HTML document such as a PDF, a page past
+  the read limit, or a quote too short to be evidence (under 12 characters - "the"
+  appears on every page, so confirming it would prove nothing). Bot-blocked publishers
+  and PDFs land here routinely, so this is a "you decide", not a fabrication.
 
-Matching normalises both sides first - tags stripped, entities decoded, curly quotes and
-dashes folded to ASCII, whitespace collapsed - so a real quote is not failed over
-typography. Script and style contents are excluded, so a quote can never be "found" in
-markup the reader never sees.
+`collect` also fails when the run lists fewer sources than it claims to have cited:
+under-listing would otherwise be a free pass, since only listed sources get checked.
+
+Matching normalises both sides first - tags stripped, entities decoded once, curly quotes
+and dashes folded to ASCII, soft hyphens and zero-width characters removed, block
+boundaries treated as spaces, whitespace collapsed - so a real quote is not failed over
+typography. Script, style and `<sup>` contents are excluded, so a quote can neither be
+"found" in markup the reader never sees nor broken by a footnote marker.
+
+**What VERIFIED does and does not mean.** It means the quoted string really appears in
+that page's readable text. It does NOT mean the string came from the article body: page
+text is unscoped, so navigation, cookie banners and sidebars are quotable too, and two
+adjacent blocks can read as one line. So VERIFIED rules out a fabricated quote; it does
+not by itself prove the quote supports the claim. That judgement stays yours.
 
 `--no-verify` skips all fetching and prints the self-reported counts with a warning. Use
 it for a quick offline look, never as the basis for calling a report clean.

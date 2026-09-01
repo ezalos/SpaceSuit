@@ -168,6 +168,17 @@ def _check_sources(result: dict, total: int, verify: bool) -> bool:
             return True
         return False
 
+    if len(sources) < total:
+        # Under-listing is the obvious evasion once the agent knows every listed quote
+        # gets refetched: cite twenty, list one, collect clean. Refuse the shortfall.
+        print(
+            f"  the run claims {total} sources but listed only {len(sources)} to check;"
+            f" {total - len(sources)} were never checked"
+        )
+        problems_from_shortfall = True
+    else:
+        problems_from_shortfall = False
+
     verdicts = verify_sources(sources)
     confirmed = [v for v in verdicts if v.kind is VerdictKind.VERIFIED]
     contradicted = [v for v in verdicts if v.kind is VerdictKind.CONTRADICTED]
@@ -187,7 +198,7 @@ def _check_sources(result: dict, total: int, verify: bool) -> bool:
         for v in unverifiable:
             print(f"    - [{v.n}] {v.url}  ({v.detail})")
 
-    return bool(contradicted or unverifiable)
+    return bool(contradicted or unverifiable or problems_from_shortfall)
 
 
 def cmd_stop(args: argparse.Namespace) -> int:

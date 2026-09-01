@@ -1056,3 +1056,105 @@ def test_a_short_but_real_fact_still_verifies():
         fetcher=_fetcher({"https://x.test/a": (200, page)}),
     )[0]
     assert v.kind is VerdictKind.VERIFIED
+
+
+def test_footnote_markers_do_not_break_an_otherwise_verbatim_quote():
+    # Wikipedia's shape: "Lisbon<sup>[1]</sup> is the capital". The marker is not prose.
+    page = "<html><body><p>Lisbon<sup>[1]</sup> is the capital of Portugal.</p></body></html>"
+    v = verify_sources(
+        [{"n": 1, "url": "https://x.test/a", "quote": "Lisbon is the capital of Portugal."}],
+        fetcher=_fetcher({"https://x.test/a": (200, page)}),
+    )[0]
+    assert v.kind is VerdictKind.VERIFIED
+
+
+def test_a_pdf_is_unverifiable_not_contradicted():
+    # Accusing a PDF citation of being wrong because we cannot parse it would be a lie.
+    def pdf_fetcher(url, timeout=None):
+        return (200, "%PDF-1.7 binary garbage", "application/pdf", False)
+
+    v = verify_sources(
+        [{"n": 1, "url": "https://x.test/paper.pdf", "quote": "a quote long enough to check"}],
+        fetcher=pdf_fetcher,
+    )[0]
+    assert v.kind is VerdictKind.UNVERIFIABLE
+    assert "application/pdf" in v.detail
+
+
+def test_a_truncated_page_is_unverifiable_not_contradicted():
+    def truncating(url, timeout=None):
+        return (200, "<p>only the first chunk</p>", "text/html", True)
+
+    v = verify_sources(
+        [{"n": 1, "url": "https://x.test/big", "quote": "a quote from deep in the page"}],
+        fetcher=truncating,
+    )[0]
+    assert v.kind is VerdictKind.UNVERIFIABLE
+    assert "read limit" in v.detail
+
+
+def test_collect_fails_when_the_run_lists_fewer_sources_than_it_claims(
+    tmp_path, capsys, monkeypatch
+):
+    # Under-listing is the obvious evasion: cite twenty, list one, collect clean.
+    result = dict(CLEAN_RESULT)
+    result["sources_total"] = 20
+    _finished_run(tmp_path, result)
+    _stub_verdicts(
+        monkeypatch,
+        [Verdict(1, "https://x.test/a", "q", VerdictKind.VERIFIED, "quote found")],
+    )
+    rc = main(["collect", "r1", "--runs-root", str(tmp_path)])
+    printed = capsys.readouterr().out
+    assert rc == 1
+    assert "listed only 1" in printed
+
+
+def test_fetch_really_talks_to_an_http_server(tmp_path):
+    # The only test that exercises the real fetch path: charset, content type and
+    # status all come from an actual server rather than a stub.
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/missing":
+                self.send_error(404)
+                return
+            body = "<html><body><p>Café résumé on the page.</p></body></html>"
+            raw = body.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        from deep_research.verify import fetch as real_fetch
+
+        got = real_fetch(f"{base}/page")
+        assert got.status == 200
+        assert got.content_type == "text/html"
+        assert not got.truncated
+        assert "Café résumé" in got.body
+
+        # A real end-to-end verdict over real HTTP, no stub anywhere.
+        v = verify_sources(
+            [{"n": 1, "url": f"{base}/page", "quote": "Café résumé on the page."}]
+        )[0]
+        assert v.kind is VerdictKind.VERIFIED
+
+        assert real_fetch(f"{base}/missing").status == 404
+        missing = verify_sources(
+            [{"n": 1, "url": f"{base}/missing", "quote": "a quote long enough to check"}]
+        )[0]
+        assert missing.kind is VerdictKind.UNVERIFIABLE
+        assert "404" in missing.detail
+    finally:
+        server.shutdown()
