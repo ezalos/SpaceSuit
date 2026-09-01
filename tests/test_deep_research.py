@@ -651,6 +651,9 @@ def test_collect_shouts_about_unverified_sources(tmp_path, capsys):
 
 
 def test_collect_is_clean_for_a_fully_verified_run(tmp_path, capsys):
+    # Pinned to --no-verify: this test has always covered the self-report path, and the
+    # fetching path added later has its own tests. Without the flag it would now fail
+    # correctly, because this fixture claims 3 sources but lists none to check.
     out = tmp_path / "run"
     write_manifest(out, _manifest(run_id="r1", out_dir=str(out)))
     (out / "DONE").write_text("", encoding="utf-8")
@@ -668,7 +671,7 @@ def test_collect_is_clean_for_a_fully_verified_run(tmp_path, capsys):
         encoding="utf-8",
     )
 
-    rc = main(["collect", "r1", "--runs-root", str(tmp_path)])
+    rc = main(["collect", "r1", "--runs-root", str(tmp_path), "--no-verify"])
     assert rc == 0
     assert "report.md" in capsys.readouterr().out
 
@@ -794,3 +797,197 @@ def test_stop_reports_a_message_instead_of_a_traceback_when_claude_is_missing(
     rc = main(["stop", "r1", "--runs-root", str(tmp_path)])
     assert rc == 1
     assert "cannot run claude" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------
+# source verification (deep_research.verify)
+# --------------------------------------------------------------------------
+
+from deep_research.verify import (
+    Verdict,
+    VerdictKind,
+    normalize,
+    verify_sources,
+)
+
+PAGE = """<html><head><style>.x{color:red}</style><script>var a="Capital: Nowhere";</script></head>
+<body><h1>Portugal</h1><p>The  capital
+is <b>Lisbon</b>&nbsp;&mdash; the largest city.</p>
+<p>It&rsquo;s on the Atlantic.</p></body></html>"""
+
+
+def _fetcher(pages):
+    """Fetcher stub over a {url: (status, body)} map; a missing url is a network error."""
+
+    def fetch(url, timeout=None):
+        if url not in pages:
+            raise OSError(f"unreachable: {url}")
+        status, body = pages[url]
+        return status, body
+
+    return fetch
+
+
+def test_normalize_strips_tags_scripts_entities_and_collapses_whitespace():
+    text = normalize(PAGE)
+    assert "The capital is Lisbon" in text
+    assert "<b>" not in text and "color:red" not in text
+    # script content must not become quotable page text
+    assert "Capital: Nowhere" not in text
+    # &nbsp; and &mdash; decoded, runs of whitespace collapsed to one space
+    assert "Lisbon - the largest city" in text
+
+
+def test_normalize_folds_curly_punctuation_so_a_straight_quote_still_matches():
+    assert "It's on the Atlantic" in normalize(PAGE)
+
+
+def test_verify_sources_confirms_a_quote_present_on_the_page():
+    sources = [{"n": 1, "url": "https://x.test/a", "quote": "The capital is Lisbon"}]
+    verdicts = verify_sources(sources, fetcher=_fetcher({"https://x.test/a": (200, PAGE)}))
+    assert [v.kind for v in verdicts] == [VerdictKind.VERIFIED]
+    assert verdicts[0].url == "https://x.test/a"
+
+
+def test_verify_sources_flags_a_quote_absent_from_the_page_as_contradicted():
+    sources = [{"n": 1, "url": "https://x.test/a", "quote": "The capital is Madrid"}]
+    verdicts = verify_sources(sources, fetcher=_fetcher({"https://x.test/a": (200, PAGE)}))
+    assert verdicts[0].kind is VerdictKind.CONTRADICTED
+
+
+def test_verify_sources_marks_an_http_error_unverifiable_not_contradicted():
+    sources = [{"n": 1, "url": "https://x.test/a", "quote": "anything"}]
+    verdicts = verify_sources(sources, fetcher=_fetcher({"https://x.test/a": (403, "")}))
+    assert verdicts[0].kind is VerdictKind.UNVERIFIABLE
+    assert "403" in verdicts[0].detail
+
+
+def test_verify_sources_marks_a_network_failure_unverifiable():
+    sources = [{"n": 1, "url": "https://gone.test/a", "quote": "anything"}]
+    verdicts = verify_sources(sources, fetcher=_fetcher({}))
+    assert verdicts[0].kind is VerdictKind.UNVERIFIABLE
+
+
+def test_verify_sources_marks_a_bare_domain_unverifiable_without_fetching():
+    # A bare domain is not an exact source; the citation contract forbids it, and
+    # fetching it would often succeed and wrongly look like evidence.
+    def exploding_fetcher(url, timeout=None):
+        raise AssertionError("must not fetch a bare domain")
+
+    sources = [{"n": 1, "url": "https://x.test", "quote": "anything"}]
+    verdicts = verify_sources(sources, fetcher=exploding_fetcher)
+    assert verdicts[0].kind is VerdictKind.UNVERIFIABLE
+    assert "bare domain" in verdicts[0].detail.lower()
+
+
+def test_verify_sources_marks_a_missing_quote_unverifiable():
+    sources = [{"n": 1, "url": "https://x.test/a", "quote": ""}]
+    verdicts = verify_sources(sources, fetcher=_fetcher({"https://x.test/a": (200, PAGE)}))
+    assert verdicts[0].kind is VerdictKind.UNVERIFIABLE
+
+
+def test_verdict_is_hashable_and_carries_its_index():
+    v = Verdict(n=3, url="u", quote="q", kind=VerdictKind.VERIFIED, detail="")
+    assert v.n == 3
+
+
+# --------------------------------------------------------------------------
+# collect: independent verification wiring
+# --------------------------------------------------------------------------
+
+import deep_research.__main__ as dr_main
+
+CLEAN_RESULT = {
+    "status": "complete",
+    "sources_total": 1,
+    "sources_verified": 1,
+    "unanswered": [],
+    "unverified": [],
+    "sources": [{"n": 1, "url": "https://x.test/a", "quote": "The capital is Lisbon"}],
+}
+
+
+def _finished_run(tmp_path, result):
+    out = tmp_path / "run"
+    write_manifest(out, _manifest(run_id="r1", out_dir=str(out)))
+    (out / "DONE").write_text("", encoding="utf-8")
+    (out / "report.md").write_text("# findings [1]", encoding="utf-8")
+    (out / "run-result.json").write_text(_json_mod.dumps(result), encoding="utf-8")
+    return out
+
+
+def _stub_verdicts(monkeypatch, verdicts):
+    monkeypatch.setattr(dr_main, "verify_sources", lambda sources, **kw: verdicts)
+
+
+def test_collect_verifies_sources_by_default_and_stays_clean_when_they_check_out(
+    tmp_path, capsys, monkeypatch
+):
+    _finished_run(tmp_path, CLEAN_RESULT)
+    _stub_verdicts(
+        monkeypatch,
+        [Verdict(1, "https://x.test/a", "q", VerdictKind.VERIFIED, "quote found")],
+    )
+    rc = main(["collect", "r1", "--runs-root", str(tmp_path)])
+    printed = capsys.readouterr().out
+    assert rc == 0
+    assert "1/1 confirmed" in printed
+
+
+def test_collect_fails_when_a_quote_is_not_on_the_page(tmp_path, capsys, monkeypatch):
+    # The agent self-reported a clean run; independent checking must override it.
+    _finished_run(tmp_path, CLEAN_RESULT)
+    _stub_verdicts(
+        monkeypatch,
+        [Verdict(1, "https://x.test/a", "q", VerdictKind.CONTRADICTED, "not on page")],
+    )
+    rc = main(["collect", "r1", "--runs-root", str(tmp_path)])
+    printed = capsys.readouterr().out
+    assert rc == 1
+    assert "CONTRADICTED" in printed.upper()
+    assert "https://x.test/a" in printed
+
+
+def test_collect_fails_when_a_source_cannot_be_fetched(tmp_path, capsys, monkeypatch):
+    _finished_run(tmp_path, CLEAN_RESULT)
+    _stub_verdicts(
+        monkeypatch,
+        [Verdict(1, "https://x.test/a", "q", VerdictKind.UNVERIFIABLE, "HTTP 403")],
+    )
+    rc = main(["collect", "r1", "--runs-root", str(tmp_path)])
+    assert rc == 1
+    assert "403" in capsys.readouterr().out
+
+
+def test_no_verify_skips_the_network_entirely(tmp_path, capsys, monkeypatch):
+    _finished_run(tmp_path, CLEAN_RESULT)
+
+    def exploding(sources, **kw):
+        raise AssertionError("--no-verify must not fetch anything")
+
+    monkeypatch.setattr(dr_main, "verify_sources", exploding)
+    rc = main(["collect", "r1", "--runs-root", str(tmp_path), "--no-verify"])
+    assert rc == 0
+    assert "not verified" in capsys.readouterr().out.lower()
+
+
+def test_collect_fails_when_the_run_claims_sources_but_lists_none_to_check(
+    tmp_path, capsys, monkeypatch
+):
+    # sources_total > 0 with no structured `sources` array means the agent broke the
+    # output contract, so its "verified" count cannot be checked and is worthless.
+    result = dict(CLEAN_RESULT)
+    result.pop("sources")
+    _finished_run(tmp_path, result)
+    rc = main(["collect", "r1", "--runs-root", str(tmp_path)])
+    assert rc == 1
+    assert "cannot be verified" in capsys.readouterr().out.lower()
+
+
+def test_runner_prompt_demands_a_structured_sources_array_and_warns_it_is_checked():
+    prompt = build_runner_prompt(parse_charter(CHARTER_TEXT), Path("/runs/x"))
+    # The verifier reads this array; without it collect cannot check anything.
+    assert '"n": 1' in prompt and '"url"' in prompt and '"quote"' in prompt
+    # Telling the agent the quotes are refetched is itself a quality lever.
+    assert "REFETCHED AND CHECKED AGAINST THE LIVE PAGE" in prompt
+    assert "CONTRADICTED" in prompt

@@ -101,6 +101,29 @@ not finish. **Report every unverified source by name.** Never present a run with
 unverified sources as a clean result - silently downgrading a citation is the exact
 failure this contract exists to prevent.
 
+### Independent verification (on by default)
+
+`collect` refetches every source the run cited and greps the live page for the verbatim
+quote. This is the only part that does not take the research agent's word for anything:
+everything else in the summary is the agent grading its own homework.
+
+Each source comes back as one of three things, and the last two both exit 1:
+
+- **confirmed** - the quote is on the page.
+- **CONTRADICTED** - the page loaded but does not contain the quote. Treat this as the
+  citation being wrong until proven otherwise. Do not pass the claim on.
+- **UNVERIFIABLE** - nobody could check it: a 4xx/5xx, a timeout, a JS-only page, or a
+  bare domain (which the citation contract forbids anyway). Bot-blocked publishers land
+  here routinely, so this is a "you decide", not automatically a fabrication.
+
+Matching normalises both sides first - tags stripped, entities decoded, curly quotes and
+dashes folded to ASCII, whitespace collapsed - so a real quote is not failed over
+typography. Script and style contents are excluded, so a quote can never be "found" in
+markup the reader never sees.
+
+`--no-verify` skips all fetching and prints the self-reported counts with a warning. Use
+it for a quick offline look, never as the basis for calling a report clean.
+
 If a run comes back `lost` (the machine rebooted mid-run), the charter is still on disk:
 offer to relaunch from it.
 

@@ -81,8 +81,20 @@ Write exactly these files, using absolute paths:
    and a verbatim quote from the page supporting the claim.
 3. {out / RESULT_NAME}
    JSON with keys: status ("complete" or "partial"), sources_total, sources_verified,
-   unanswered (list of must-answer questions you could not answer), and unverified
-   (list of objects with url and reason).
+   unanswered (list of must-answer questions you could not answer), unverified
+   (list of objects with url and reason), and sources.
+
+   sources is a list holding one object per [n] marker used in the report:
+     {{"n": 1, "url": "<the exact page URL>", "quote": "<text copied from that page>"}}
+
+   Each quote must be a contiguous span copied verbatim from the page you fetched,
+   long enough to be unambiguous (roughly 5 to 25 words) and short enough to sit on
+   one line. Do not paraphrase, do not stitch separated fragments together, do not
+   summarise. EVERY ONE OF THESE IS REFETCHED AND CHECKED AGAINST THE LIVE PAGE after
+   the run finishes, so an invented or approximated quote is not a shortcut that
+   works: it comes back as CONTRADICTED and fails the run. If you cannot copy an exact
+   supporting span, the source belongs in unverified and the claim it would have
+   supported comes out of the report.
 4. {out / DONE_SENTINEL}
    An empty sentinel file. Write it LAST, after all three files above are complete.
    It is the only signal the caller polls, so writing it early reports a half-finished

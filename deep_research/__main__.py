@@ -12,6 +12,7 @@ from .charter import CharterError, parse_charter
 from .launcher import LaunchError, launch, session_alive
 from .manifest import Manifest, find_runs
 from .status import DONE_SENTINEL, REPORT_NAME, RESULT_NAME, RunState, resolve_state
+from .verify import VerdictKind, verify_sources
 
 DEFAULT_RUNS_ROOT = Path.home() / "research-runs"
 DEFAULT_NOTIFY = Path.home() / ".claude" / "skills" / "notify-louis" / "notify.sh"
@@ -137,10 +138,55 @@ def cmd_collect(args: argparse.Namespace) -> int:
         for entry in unverified:
             print(f"    - {entry.get('url')}  ({entry.get('reason')})")
 
+    if _check_sources(result, total, verify=not args.no_verify):
+        problems = True
+
     if state is not RunState.DONE:
         problems = True
 
     return 1 if problems else 0
+
+
+def _check_sources(result: dict, total: int, verify: bool) -> bool:
+    """Independently confirm each cited quote really is on its page.
+
+    Everything above this point is the research agent grading its own homework. This
+    is the only part that fetches. Returns True when something needs attention.
+    """
+    sources = result.get("sources") or []
+
+    if not verify:
+        print("  sources not verified (--no-verify); the counts above are self-reported")
+        return False
+
+    if not sources:
+        if total:
+            print(
+                f"  the run claims {total} sources but listed none to check, so its"
+                " verified count cannot be verified"
+            )
+            return True
+        return False
+
+    verdicts = verify_sources(sources)
+    confirmed = [v for v in verdicts if v.kind is VerdictKind.VERIFIED]
+    contradicted = [v for v in verdicts if v.kind is VerdictKind.CONTRADICTED]
+    unverifiable = [v for v in verdicts if v.kind is VerdictKind.UNVERIFIABLE]
+
+    print(f"  checked: {len(confirmed)}/{len(verdicts)} confirmed against the live page")
+
+    if contradicted:
+        print("  CONTRADICTED, the page does not contain the quoted text:")
+        for v in contradicted:
+            print(f"    - [{v.n}] {v.url}")
+            print(f"        quote: {v.quote[:120]}")
+
+    if unverifiable:
+        print("  UNVERIFIABLE, could not be checked, decide these yourself:")
+        for v in unverifiable:
+            print(f"    - [{v.n}] {v.url}  ({v.detail})")
+
+    return bool(contradicted or unverifiable)
 
 
 def cmd_stop(args: argparse.Namespace) -> int:
@@ -213,6 +259,11 @@ def build_parser() -> argparse.ArgumentParser:
         "collect", help="summarise a finished run and flag problems", parents=[runs_root_parent]
     )
     p.add_argument("run_id")
+    p.add_argument(
+        "--no-verify",
+        action="store_true",
+        help="skip fetching each source; report the run's self-assessment only",
+    )
     p.set_defaults(func=cmd_collect)
 
     p = sub.add_parser("stop", help="stop a running run", parents=[runs_root_parent])
