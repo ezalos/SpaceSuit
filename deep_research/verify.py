@@ -23,11 +23,30 @@ _NON_TEXT_TAGS = {"script", "style", "noscript", "template"}
 # ASCII form it read. Folding both sides prevents false CONTRADICTED verdicts on
 # quotes that are, to a reader, character-for-character identical.
 _PUNCTUATION_FOLD = {
-    "‘": "'", "’": "'", "‚": "'", "‛": "'",
-    "“": '"', "”": '"', "„": '"', "‟": '"',
-    "–": "-", "—": "-", "‒": "-", "―": "-", "−": "-",
-    "…": "...", " ": " ", " ": " ", " ": " ", "​": "",
+    "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'",
+    "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u201f": '"',
+    "\u2013": "-", "\u2014": "-", "\u2012": "-", "\u2015": "-", "\u2212": "-",
+    "\u2026": "...", "\u00a0": " ", "\u2009": " ", "\u202f": " ",
 }
+
+# Invisible characters publishers inject for typesetting. A reader never sees them and
+# an agent transcribing the page never types them, so leaving them in produces false
+# CONTRADICTED verdicts. Wikipedia really does ship soft hyphens mid-word ("pro\xadduct").
+_INVISIBLE = dict.fromkeys("\u00ad\u200b\u200c\u200d\u2060\ufeff", "")
+
+# Tags that render as a line or block break. Their text must not be glued to the next
+# element's, or a quote spanning two paragraphs would falsely fail to match.
+_BLOCK_TAGS = {
+    "address", "article", "aside", "blockquote", "br", "dd", "div", "dl", "dt",
+    "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6",
+    "header", "hr", "li", "main", "nav", "ol", "p", "pre", "section", "table",
+    "tbody", "td", "th", "thead", "tr", "ul",
+}
+
+# A quote shorter than this cannot be evidence: "the" appears on nearly every page, so
+# confirming it would be a false VERIFIED. Long enough to admit a real short fact like
+# "Capital: Lisbon", short enough not to reject a legitimately terse citation.
+MIN_QUOTE_CHARS = 12
 
 
 class VerdictKind(str, Enum):
@@ -56,10 +75,16 @@ class _TextExtractor(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag in _NON_TEXT_TAGS:
             self._suppress += 1
+        elif tag in _BLOCK_TAGS:
+            # A block boundary renders as whitespace. Without this, "<p>foo</p><p>bar</p>"
+            # reads as "foobar" and a quote spanning two paragraphs falsely fails.
+            self.chunks.append(" ")
 
     def handle_endtag(self, tag):
         if tag in _NON_TEXT_TAGS and self._suppress:
             self._suppress -= 1
+        elif tag in _BLOCK_TAGS:
+            self.chunks.append(" ")
 
     def handle_data(self, data):
         if not self._suppress:
@@ -78,12 +103,16 @@ def normalize(text: str) -> str:
     try:
         parser.feed(text)
         parser.close()
+        # convert_charrefs=True has ALREADY decoded entities here. Calling
+        # html.unescape again would decode twice, turning a page's literal "&amp;lt;"
+        # into "<" and letting a quote match text the page never displayed.
         plain = "".join(parser.chunks)
     except Exception:
         # A malformed document must degrade to a usable comparison, not an exception.
-        plain = re.sub(r"<[^>]*>", " ", text)
+        # This path did no entity decoding, so it is the one that needs unescape.
+        plain = html.unescape(re.sub(r"<[^>]*>", " ", text))
 
-    plain = html.unescape(plain)
+    plain = plain.translate(str.maketrans(_INVISIBLE))
     for src, dst in _PUNCTUATION_FOLD.items():
         plain = plain.replace(src, dst)
     return re.sub(r"\s+", " ", plain).strip()
@@ -146,6 +175,13 @@ def verify_source(
         return Verdict(n, url, quote, VerdictKind.UNVERIFIABLE, "no url given")
     if not quote:
         return Verdict(n, url, quote, VerdictKind.UNVERIFIABLE, "no verbatim quote given")
+    if len(normalize(quote)) < MIN_QUOTE_CHARS:
+        # A very short string matches almost any page, so confirming it would be
+        # evidence of nothing. Refuse rather than hand back a meaningless VERIFIED.
+        return Verdict(
+            n, url, quote, VerdictKind.UNVERIFIABLE,
+            f"quote is too short to be evidence (under {MIN_QUOTE_CHARS} characters)",
+        )
     if _looks_like_a_bare_domain(url):
         return Verdict(
             n, url, quote, VerdictKind.UNVERIFIABLE,

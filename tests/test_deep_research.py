@@ -856,14 +856,14 @@ def test_verify_sources_flags_a_quote_absent_from_the_page_as_contradicted():
 
 
 def test_verify_sources_marks_an_http_error_unverifiable_not_contradicted():
-    sources = [{"n": 1, "url": "https://x.test/a", "quote": "anything"}]
+    sources = [{"n": 1, "url": "https://x.test/a", "quote": "a quote long enough to check"}]
     verdicts = verify_sources(sources, fetcher=_fetcher({"https://x.test/a": (403, "")}))
     assert verdicts[0].kind is VerdictKind.UNVERIFIABLE
     assert "403" in verdicts[0].detail
 
 
 def test_verify_sources_marks_a_network_failure_unverifiable():
-    sources = [{"n": 1, "url": "https://gone.test/a", "quote": "anything"}]
+    sources = [{"n": 1, "url": "https://gone.test/a", "quote": "a quote long enough to check"}]
     verdicts = verify_sources(sources, fetcher=_fetcher({}))
     assert verdicts[0].kind is VerdictKind.UNVERIFIABLE
 
@@ -874,7 +874,7 @@ def test_verify_sources_marks_a_bare_domain_unverifiable_without_fetching():
     def exploding_fetcher(url, timeout=None):
         raise AssertionError("must not fetch a bare domain")
 
-    sources = [{"n": 1, "url": "https://x.test", "quote": "anything"}]
+    sources = [{"n": 1, "url": "https://x.test", "quote": "a quote long enough to check"}]
     verdicts = verify_sources(sources, fetcher=exploding_fetcher)
     assert verdicts[0].kind is VerdictKind.UNVERIFIABLE
     assert "bare domain" in verdicts[0].detail.lower()
@@ -1019,3 +1019,40 @@ def test_contradicted_verdict_reports_how_much_actually_matched():
     assert v.kind is VerdictKind.CONTRADICTED
     assert "matched" in v.detail
     assert "longest span actually on the page" in v.detail
+
+
+def test_normalize_drops_soft_hyphens_and_zero_width_characters():
+    # Wikipedia really ships "pro\xadduct"; leaving it in fails a legitimate quote.
+    assert "product catalogue" in normalize("<p>pro\xadduct cata​logue</p>")
+
+
+def test_normalize_separates_adjacent_block_elements():
+    # Without a block boundary space this reads as "foobar" and a quote spanning two
+    # paragraphs would falsely come back CONTRADICTED.
+    assert "foo bar" in normalize("<p>foo</p><p>bar</p>")
+
+
+def test_normalize_does_not_double_unescape_entities():
+    # convert_charrefs already decoded once; decoding again would turn the page's
+    # literal "&lt;" text into markup the reader never saw.
+    assert normalize("<p>a &amp;lt; b</p>") == "a &lt; b"
+
+
+def test_a_quote_too_short_to_be_evidence_is_unverifiable_not_verified():
+    page = "<html><body><p>The capital is Lisbon.</p></body></html>"
+    v = verify_sources(
+        [{"n": 1, "url": "https://x.test/a", "quote": "the"}],
+        fetcher=_fetcher({"https://x.test/a": (200, page)}),
+    )[0]
+    assert v.kind is VerdictKind.UNVERIFIABLE
+    assert "too short" in v.detail
+
+
+def test_a_short_but_real_fact_still_verifies():
+    # The guard must not reject legitimately terse citations like an infobox field.
+    page = "<html><body><p>Capital: Lisbon</p></body></html>"
+    v = verify_sources(
+        [{"n": 1, "url": "https://x.test/a", "quote": "Capital: Lisbon"}],
+        fetcher=_fetcher({"https://x.test/a": (200, page)}),
+    )[0]
+    assert v.kind is VerdictKind.VERIFIED
