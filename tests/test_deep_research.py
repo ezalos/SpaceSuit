@@ -1164,6 +1164,9 @@ def test_sup_drops_footnote_markers_but_keeps_exponents_and_ordinals():
     # Dropping every <sup> would turn "10^6 square metres" into "10 square metres" and
     # VERIFY a quote wrong by a factor of a million.
     assert normalize("<p>Lisbon<sup>[1]</sup> is the capital.</p>") == "Lisbon is the capital."
+    # Multiple markers and lettered notes are the same thing, not prose.
+    assert normalize("<p>Lisbon<sup>[1][2]</sup> is the capital.</p>") == "Lisbon is the capital."
+    assert normalize("<p>Lisbon<sup>[a]</sup> is the capital.</p>") == "Lisbon is the capital."
     assert "10" + "6" in normalize("<p>The area is 10<sup>6</sup> square metres.</p>")
     assert "4th quarter" in normalize("<p>The 4<sup>th</sup> quarter.</p>")
 

@@ -23,7 +23,9 @@ _NON_TEXT_TAGS = {"script", "style", "noscript", "template"}
 # which no reader treats as prose and no agent transcribes. Any OTHER <sup> is real
 # content: dropping it wholesale would turn "10<sup>6</sup> square metres" into
 # "10 square metres" and VERIFY a quote that is wrong by a factor of a million.
-_FOOTNOTE_MARKER_RE = re.compile(r"^\s*\[\s*\d+\s*\]\s*$")
+# Covers [1], [a], and runs like [1][2]. Deliberately requires brackets: a bare
+# superscript is far more likely an exponent or an ordinal than a reference.
+_FOOTNOTE_MARKER_RE = re.compile(r"^\s*(\[\s*\w{1,4}\s*\]\s*)+$")
 
 # Content types we can meaningfully read as text. A PDF decoded as UTF-8 and shoved
 # through an HTML parser yields garbage that no quote matches, which would come back as
