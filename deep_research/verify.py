@@ -89,6 +89,30 @@ def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", plain).strip()
 
 
+def longest_common_span(needle: str, haystack: str) -> str:
+    """The longest contiguous run of `needle` that appears in `haystack`.
+
+    A failed match is far more useful when it says HOW it failed. "118 of 122
+    characters matched" is a transcription slip worth a human glance; "6 of 122" is a
+    quote that was not copied from this page at all. Anchored binary search over
+    lengths, so a short quote against a large page stays cheap.
+    """
+    best = ""
+    for start in range(len(needle)):
+        # No anchor beyond this point can beat what we already have.
+        if len(needle) - start <= len(best):
+            break
+        low, high = len(best) + 1, len(needle) - start
+        while low <= high:
+            mid = (low + high) // 2
+            if needle[start : start + mid] in haystack:
+                best = needle[start : start + mid]
+                low = mid + 1
+            else:
+                high = mid - 1
+    return best
+
+
 def _looks_like_a_bare_domain(url: str) -> bool:
     """True when the URL names a site rather than the exact page carrying the claim."""
     without_scheme = re.sub(r"^[a-z]+://", "", url.strip(), flags=re.IGNORECASE)
@@ -147,10 +171,11 @@ def verify_source(
         return Verdict(
             n, url, quote, VerdictKind.VERIFIED, "quote found, differing only in case"
         )
-    return Verdict(
-        n, url, quote, VerdictKind.CONTRADICTED,
-        "the page does not contain this quote",
-    )
+    span = longest_common_span(needle, page)
+    detail = f"matched {len(span)} of {len(needle)} characters"
+    if span:
+        detail += f'; longest span actually on the page: "{span[:90]}"'
+    return Verdict(n, url, quote, VerdictKind.CONTRADICTED, detail)
 
 
 def verify_sources(

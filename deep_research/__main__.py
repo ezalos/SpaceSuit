@@ -180,6 +180,7 @@ def _check_sources(result: dict, total: int, verify: bool) -> bool:
         for v in contradicted:
             print(f"    - [{v.n}] {v.url}")
             print(f"        quote: {v.quote[:120]}")
+            print(f"        {v.detail}")
 
     if unverifiable:
         print("  UNVERIFIABLE, could not be checked, decide these yourself:")

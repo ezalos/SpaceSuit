@@ -991,3 +991,31 @@ def test_runner_prompt_demands_a_structured_sources_array_and_warns_it_is_checke
     # Telling the agent the quotes are refetched is itself a quality lever.
     assert "REFETCHED AND CHECKED AGAINST THE LIVE PAGE" in prompt
     assert "CONTRADICTED" in prompt
+
+
+from deep_research.verify import longest_common_span
+
+
+def test_longest_common_span_finds_the_matching_tail_after_an_early_divergence():
+    # The real failure mode observed: an agent inserted a colon the page does not have,
+    # so the quote diverges at character 6 but the remaining ~100 match exactly.
+    page = normalize('<p>Symbol"W": from Wolfram, originally from Middle High German</p>')
+    quote = normalize('Symbol: "W": from Wolfram, originally from Middle High German')
+    span = longest_common_span(quote, page)
+    assert span.strip().startswith('"W": from Wolfram')
+    assert len(span) > len(quote) * 0.8
+
+
+def test_longest_common_span_is_tiny_for_an_invented_quote():
+    page = normalize("<p>The capital is Lisbon and the weather is mild.</p>")
+    quote = normalize("Quarterly revenue grew forty three percent year over year")
+    assert len(longest_common_span(quote, page)) < 12
+
+
+def test_contradicted_verdict_reports_how_much_actually_matched():
+    page = '<p>Symbol"W": from Wolfram, originally from Middle High German</p>'
+    sources = [{"n": 1, "url": "https://x.test/a", "quote": 'Symbol: "W": from Wolfram, originally from Middle High German'}]
+    v = verify_sources(sources, fetcher=_fetcher({"https://x.test/a": (200, page)}))[0]
+    assert v.kind is VerdictKind.CONTRADICTED
+    assert "matched" in v.detail
+    assert "longest span actually on the page" in v.detail
