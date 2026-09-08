@@ -12,7 +12,7 @@ from .charter import CharterError, parse_charter
 from .launcher import LaunchError, launch, session_alive
 from .manifest import Manifest, find_runs
 from .status import DONE_SENTINEL, REPORT_NAME, RESULT_NAME, RunState, resolve_state
-from .verify import VerdictKind, verify_sources
+from .verify import VerdictKind, cited_markers, verify_sources
 
 DEFAULT_RUNS_ROOT = Path.home() / "research-runs"
 DEFAULT_NOTIFY = Path.home() / ".claude" / "skills" / "notify-louis" / "notify.sh"
@@ -138,7 +138,7 @@ def cmd_collect(args: argparse.Namespace) -> int:
         for entry in unverified:
             print(f"    - {entry.get('url')}  ({entry.get('reason')})")
 
-    if _check_sources(result, total, verify=not args.no_verify):
+    if _check_sources(result, total, verify=not args.no_verify, report=report):
         problems = True
 
     if state is not RunState.DONE:
@@ -147,7 +147,35 @@ def cmd_collect(args: argparse.Namespace) -> int:
     return 1 if problems else 0
 
 
-def _check_sources(result: dict, total: int, verify: bool) -> bool:
+def _cross_check_markers(report: Path, sources: list) -> bool:
+    """Confirm every [n] the report cites has a source record behind it.
+
+    Offline and free, so it runs even under --no-verify: that flag means "do not
+    fetch", not "do not check". This is the only check anchored on something the
+    agent's run-result.json cannot restate, which is what makes it worth having.
+    """
+    if not report.exists():
+        return False
+    try:
+        markers = cited_markers(report.read_text(encoding="utf-8"))
+    except OSError:
+        return False
+    if not markers:
+        return False
+
+    listed = {s.get("n") for s in sources if isinstance(s, dict)}
+    missing = sorted(markers - listed)
+    if missing:
+        shown = ", ".join(f"[{n}]" for n in missing)
+        if len(missing) == 1:
+            print(f"  the report cites {shown} but listed no source for it, so it was never checked")
+        else:
+            print(f"  the report cites {shown} but listed no sources for them, so they were never checked")
+        return True
+    return False
+
+
+def _check_sources(result: dict, total: int, verify: bool, report: Path) -> bool:
     """Independently confirm each cited quote really is on its page.
 
     Everything above this point is the research agent grading its own homework. This
@@ -155,9 +183,13 @@ def _check_sources(result: dict, total: int, verify: bool) -> bool:
     """
     sources = result.get("sources") or []
 
+    # Run before the --no-verify gate: this one is offline, so skipping the network is
+    # no reason to skip it.
+    marker_gap = _cross_check_markers(report, sources)
+
     if not verify:
         print("  sources not verified (--no-verify); the counts above are self-reported")
-        return False
+        return marker_gap
 
     if not sources:
         if total:
@@ -165,8 +197,8 @@ def _check_sources(result: dict, total: int, verify: bool) -> bool:
                 f"  the run claims {total} sources but listed none to check, so its"
                 " verified count cannot be verified"
             )
-            return True
-        return False
+        # A marker gap has already printed its own, more specific line.
+        return bool(total or marker_gap)
 
     if len(sources) < total:
         # Under-listing is the obvious evasion once the agent knows every listed quote
@@ -198,7 +230,7 @@ def _check_sources(result: dict, total: int, verify: bool) -> bool:
         for v in unverifiable:
             print(f"    - [{v.n}] {v.url}  ({v.detail})")
 
-    return bool(contradicted or unverifiable or problems_from_shortfall)
+    return bool(contradicted or unverifiable or problems_from_shortfall or marker_gap)
 
 
 def cmd_stop(args: argparse.Namespace) -> int:

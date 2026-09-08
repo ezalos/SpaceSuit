@@ -121,6 +121,14 @@ Each source comes back as one of three things, and the last two both exit 1:
 `collect` also fails when the run lists fewer sources than it claims to have cited:
 under-listing would otherwise be a free pass, since only listed sources get checked.
 
+It then cross-checks the `[n]` markers in `report.md` against the listed sources. That
+matters because `sources_total` and the `sources` list are both written by the agent -
+comparing them only ever compares one witness against itself. `report.md` is the one
+artifact the run's own JSON cannot restate, so a claim marked `[3]` with no source
+record behind it is caught even when the JSON looks internally consistent. Array
+indexing inside code fences and inline code spans is ignored, as are reference-style
+link definitions. This check is offline, so it runs under `--no-verify` too.
+
 Matching normalises both sides first - tags stripped, entities decoded once, curly quotes
 and dashes folded to ASCII, soft hyphens and zero-width characters removed, block
 boundaries treated as spaces, whitespace collapsed - so a real quote is not failed over

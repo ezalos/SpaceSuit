@@ -163,6 +163,30 @@ def longest_common_span(needle: str, haystack: str) -> str:
     return best
 
 
+# Fenced blocks and inline code spans hold things like `rows = data[0]`, which is array
+# indexing, not a citation. Masked out before markers are collected.
+_CODE_FENCE_RE = re.compile(r"^(```|~~~)[^\n]*\n.*?^\1[^\n]*$", re.MULTILINE | re.DOTALL)
+_INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
+# "[1]: https://..." at the start of a line defines a reference-style link rather than
+# citing a claim, so it must not count as a marker.
+_LINK_DEFINITION_RE = re.compile(r"^\s*\[\s*\d+\s*\]\s*:", re.MULTILINE)
+_MARKER_RE = re.compile(r"\[\s*(\d+)\s*\]")
+
+
+def cited_markers(report: str) -> set[int]:
+    """Every [n] citation marker the report actually uses.
+
+    report.md is the one artifact in a run that the agent's own run-result.json cannot
+    vouch for, which makes it the only external anchor on how many sources were really
+    cited. Comparing sources_total against the sources array only ever compares two
+    numbers written by the same witness.
+    """
+    text = _CODE_FENCE_RE.sub(" ", report)
+    text = _INLINE_CODE_RE.sub(" ", text)
+    text = _LINK_DEFINITION_RE.sub(" ", text)
+    return {int(m) for m in _MARKER_RE.findall(text)}
+
+
 def _looks_like_a_bare_domain(url: str) -> bool:
     """True when the URL names a site rather than the exact page carrying the claim."""
     without_scheme = re.sub(r"^[a-z]+://", "", url.strip(), flags=re.IGNORECASE)

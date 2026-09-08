@@ -1178,3 +1178,112 @@ def test_an_exponent_quote_is_not_falsely_verified_against_the_stripped_number()
         fetcher=_fetcher({"https://x.test/a": (200, page)}),
     )[0]
     assert v.kind is VerdictKind.CONTRADICTED
+
+
+# --------------------------------------------------------------------------
+# marker cross-check: report.md is the only anchor outside the agent's own JSON
+# --------------------------------------------------------------------------
+
+from deep_research.verify import cited_markers
+
+
+def test_cited_markers_collects_every_inline_marker_once():
+    assert cited_markers("Revenue grew [1] then fell [2]. Again [1].") == {1, 2}
+
+
+def test_cited_markers_handles_multi_digit_and_ignores_non_numeric():
+    assert cited_markers("A [10] and [007] but not [a] nor [].") == {10, 7}
+
+
+def test_cited_markers_ignores_array_indexing_in_fenced_code():
+    report = """Findings [1].
+
+```python
+rows = data[0]
+other = matrix[42]
+```
+
+More [2].
+"""
+    assert cited_markers(report) == {1, 2}
+
+
+def test_cited_markers_ignores_inline_code_spans():
+    assert cited_markers("Use `items[3]` carefully [1].") == {1}
+
+
+def test_cited_markers_ignores_reference_style_link_definitions():
+    # "[1]: https://..." at line start defines a link, it does not cite a claim.
+    report = "Claim [1].\n\n[2]: https://example.test/page\n"
+    assert cited_markers(report) == {1}
+
+
+def test_collect_fails_when_the_report_cites_a_marker_with_no_source(
+    tmp_path, capsys, monkeypatch
+):
+    # The evasion the count check alone cannot catch: sources_total and sources both
+    # come from the agent, but report.md is an independent artifact.
+    result = dict(CLEAN_RESULT)
+    result["sources_total"] = 1
+    out = _finished_run(tmp_path, result)
+    (out / "report.md").write_text("Claim one [1]. Claim two [2]. Claim three [3].", encoding="utf-8")
+    _stub_verdicts(
+        monkeypatch,
+        [Verdict(1, "https://x.test/a", "q", VerdictKind.VERIFIED, "quote found")],
+    )
+    rc = main(["collect", "r1", "--runs-root", str(tmp_path)])
+    printed = capsys.readouterr().out
+    assert rc == 1
+    assert "cites [2], [3]" in printed or "[2]" in printed
+
+
+def test_marker_cross_check_still_runs_under_no_verify(tmp_path, capsys, monkeypatch):
+    # --no-verify means "do not fetch", not "do not check". This check is offline.
+    result = dict(CLEAN_RESULT)
+    out = _finished_run(tmp_path, result)
+    (out / "report.md").write_text("Claim [1]. Uncited claim [9].", encoding="utf-8")
+
+    def exploding(sources, **kw):
+        raise AssertionError("--no-verify must not fetch")
+
+    monkeypatch.setattr(dr_main, "verify_sources", exploding)
+    rc = main(["collect", "r1", "--runs-root", str(tmp_path), "--no-verify"])
+    assert rc == 1
+    assert "[9]" in capsys.readouterr().out
+
+
+def test_a_report_whose_markers_all_have_sources_stays_clean(
+    tmp_path, capsys, monkeypatch
+):
+    out = _finished_run(tmp_path, CLEAN_RESULT)
+    (out / "report.md").write_text("Only claim [1].", encoding="utf-8")
+    _stub_verdicts(
+        monkeypatch,
+        [Verdict(1, "https://x.test/a", "q", VerdictKind.VERIFIED, "quote found")],
+    )
+    assert main(["collect", "r1", "--runs-root", str(tmp_path)]) == 0
+
+
+def test_a_marker_gap_fails_even_when_the_run_claims_zero_sources(tmp_path, capsys):
+    # total=0 and no sources array, but the report cites [1]: the claim is unbacked.
+    # The message must be the specific marker line, not "claims 0 sources".
+    result = {
+        "status": "complete",
+        "sources_total": 0,
+        "sources_verified": 0,
+        "unanswered": [],
+        "unverified": [],
+    }
+    out = _finished_run(tmp_path, result)
+    (out / "report.md").write_text("An unbacked claim [1].", encoding="utf-8")
+    rc = main(["collect", "r1", "--runs-root", str(tmp_path)])
+    printed = capsys.readouterr().out
+    assert rc == 1
+    assert "cites [1]" in printed
+    assert "claims 0 sources" not in printed
+
+
+def test_runner_prompt_warns_that_markers_are_cross_checked():
+    prompt = build_runner_prompt(parse_charter(CHARTER_TEXT), Path("/runs/x"))
+    assert "cross-checked" in prompt
+    assert "listing fewer sources than you cite fails the run" in prompt

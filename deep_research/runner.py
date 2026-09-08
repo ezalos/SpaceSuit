@@ -84,6 +84,10 @@ Write exactly these files, using absolute paths:
    unanswered (list of must-answer questions you could not answer), unverified
    (list of objects with url and reason), and sources.
 
+   The report's [n] markers are cross-checked against this list afterwards, so every
+   marker you use must appear here. Citing a claim you did not list is caught, not
+   overlooked: listing fewer sources than you cite fails the run.
+
    sources is a list holding one object per [n] marker used in the report:
      {{"n": 1, "url": "<the exact page URL>", "quote": "<text copied from that page>"}}
 
