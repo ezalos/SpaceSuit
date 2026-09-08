@@ -91,6 +91,12 @@ Write exactly these files, using absolute paths:
    sources is a list holding one object per [n] marker used in the report:
      {{"n": 1, "url": "<the exact page URL>", "quote": "<text copied from that page>"}}
 
+   COPY, DO NOT RETYPE. The two failures seen most often in practice are both
+   punctuation, not invention: changing the page's "double quotes" into 'single
+   quotes', and inserting a colon or comma the page does not have. Reproduce the
+   span exactly as printed, including its quote marks, commas, colons and casing.
+   Curly quotes and dashes are fine to write in ASCII; nothing else may differ.
+
    Each quote must be a contiguous span copied verbatim from the page you fetched,
    long enough to be unambiguous (roughly 5 to 25 words) and short enough to sit on
    one line. Do not paraphrase, do not stitch separated fragments together, do not
