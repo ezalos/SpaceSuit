@@ -1,0 +1,4 @@
+#!/bin/sh
+# ABOUTME: Wrapper putting hf-pull (rate-capped Hugging Face downloader) on PATH.
+# ABOUTME: Stdlib-only Python plus curl, so it deliberately does not use any repo venv.
+exec /usr/bin/python3 "$(dirname "$(readlink -f "$0")")/../hf_pull/hf_pull.py" "$@"
