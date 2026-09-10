@@ -19,6 +19,7 @@ import fnmatch
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -51,12 +52,27 @@ def cache_root():
     return os.path.join(home, "hub")
 
 
-def api_get(url, tok):
+def api_get(url, tok, attempts=4):
+    """One Hub API call. Retries on 429/5xx and on network errors with a short backoff;
+    4xx other than 429 are the caller's problem (gated, missing, bad revision)."""
     req = urllib.request.Request(url, headers={"User-Agent": "hf-pull/1"})
     if tok:
         req.add_header("Authorization", f"Bearer {tok}")
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.load(r), r.headers
+    for i in range(attempts):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return json.load(r), r.headers
+        except urllib.error.HTTPError as e:
+            if e.code != 429 and e.code < 500:
+                raise
+            last = e
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+            last = e
+        if i < attempts - 1:
+            wait = 5 * (i + 1)
+            log(f"hf-pull: Hub API {last}; retrying in {wait}s")
+            time.sleep(wait)
+    raise last
 
 
 def list_tree(kind, repo, rev, tok):
@@ -136,6 +152,9 @@ def main():
     ap.add_argument("--type", default="model", choices=["model", "dataset"])
     ap.add_argument("--dry-run", action="store_true", help="list what would be pulled and stop")
     a = ap.parse_args()
+    if not re.fullmatch(r"[\w.-]+/[\w.-]+", a.repo):
+        log(f"hf-pull: {a.repo!r} is not a repo id (expected org/name)")
+        return 2
 
     tok = token()
     try:
@@ -143,6 +162,9 @@ def main():
         files = list_tree(a.type, a.repo, a.revision, tok)
     except urllib.error.HTTPError as e:
         log(f"hf-pull: {e.code} from the Hub for {a.repo} ({'gated/private: check the token' if e.code in (401, 403) else e.reason})")
+        return 2
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+        log(f"hf-pull: cannot reach the Hub for {a.repo}: {e}")
         return 2
 
     if a.include:
