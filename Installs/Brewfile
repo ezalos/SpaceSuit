@@ -6,6 +6,11 @@
 # needs it, not because it happens to be installed.
 #
 # Re-run any time; brew bundle is idempotent and only installs what is missing.
+#
+# `brew bundle check` reports an OUTDATED package as an unmet dependency, in the
+# same words it uses for a missing one ("needs to be installed or updated").
+# Verified 2026-09-14: every line below was installed and merely behind. Confirm
+# with `brew list --versions <formula>` before believing the Brewfile is wrong.
 
 tap "protonpass/tap"
 
