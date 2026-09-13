@@ -1183,6 +1183,21 @@
             "only_devices": null,
             "variants": null,
             "fanout": false
+        },
+        "ssh_config": {
+            "alias": "ssh_config",
+            "main": "~/42/GroundControl/secrets/ssh/config.mbp3",
+            "deploy": {
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.ssh/config",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "Louiss.MacBook.Pro.3.local.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
         }
     },
     "devices": {
