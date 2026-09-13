@@ -1,0 +1,50 @@
+# ABOUTME: Homebrew manifest for a fresh macOS machine: `brew bundle --file=Installs/Brewfile`.
+# ABOUTME: The macOS half of bootstrap.sh -- what the dotfiles and skills assume exists.
+#
+# Curated, not dumped: every line is something this repo's dotfiles, skills or
+# scripts actually reach for. Add a package here when you add the thing that
+# needs it, not because it happens to be installed.
+#
+# Re-run any time; brew bundle is idempotent and only installs what is missing.
+
+tap "protonpass/tap"
+
+# --- Shell and prompt (dotfiles/.zshrc, .p10k.zsh assume these) -------------
+brew "powerlevel10k"     # prompt theme the tracked .p10k.zsh configures
+brew "coreutils"         # GNU coreutils; BSD equivalents differ in flags scripts use
+brew "grep"              # ggrep: BSD grep lacks -P, which several scripts want
+brew "tmux"
+brew "direnv"            # dotfiles/config_direnv/direnvrc: per-repo env + `use proton`
+brew "tree"
+brew "bat"
+brew "btop"
+
+# --- The secrets stack (bin/secrets, bin/proton-agent, bin/proton-envrc) -----
+brew "protonpass/tap/pass-cli"  # vault CLI; brew build, so `pass-cli update` is a no-op -- use `brew upgrade`
+brew "jq"                       # hard requirement of bin/proton-envrc
+
+# --- Editor / dev ------------------------------------------------------------
+brew "neovim"            # dotfiles/config_nvim (lazy-lock.json is tracked on purpose)
+brew "gh"                # GitHub CLI; the tracked gh_identity_router shim wraps it
+brew "cmake"
+brew "pkgconf"
+
+# --- Safety ------------------------------------------------------------------
+# rip2 provides `rip`: a recoverable graveyard instead of rm. .zshrc exports
+# GRAVEYARD to a same-filesystem path. macOS also ships /usr/bin/trash.
+brew "rip2"
+
+# --- Backup ------------------------------------------------------------------
+brew "restic"            # brew's restic is current; no need for the official-binary rule Linux has
+
+# --- Media / files (skills: deck, social-video, proton-drive, share-file) -----
+brew "ffmpeg"
+brew "poppler"           # pdftoppm etc.
+brew "p7zip"
+brew "wget"
+brew "socat"
+brew "glow"              # markdown rendering; dotfiles/glow is deployed config
+
+# --- Terminals (casks) -------------------------------------------------------
+cask "wezterm"           # dotfiles/wezterm.lua
+cask "warp"              # dotfiles/warp launch config
