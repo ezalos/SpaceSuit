@@ -253,3 +253,40 @@ def test_status_prints_state(env_file, fake_rclone, capsys):
 def test_halt_reason_extracts_the_critical_line():
     out = "INFO  : Synching Path1\nERROR : Bisync critical error: Access test failed\nERROR : Bisync aborted."
     assert gdrive_sync.halt_reason(out) == "Bisync critical error: Access test failed"
+
+
+def test_halt_notification_is_retried_until_delivered(env_file, fake_rclone, monkeypatch):
+    outcomes = iter([False, True])
+    sent = []
+
+    def flaky(text):
+        sent.append(text)
+        return next(outcomes)
+
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "7")
+    assert gdrive_sync.main(["--env", str(env_file), "run"], notifier=flaky) == 7
+    assert _state(env_file)["halt_notified"] is False and len(sent) == 1
+    assert gdrive_sync.main(["--env", str(env_file), "run"], notifier=flaky) == 7   # halted: retries the send
+    assert _state(env_file)["halt_notified"] is True and len(sent) == 2
+    assert gdrive_sync.main(["--env", str(env_file), "run"], notifier=flaky) == 7   # delivered: silent
+    assert len(sent) == 2 and len(calls(fake_rclone)) == 1
+
+
+def test_resync_waits_for_an_in_progress_run(env_file, fake_rclone):
+    import fcntl
+    import threading
+    import time
+    cfg = gdrive_sync.Config.from_env(gdrive_sync.load_env(env_file))
+    cfg.state_dir.mkdir(parents=True, exist_ok=True)
+    fh = open(cfg.state_dir / "lock", "w")
+    fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    result = {}
+    t = threading.Thread(target=lambda: result.setdefault(
+        "rc", gdrive_sync.main(["--env", str(env_file), "resync", "--yes"], notifier=lambda m: None)))
+    t.start()
+    time.sleep(0.5)
+    assert not any(c.startswith("bisync") for c in calls(fake_rclone))   # diff ran, bisync is waiting
+    fcntl.flock(fh, fcntl.LOCK_UN)
+    fh.close()
+    t.join(timeout=10)
+    assert result["rc"] == 0 and any("--resync --resync-mode path1" in c for c in calls(fake_rclone))

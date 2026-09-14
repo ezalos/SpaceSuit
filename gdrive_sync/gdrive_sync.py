@@ -13,6 +13,7 @@ filters file). Optional: GDRIVE_BWLIMIT (25M), GDRIVE_STATE_DIR
 Path1 is Drive, Path2 is local, everywhere: conflicts and resyncs resolve to Path1.
 """
 import argparse
+import contextlib
 import datetime as dt
 import fcntl
 import json
@@ -195,17 +196,40 @@ def telegram_send(text: str) -> bool:
         return False
 
 
-def cmd_run(cfg: Config, notify, force: bool) -> int:
+def halt_message(cfg: Config, reason: str) -> str:
+    return (f"HALTED: {reason}. The mirror at {cfg.local} is frozen until a human resyncs. "
+            f"Inspect: `gdrive-sync diff`, `gdrive-sync plan`. If the deletes are intended: "
+            f"`gdrive-sync run --force`. Otherwise: `gdrive-sync resync --yes` (Drive wins on differing files).")
+
+
+@contextlib.contextmanager
+def state_lock(cfg: Config, *, wait: bool):
+    """Serialise syncs on <state>/lock. wait=False yields None when another run holds it (the
+    timer skips); wait=True blocks until it is free (a human at the keyboard waits)."""
     cfg.state_dir.mkdir(parents=True, exist_ok=True)
-    lock = open(cfg.state_dir / "lock", "w")
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        print("gdrive-sync: another run holds the lock; skipping this one")
-        return 0
-    try:
+    with open(cfg.state_dir / "lock", "w") as fh:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            if not wait:
+                yield None
+                return
+            print("gdrive-sync: another run is in progress; waiting for it to finish...", flush=True)
+            fcntl.flock(fh, fcntl.LOCK_EX)
+        yield fh
+
+
+def cmd_run(cfg: Config, notify, force: bool) -> int:
+    with state_lock(cfg, wait=False) as held:
+        if held is None:
+            print("gdrive-sync: another run holds the lock; skipping this one (state untouched)")
+            return 0
         state = read_state(cfg)
         if state["halted"]:
+            if not state["halt_notified"]:
+                # The first send failed (Telegram down, credentials unreadable): keep trying until it lands.
+                state["halt_notified"] = notify(halt_message(cfg, state["last_error"]))
+                write_state(cfg, state)
             print(f"gdrive-sync: HALTED since a critical abort ({state['last_error']}). "
                   f"Inspect with `gdrive-sync diff` / `gdrive-sync plan`, resume with `gdrive-sync resync --yes`.")
             return EXIT_CRITICAL
@@ -216,11 +240,7 @@ def cmd_run(cfg: Config, notify, force: bool) -> int:
         elif rc == EXIT_CRITICAL:
             reason = halt_reason(out)
             state.update(last_result="halted", halted=True, last_error=reason)
-            if not state["halt_notified"]:
-                state["halt_notified"] = bool(notify(
-                    f"HALTED: {reason}. The mirror at {cfg.local} is frozen until a human resyncs. "
-                    f"Inspect: `gdrive-sync diff`, `gdrive-sync plan`. If the deletes are intended: "
-                    f"`gdrive-sync run --force`. Otherwise: `gdrive-sync resync --yes` (Drive wins on differing files)."))
+            state["halt_notified"] = notify(halt_message(cfg, reason))
         else:
             state["consecutive_failures"] += 1
             state.update(last_result="failed", last_error=halt_reason(out))
@@ -229,8 +249,6 @@ def cmd_run(cfg: Config, notify, force: bool) -> int:
                        f"Mirror last fresh {state['last_success']}. See `journalctl --user -u gdrive-sync`.")
         write_state(cfg, state)
         return rc
-    finally:
-        lock.close()
 
 
 def cmd_resync(cfg: Config, yes: bool) -> int:
@@ -239,15 +257,16 @@ def cmd_resync(cfg: Config, yes: bool) -> int:
         print("\nresync would make Drive win on every differing file above (local versions are NOT kept).")
         print("Re-run with --yes to proceed.")
         return 2
-    rc, out = run_rclone(bisync_argv(cfg, resync=True, ts=utc_ts()), cfg.state_dir / "last-run.log")
-    state = read_state(cfg)
-    if rc == 0:
-        state.update(last_success=dt.datetime.now(dt.timezone.utc).isoformat(), last_result="ok",
-                     consecutive_failures=0, halted=False, halt_notified=False, last_error="")
-    else:
-        state.update(last_result="failed", last_error=halt_reason(out))
-    write_state(cfg, state)
-    return rc
+    with state_lock(cfg, wait=True):
+        rc, out = run_rclone(bisync_argv(cfg, resync=True, ts=utc_ts()), cfg.state_dir / "last-run.log")
+        state = read_state(cfg)
+        if rc == 0:
+            state.update(last_success=dt.datetime.now(dt.timezone.utc).isoformat(), last_result="ok",
+                         consecutive_failures=0, halted=False, halt_notified=False, last_error="")
+        else:
+            state.update(last_result="failed", last_error=halt_reason(out))
+        write_state(cfg, state)
+        return rc
 
 
 def cmd_status(cfg: Config) -> int:
@@ -291,6 +310,14 @@ def maybe_reexec_under_secrets(env: dict, argv: list) -> None:
     os.execvp("secrets", ["secrets", "run", "--", sys.executable, os.path.abspath(__file__)] + argv)
 
 
+def notifier_or_telegram(notifier):
+    if notifier is None:
+        return telegram_send
+    def notify(text: str) -> bool:
+        return notifier(text) is not False
+    return notify
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="gdrive-sync", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -319,11 +346,7 @@ def main(argv: list = None, notifier=None) -> int:
         return cmd_diff(cfg)
     if args.cmd == "plan":
         return cmd_plan(cfg)
-    # Wrap test notifiers to always return True (indicating notification was attempted)
-    if notifier:
-        notify = lambda text: (notifier(text), True)[1]
-    else:
-        notify = telegram_send
+    notify = notifier_or_telegram(notifier)
     if args.cmd == "run":
         return cmd_run(cfg, notify, args.force)
     if args.cmd == "resync":
