@@ -153,7 +153,7 @@ def read_state(cfg: Config) -> dict:
     if cfg.state_file.is_file():
         return json.loads(cfg.state_file.read_text())
     return {"last_success": None, "last_result": None, "consecutive_failures": 0,
-            "halted": False, "halt_notified": False, "last_error": ""}
+            "halted": False, "halt_notified": False, "last_error": "", "refusal_notified": False}
 
 
 def write_state(cfg: Config, state: dict) -> None:
@@ -197,9 +197,21 @@ def telegram_send(text: str) -> bool:
 
 
 def halt_message(cfg: Config, reason: str) -> str:
-    return (f"HALTED: {reason}. The mirror at {cfg.local} is frozen until a human resyncs. "
-            f"Inspect: `gdrive-sync diff`, `gdrive-sync plan`. If the deletes are intended: "
-            f"`gdrive-sync run --force`. Otherwise: `gdrive-sync resync --yes` (Drive wins on differing files).")
+    return (f"HALTED: {reason}. The mirror at {cfg.local} is frozen — no sync in either direction — "
+            f"until a human resyncs. Inspect: `gdrive-sync diff`, `gdrive-sync plan`. "
+            f"Resume: `gdrive-sync resync --yes` (Drive wins on differing files).")
+
+
+def refusal_message(cfg: Config, reason: str) -> str:
+    return (f"REFUSED: {reason} Nothing was changed. The sync retries every run and will keep refusing "
+            f"until this is resolved. If the deletes are intended: `gdrive-sync run --force`. If not: "
+            f"restore the files (Drive trash for a Drive-side delete) and the next run picks them up. "
+            f"Inspect: `gdrive-sync plan`.")
+
+
+def is_refusal(rc: int, output: str) -> bool:
+    """bisync's --max-delete safety abort: exit 1, nothing changed, no resync needed."""
+    return rc == 1 and "too many deletes" in output
 
 
 @contextlib.contextmanager
@@ -236,11 +248,17 @@ def cmd_run(cfg: Config, notify, force: bool) -> int:
         rc, out = run_rclone(bisync_argv(cfg, force=force, ts=utc_ts()), cfg.state_dir / "last-run.log")
         now = dt.datetime.now(dt.timezone.utc).isoformat()
         if rc == 0:
-            state.update(last_success=now, last_result="ok", consecutive_failures=0, last_error="")
+            state.update(last_success=now, last_result="ok", consecutive_failures=0, last_error="",
+                         refusal_notified=False)
         elif rc == EXIT_CRITICAL:
             reason = halt_reason(out)
             state.update(last_result="halted", halted=True, last_error=reason)
             state["halt_notified"] = notify(halt_message(cfg, reason))
+        elif is_refusal(rc, out):
+            reason = halt_reason(out)
+            state.update(last_result="refused", last_error=reason)
+            if not state.get("refusal_notified"):
+                state["refusal_notified"] = notify(refusal_message(cfg, reason))
         else:
             state["consecutive_failures"] += 1
             state.update(last_result="failed", last_error=halt_reason(out))
@@ -262,7 +280,8 @@ def cmd_resync(cfg: Config, yes: bool) -> int:
         state = read_state(cfg)
         if rc == 0:
             state.update(last_success=dt.datetime.now(dt.timezone.utc).isoformat(), last_result="ok",
-                         consecutive_failures=0, halted=False, halt_notified=False, last_error="")
+                         consecutive_failures=0, halted=False, halt_notified=False, last_error="",
+                         refusal_notified=False)
         else:
             state.update(last_result="failed", last_error=halt_reason(out))
         write_state(cfg, state)
@@ -281,6 +300,9 @@ def cmd_check(cfg: Config) -> int:
     st = read_state(cfg)
     if st["halted"]:
         print(f"gdrive-sync: halted ({st['last_error']})")
+        return 1
+    if st.get("last_result") == "refused":
+        print(f"gdrive-sync: refused ({st['last_error']})")
         return 1
     if not st["last_success"]:
         print("gdrive-sync: never succeeded")

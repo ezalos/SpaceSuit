@@ -255,6 +255,53 @@ def test_halt_reason_extracts_the_critical_line():
     assert gdrive_sync.halt_reason(out) == "Bisync critical error: Access test failed"
 
 
+REFUSAL = "ERROR : Safety abort: too many deletes (>10%, 3 of 22) on Path2. Run with --force if desired."
+
+
+def test_max_delete_refusal_notifies_once_and_keeps_retrying(env_file, fake_rclone, monkeypatch):
+    sent = []
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "1")
+    monkeypatch.setenv("FAKE_RCLONE_OUT", REFUSAL)
+    for _ in range(3):
+        assert gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append) == 1
+    st = _state(env_file)
+    assert st["last_result"] == "refused" and st["halted"] is False and st["consecutive_failures"] == 0
+    assert len(sent) == 1 and sent[0].startswith("REFUSED") and "run --force" in sent[0] and "3 of 22" in sent[0]
+    assert len(calls(fake_rclone)) == 3          # every run still invokes bisync (self-heals when files return)
+    assert gdrive_sync.main(["--env", str(env_file), "check"], notifier=sent.append) == 1
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "0")
+    monkeypatch.setenv("FAKE_RCLONE_OUT", "")
+    assert gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append) == 0
+    st = _state(env_file)
+    assert st["last_result"] == "ok" and st["refusal_notified"] is False and len(sent) == 1
+
+
+def test_refusal_notification_retried_until_delivered(env_file, fake_rclone, monkeypatch):
+    outcomes = iter([False, True])
+    sent = []
+
+    def flaky(text):
+        sent.append(text)
+        return next(outcomes)
+
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "1")
+    monkeypatch.setenv("FAKE_RCLONE_OUT", REFUSAL)
+    gdrive_sync.main(["--env", str(env_file), "run"], notifier=flaky)
+    assert _state(env_file)["refusal_notified"] is False
+    gdrive_sync.main(["--env", str(env_file), "run"], notifier=flaky)
+    assert _state(env_file)["refusal_notified"] is True and len(sent) == 2
+    gdrive_sync.main(["--env", str(env_file), "run"], notifier=flaky)
+    assert len(sent) == 2
+
+
+def test_halt_message_has_no_force_advice(env_file, fake_rclone, monkeypatch):
+    sent = []
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "7")
+    monkeypatch.setenv("FAKE_RCLONE_OUT", "ERROR : Bisync critical error: check file check failed")
+    gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append)
+    assert len(sent) == 1 and "--force" not in sent[0] and "gdrive-sync resync --yes" in sent[0]
+
+
 def test_halt_notification_is_retried_until_delivered(env_file, fake_rclone, monkeypatch):
     outcomes = iter([False, True])
     sent = []

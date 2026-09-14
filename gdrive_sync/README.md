@@ -5,8 +5,11 @@ layout, built on `rclone bisync` (>= 1.75). Drive is Path1 and always wins a
 conflict; the local loser survives as `*.conflict1`. Nothing is ever unlinked: Drive
 deletes go to Drive's trash, local deletes/overwrites are moved to
 `<state>/backup/<UTC ts>/`. A run that would delete more than `GDRIVE_MAX_DELETE`
-percent of either side halts instead, Telegrams once, and stays halted until a human
-runs `gdrive-sync resync --yes`.
+percent of either side is *refused*: nothing changes, one Telegram goes out
+immediately, and every later run retries (so restoring the files heals it without
+touching the wrapper); `gdrive-sync run --force` is the human override. A *halt* is
+different: bisync's own critical abort (empty listing, missing `RCLONE_TEST` marker,
+inconsistent listings) freezes the mirror until `gdrive-sync resync --yes`.
 
 ## Config: `~/.config/gdrive-sync/env` (override: `--env`, `$GDRIVE_SYNC_ENV`)
 
