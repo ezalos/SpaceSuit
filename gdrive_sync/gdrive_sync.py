@@ -294,11 +294,19 @@ def cmd_check(cfg: Config) -> int:
 
 
 def included_roots(filters: Path) -> list:
+    """The `/a/b` of every `+ /a/b/**` line. Whole-Drive (`+ /**`) is refused: the safety model
+    puts one RCLONE_TEST marker per mirrored folder, so folders must be listed explicitly."""
+    if not filters.is_file():
+        die(f"filters file not found: {filters}")
     roots = []
     for line in filters.read_text().splitlines():
         line = line.strip()
-        if line.startswith("+ /") and line.endswith("/**"):
-            roots.append(line[3:-3])
+        if not line.startswith("+ /") or not line.endswith("/**"):
+            continue
+        root = line[3:-3]
+        if not root:
+            die(f"{filters}: `+ /**` (the whole Drive) is not supported; list the folders to mirror")
+        roots.append(root)
     return roots
 
 
@@ -324,7 +332,7 @@ def cmd_markers(cfg: Config) -> int:
 
 
 def cmd_auth(cfg: Config) -> int:
-    """Louis-run, inside a desktop session (Moonlight): encrypt the config, then the Google consent in a browser."""
+    """Human-run, interactive, inside a desktop session: encrypt the config, then the Google consent in a browser."""
     remote = cfg.remote.rstrip(":")
     rc = subprocess.run(["rclone", "config", "encryption", "check"], capture_output=True).returncode
     if rc != 0:
@@ -333,7 +341,7 @@ def cmd_auth(cfg: Config) -> int:
         if rc != 0:
             die("config encryption not set", rc)
     if not os.environ.get("DISPLAY"):
-        die("no DISPLAY: run this inside the Moonlight desktop session (a browser must open here)")
+        die("no DISPLAY: run this from a desktop session (a browser must open on this machine)")
     print(f"Step 2/2: creating remote `{remote}` — a browser opens on this desktop for the Google consent.")
     rc = subprocess.run(["rclone", "config", "create", remote, "drive", "scope", "drive", "config_is_local", "true"]).returncode
     if rc != 0:

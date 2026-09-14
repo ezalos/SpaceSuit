@@ -306,3 +306,21 @@ def test_markers_touches_both_sides(env_file, fake_rclone):
     assert (cfg.local / "backup/research/RCLONE_TEST").is_file()
     assert any(c.startswith("touch gdrive:backup/research/RCLONE_TEST") for c in calls(fake_rclone))
     assert all("lsf" in c or "touch" in c for c in calls(fake_rclone))
+
+
+def test_markers_is_idempotent_when_present(env_file, fake_rclone, monkeypatch):
+    cfg = gdrive_sync.Config.from_env(gdrive_sync.load_env(env_file))
+    (cfg.local / "backup/research").mkdir(parents=True)
+    (cfg.local / "backup/research/RCLONE_TEST").write_text("")
+    monkeypatch.setenv("FAKE_RCLONE_OUT", "RCLONE_TEST")   # lsf reports the marker on Drive
+    assert gdrive_sync.main(["--env", str(env_file), "markers"], notifier=lambda t: None) == 0
+    assert all(c.startswith("lsf ") for c in calls(fake_rclone))   # no touch
+
+
+def test_included_roots_refuses_whole_drive_and_missing_file(tmp_path):
+    f = tmp_path / "filters"
+    f.write_text("+ /**\n- **\n")
+    with pytest.raises(SystemExit):
+        gdrive_sync.included_roots(f)
+    with pytest.raises(SystemExit):
+        gdrive_sync.included_roots(tmp_path / "nope")
