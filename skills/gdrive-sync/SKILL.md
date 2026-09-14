@@ -44,10 +44,10 @@ the local loser survives as `paper.pdf.conflict1`. The timer syncs every 10 min.
    `gdrive-sync plan` — read it — then `gdrive-sync run`. Tell Louis what moved.
 3. **Never modify** a file that `gdrive-sync diff` marks `*` (both sides changed): report it.
 4. **Halt (exit 7)** — bisync's critical abort: the wrapper already Telegrammed Louis with the commands; stop. **Refusal (exit 1, "too many deletes")** — the run would delete more than 10 % of one side; nothing changed, Louis was Telegrammed; stop. In both cases: do not `resync`, do not `run --force`, do not retry, do not delete anything to "help". Both decisions are Louis's.
-5. **Widening** (another Drive folder): add `+ /path/**` to `~/.config/gdrive-sync/filters`
-   (canonical copy in GroundControl `monitoring/thebeast/gdrive-sync.filters`), `gdrive-sync
-   markers`, then ask Louis before `gdrive-sync resync --yes` (the resync makes Drive win on
-   every differing file).
+5. **Widening** (another Drive folder): add `+ /path/**` above `- **` in GroundControl
+   `monitoring/thebeast/gdrive-sync.filters`, run `monitoring/thebeast/install-gdrive-sync.sh`
+   (copies it to `~/.config/gdrive-sync/filters`), commit, `gdrive-sync markers`, then ask Louis
+   before `gdrive-sync resync --yes` (the resync makes Drive win on every differing file).
 6. Downloads from the web into the research folder: save into `~/Drive/backups/Research/...`,
    then `gdrive-sync run`. Nothing over 2 GB, 25 MB/s cap (household line rule).
 
