@@ -32,6 +32,7 @@ MARKER = "RCLONE_TEST"
 EXIT_CRITICAL = 7          # bisync: aborted, needs a human --resync
 ESCALATE_AFTER = 3         # consecutive non-critical failures before one Telegram
 TAG = "gdrive-sync"
+REEXEC_SENTINEL = "GDRIVE_SYNC_UNDER_SECRETS"
 
 
 def die(msg: str, code: int = 2) -> None:
@@ -148,12 +149,20 @@ def cmd_plan(cfg: Config) -> int:
 
 
 def maybe_reexec_under_secrets(env: dict, argv: list) -> None:
-    """If RCLONE_CONFIG_PASS is a vault ref, re-exec ourselves through `secrets run --`."""
+    """If RCLONE_CONFIG_PASS is a vault ref, re-exec ourselves ONCE through `secrets run --`.
+    The sentinel is the loop guard: the child inherits it and never execs again. A child that
+    still sees an unresolved ref means secrets did not resolve it: die rather than loop."""
     ref = env.get("RCLONE_CONFIG_PASS", "")
-    if ref.startswith("pass://") and not os.environ.get("RCLONE_CONFIG_PASS", "").startswith("pass://"):
-        os.environ["RCLONE_CONFIG_PASS"] = ref
-        os.environ.setdefault("PROTON_AGENT_CONTEXT", env.get("PROTON_AGENT_CONTEXT", "general"))
-        os.execvp("secrets", ["secrets", "run", "--", sys.executable, os.path.abspath(__file__)] + argv)
+    if not ref.startswith("pass://"):
+        return
+    if os.environ.get(REEXEC_SENTINEL):
+        if os.environ.get("RCLONE_CONFIG_PASS", "").startswith("pass://"):
+            die("RCLONE_CONFIG_PASS is still an unresolved pass:// ref after `secrets run`; run `secrets check`")
+        return
+    os.environ["RCLONE_CONFIG_PASS"] = ref
+    os.environ.setdefault("PROTON_AGENT_CONTEXT", env.get("PROTON_AGENT_CONTEXT", "general"))
+    os.environ[REEXEC_SENTINEL] = "1"
+    os.execvp("secrets", ["secrets", "run", "--", sys.executable, os.path.abspath(__file__)] + argv)
 
 
 def build_parser() -> argparse.ArgumentParser:

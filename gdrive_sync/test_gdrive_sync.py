@@ -4,6 +4,7 @@
 import json
 import os
 import stat
+import subprocess
 import sys
 import textwrap
 from pathlib import Path
@@ -113,3 +114,45 @@ def test_plan_is_bisync_dry_run(env_file, fake_rclone):
     assert rc == 0
     c = calls(fake_rclone)[0]
     assert c.startswith("bisync gdrive:") and "--dry-run" in c and "--max-delete 10" in c
+
+
+@pytest.mark.slow
+def test_pass_ref_reexecs_exactly_once_under_secrets(tmp_path, fake_rclone, monkeypatch):
+    """A pass:// ref makes the module exec `secrets run -- <self>` once; the child runs rclone. No loop."""
+    local = tmp_path / "Drive2"
+    local.mkdir()
+    filters = tmp_path / "filters2"
+    filters.write_text("- **\n")
+    env_p = tmp_path / "env2"
+    env_p.write_text(
+        f"GDRIVE_REMOTE=gdrive:\nGDRIVE_LOCAL={local}\nGDRIVE_FILTERS={filters}\n"
+        f"GDRIVE_STATE_DIR={tmp_path / 'state2'}\nRCLONE_CONFIG_PASS=pass://share/item/Secret\n")
+    bindir = tmp_path / "bin"
+    log = tmp_path / "secrets.log"
+    fake_secrets = bindir / "secrets"
+    fake_secrets.write_text(textwrap.dedent(f"""\
+        #!/bin/sh
+        printf '%s\\n' "$*" >> "{log}"
+        shift 2
+        RCLONE_CONFIG_PASS=resolved-by-fake exec "$@"
+    """))
+    fake_secrets.chmod(0o755)
+    monkeypatch.delenv(gdrive_sync.REEXEC_SENTINEL, raising=False)
+    monkeypatch.delenv("RCLONE_CONFIG_PASS", raising=False)
+    proc = subprocess.run([sys.executable, gdrive_sync.__file__, "--env", str(env_p), "plan"],
+                          capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 0, proc.stderr
+    assert len(log.read_text().splitlines()) == 1          # exactly one `secrets run`
+    assert any(c.startswith("bisync gdrive:") for c in calls(fake_rclone))
+    assert "resolved-by-fake" not in proc.stdout + proc.stderr and "pass://" not in proc.stdout + proc.stderr
+
+
+def test_unresolved_ref_after_secrets_dies_instead_of_looping(env_file, fake_rclone, monkeypatch):
+    p = env_file.read_text().replace("RCLONE_CONFIG_PASS=already-resolved", "RCLONE_CONFIG_PASS=pass://x/y/Secret")
+    env_file.write_text(p)
+    monkeypatch.setenv(gdrive_sync.REEXEC_SENTINEL, "1")
+    monkeypatch.setenv("RCLONE_CONFIG_PASS", "pass://x/y/Secret")
+    with pytest.raises(SystemExit) as e:
+        gdrive_sync.main(["--env", str(env_file), "plan"], notifier=lambda t: None)
+    assert e.value.code == 2
+    assert calls(fake_rclone) == []
