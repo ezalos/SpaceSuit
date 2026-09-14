@@ -34,6 +34,7 @@ EXIT_CRITICAL = 7          # bisync: aborted, needs a human --resync
 ESCALATE_AFTER = 3         # consecutive non-critical failures before one Telegram
 TAG = "gdrive-sync"
 REEXEC_SENTINEL = "GDRIVE_SYNC_UNDER_SECRETS"
+RCLONE_COMMANDS = frozenset({"diff", "plan", "run", "resync", "markers", "auth"})
 
 
 def die(msg: str, code: int = 2) -> None:
@@ -421,7 +422,8 @@ def main(argv: list = None, notifier=None) -> int:
     env = load_env(args.env)
     if env.get("RCLONE_CONFIG_PASS", "").startswith("pass://") and "--env" not in argv:
         argv = ["--env", str(args.env)] + argv
-    maybe_reexec_under_secrets(env, argv)
+    if args.cmd in RCLONE_COMMANDS:
+        maybe_reexec_under_secrets(env, argv)
     cfg = Config.from_env(env)
     if args.cmd == "diff":
         return cmd_diff(cfg)

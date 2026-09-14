@@ -159,6 +159,30 @@ def test_unresolved_ref_after_secrets_dies_instead_of_looping(env_file, fake_rcl
     assert calls(fake_rclone) == []
 
 
+def test_status_and_check_never_reexec_under_secrets(env_file, fake_rclone, monkeypatch):
+    env_file.write_text(env_file.read_text().replace("RCLONE_CONFIG_PASS=already-resolved", "RCLONE_CONFIG_PASS=pass://x/y/Secret"))
+    monkeypatch.delenv(gdrive_sync.REEXEC_SENTINEL, raising=False)
+    monkeypatch.delenv("RCLONE_CONFIG_PASS", raising=False)
+    calls_ = []
+    monkeypatch.setattr(gdrive_sync.os, "execvp", lambda *a: calls_.append(a))
+    assert gdrive_sync.main(["--env", str(env_file), "check"], notifier=lambda t: None) == 1   # never succeeded
+    assert gdrive_sync.main(["--env", str(env_file), "status"], notifier=lambda t: None) == 0
+    assert calls_ == [] and calls(fake_rclone) == []
+
+
+def test_plan_still_reexecs_when_ref_present(env_file, fake_rclone, monkeypatch):
+    env_file.write_text(env_file.read_text().replace("RCLONE_CONFIG_PASS=already-resolved", "RCLONE_CONFIG_PASS=pass://x/y/Secret"))
+    monkeypatch.delenv(gdrive_sync.REEXEC_SENTINEL, raising=False)
+    monkeypatch.delenv("RCLONE_CONFIG_PASS", raising=False)
+    calls_ = []
+    monkeypatch.setattr(gdrive_sync.os, "execvp", lambda *a: calls_.append(a))
+    try:
+        gdrive_sync.main(["--env", str(env_file), "plan"], notifier=lambda t: None)
+    except SystemExit:
+        pass
+    assert len(calls_) == 1 and calls_[0][0] == "secrets"
+
+
 def _state(env_file):
     cfg = gdrive_sync.Config.from_env(gdrive_sync.load_env(env_file))
     return json.loads(cfg.state_file.read_text())
