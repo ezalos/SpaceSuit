@@ -281,12 +281,14 @@ def test_resync_waits_for_an_in_progress_run(env_file, fake_rclone):
     fh = open(cfg.state_dir / "lock", "w")
     fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
     result = {}
-    t = threading.Thread(target=lambda: result.setdefault(
+    t = threading.Thread(daemon=True, target=lambda: result.setdefault(
         "rc", gdrive_sync.main(["--env", str(env_file), "resync", "--yes"], notifier=lambda m: None)))
-    t.start()
-    time.sleep(0.5)
-    assert not any(c.startswith("bisync") for c in calls(fake_rclone))   # diff ran, bisync is waiting
-    fcntl.flock(fh, fcntl.LOCK_UN)
-    fh.close()
-    t.join(timeout=10)
+    try:
+        t.start()
+        time.sleep(0.5)
+        assert not any(c.startswith("bisync") for c in calls(fake_rclone))   # diff ran, bisync is waiting
+    finally:
+        fcntl.flock(fh, fcntl.LOCK_UN)
+        fh.close()
+        t.join(timeout=10)
     assert result["rc"] == 0 and any("--resync --resync-mode path1" in c for c in calls(fake_rclone))
