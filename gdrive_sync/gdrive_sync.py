@@ -293,6 +293,55 @@ def cmd_check(cfg: Config) -> int:
     return 0
 
 
+def included_roots(filters: Path) -> list:
+    roots = []
+    for line in filters.read_text().splitlines():
+        line = line.strip()
+        if line.startswith("+ /") and line.endswith("/**"):
+            roots.append(line[3:-3])
+    return roots
+
+
+def cmd_markers(cfg: Config) -> int:
+    """Create the --check-access marker on both sides of every included root. Idempotent; creates nothing else."""
+    roots = included_roots(cfg.filters)
+    if not roots:
+        die(f"no `+ /path/**` lines in {cfg.filters}")
+    for root in roots:
+        local = cfg.local / root / MARKER
+        local.parent.mkdir(parents=True, exist_ok=True)
+        if not local.exists():
+            local.write_text("")
+        remote = f"{cfg.remote}{root}/{MARKER}"
+        rc, out = run_rclone(["rclone", "lsf", f"{cfg.remote}{root}/", "--files-only", "--include", MARKER] + DRIVE_FLAGS)
+        if rc == 0 and MARKER in out:
+            print(f"marker present: {remote}")
+            continue
+        rc, _ = run_rclone(["rclone", "touch", remote] + DRIVE_FLAGS)
+        if rc != 0:
+            return rc
+    return 0
+
+
+def cmd_auth(cfg: Config) -> int:
+    """Louis-run, inside a desktop session (Moonlight): encrypt the config, then the Google consent in a browser."""
+    remote = cfg.remote.rstrip(":")
+    rc = subprocess.run(["rclone", "config", "encryption", "check"], capture_output=True).returncode
+    if rc != 0:
+        print("Step 1/2: set the rclone config password. Type the value of the vault item RCLONE_CONFIG_PASS.")
+        rc = subprocess.run(["rclone", "config", "encryption", "set"]).returncode
+        if rc != 0:
+            die("config encryption not set", rc)
+    if not os.environ.get("DISPLAY"):
+        die("no DISPLAY: run this inside the Moonlight desktop session (a browser must open here)")
+    print(f"Step 2/2: creating remote `{remote}` — a browser opens on this desktop for the Google consent.")
+    rc = subprocess.run(["rclone", "config", "create", remote, "drive", "scope", "drive", "config_is_local", "true"]).returncode
+    if rc != 0:
+        die("remote creation failed", rc)
+    rc, _ = run_rclone(["rclone", "about", cfg.remote])
+    return rc
+
+
 def maybe_reexec_under_secrets(env: dict, argv: list) -> None:
     """If RCLONE_CONFIG_PASS is a vault ref, re-exec ourselves ONCE through `secrets run --`.
     The sentinel is the loop guard: the child inherits it and never execs again. A child that
@@ -331,6 +380,8 @@ def build_parser() -> argparse.ArgumentParser:
     rs.add_argument("--yes", action="store_true")
     sub.add_parser("status", help="last success, last result, halted?")
     sub.add_parser("check", help="drift probe: exit 1 if halted, never succeeded, or stale")
+    sub.add_parser("markers", help="create the RCLONE_TEST check-access marker on both sides (idempotent)")
+    sub.add_parser("auth", help="one-time, interactive, needs a desktop: encrypt config + Google consent")
     return p
 
 
@@ -355,6 +406,10 @@ def main(argv: list = None, notifier=None) -> int:
         return cmd_status(cfg)
     if args.cmd == "check":
         return cmd_check(cfg)
+    if args.cmd == "markers":
+        return cmd_markers(cfg)
+    if args.cmd == "auth":
+        return cmd_auth(cfg)
     die(f"unknown command {args.cmd}")
 
 

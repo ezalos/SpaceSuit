@@ -1,0 +1,12 @@
+# ABOUTME: Runs the Google Drive mirror sync every 10 minutes; propagation lag is at most one interval.
+# ABOUTME: No Persistent=: a missed run is just picked up by the next one.
+[Unit]
+Description=Google Drive mirror sync every 10 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

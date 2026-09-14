@@ -292,3 +292,17 @@ def test_resync_waits_for_an_in_progress_run(env_file, fake_rclone):
         fh.close()
         t.join(timeout=10)
     assert result["rc"] == 0 and any("--resync --resync-mode path1" in c for c in calls(fake_rclone))
+
+
+def test_included_roots_reads_plus_lines(tmp_path):
+    f = tmp_path / "filters"
+    f.write_text("# c\n+ /backup/research/**\n+ /notes/**\n- **\n")
+    assert gdrive_sync.included_roots(f) == ["backup/research", "notes"]
+
+
+def test_markers_touches_both_sides(env_file, fake_rclone):
+    cfg = gdrive_sync.Config.from_env(gdrive_sync.load_env(env_file))
+    assert gdrive_sync.main(["--env", str(env_file), "markers"], notifier=lambda t: None) == 0
+    assert (cfg.local / "backup/research/RCLONE_TEST").is_file()
+    assert any(c.startswith("touch gdrive:backup/research/RCLONE_TEST") for c in calls(fake_rclone))
+    assert all("lsf" in c or "touch" in c for c in calls(fake_rclone))

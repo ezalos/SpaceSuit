@@ -1,0 +1,15 @@
+# ABOUTME: One bisync run of the Google Drive mirror via the gdrive-sync wrapper (every safety flag inside it).
+# ABOUTME: Fired by gdrive-sync.timer; config in ~/.config/gdrive-sync/env, state in ~/.local/state/gdrive-sync.
+[Unit]
+Description=Google Drive mirror: one gdrive-sync run
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# PATH is load-bearing: direnv does not run under systemd; `secrets` shells out to
+# proton-agent (SpaceSuit/bin) and rclone 1.75 lives in ~/.local/bin, ahead of the apt 1.60.
+Environment=PATH=%h/42/SpaceSuit/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/42/SpaceSuit/bin/gdrive-sync run
+# Exit 7 is a designed halt (needs a human). It is left as a FAILED unit on purpose: the
+# wrapper Telegrammed once, `gdrive-sync check` fails, and `systemctl --user --failed` stays honest.
