@@ -1,0 +1,4 @@
+#!/bin/sh
+# ABOUTME: Wrapper putting gdrive-sync (rclone bisync driver for the Google Drive mirror) on PATH.
+# ABOUTME: Stdlib-only Python, so it deliberately does not use any repo venv (same rule as hf-pull).
+exec /usr/bin/python3 "$(dirname "$(readlink -f "$0")")/../gdrive_sync/gdrive_sync.py" "$@"
