@@ -77,10 +77,18 @@ def test_bisync_argv_carries_every_safety_flag(env_file):
         "--max-delete 10", "--check-access",
         f"--backup-dir2 {cfg.state_dir}/backup/20260914T180000Z",
         "--resilient", "--recover", "--max-lock 10m", "--bwlimit 25M",
+        "--transfers 8", "--checkers 16",
         "--drive-skip-gdocs", "--drive-skip-shortcuts", f"--workdir {cfg.state_dir}/workdir",
     ):
         assert flag in s, flag
     assert "--dry-run" not in s and "--resync" not in s and "--force" not in s
+
+
+def test_transfers_and_checkers_are_configurable(env_file):
+    env_file.write_text(env_file.read_text() + "GDRIVE_TRANSFERS=3\nGDRIVE_CHECKERS=5\n")
+    cfg = gdrive_sync.Config.from_env(gdrive_sync.load_env(env_file))
+    s = " ".join(gdrive_sync.bisync_argv(cfg, ts="t"))
+    assert "--transfers 3" in s and "--checkers 5" in s
 
 
 def test_bisync_argv_variants(env_file):

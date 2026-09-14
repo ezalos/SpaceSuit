@@ -22,6 +22,8 @@ inconsistent listings) freezes the mirror until `gdrive-sync resync --yes`.
 | `GDRIVE_STATE_DIR` | state.json, lock, last-run.log, workdir/, backup/ | `~/.local/state/gdrive-sync` |
 | `GDRIVE_MAX_DELETE` | percent per side per run | `10` |
 | `GDRIVE_STALE_AFTER` | seconds before `check` fails | `3600` |
+| `GDRIVE_TRANSFERS` | rclone `--transfers` (parallel file transfers; Drive is per-file latency-bound, so bulk phases scale with it) | `8` |
+| `GDRIVE_CHECKERS` | rclone `--checkers` | `16` |
 | `RCLONE_CONFIG_PASS` | `pass://` ref; the wrapper re-execs under `secrets run --` | — |
 
 ## Subcommands

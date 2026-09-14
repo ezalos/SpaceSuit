@@ -7,8 +7,9 @@ Config is a KEY=VALUE env file (default ~/.config/gdrive-sync/env, override with
 e.g. `gdrive:`), GDRIVE_LOCAL (Path2, the mirror root), GDRIVE_FILTERS (bisync
 filters file). Optional: GDRIVE_BWLIMIT (25M), GDRIVE_STATE_DIR
 (~/.local/state/gdrive-sync), GDRIVE_MAX_DELETE (10, percent), GDRIVE_STALE_AFTER
-(3600 s), RCLONE_CONFIG_PASS (a pass:// ref -> the process re-execs itself under
-`secrets run --` so rclone can open the encrypted config).
+(3600 s), GDRIVE_TRANSFERS (8), GDRIVE_CHECKERS (16), RCLONE_CONFIG_PASS (a
+pass:// ref -> the process re-execs itself under `secrets run --` so rclone can
+open the encrypted config).
 
 Path1 is Drive, Path2 is local, everywhere: conflicts and resyncs resolve to Path1.
 """
@@ -64,6 +65,8 @@ class Config:
     state_dir: Path
     max_delete: int
     stale_after: int
+    transfers: int
+    checkers: int
 
     @classmethod
     def from_env(cls, env: dict) -> "Config":
@@ -78,6 +81,8 @@ class Config:
             state_dir=Path(env.get("GDRIVE_STATE_DIR", str(STATE_DEFAULT))).expanduser(),
             max_delete=int(env.get("GDRIVE_MAX_DELETE", "10")),
             stale_after=int(env.get("GDRIVE_STALE_AFTER", "3600")),
+            transfers=int(env.get("GDRIVE_TRANSFERS", "8")),
+            checkers=int(env.get("GDRIVE_CHECKERS", "16")),
         )
 
     @property
@@ -107,6 +112,8 @@ def bisync_argv(cfg: Config, *, dry_run=False, resync=False, force=False, ts: st
         "--resilient", "--recover",
         "--max-lock", "10m",
         "--bwlimit", cfg.bwlimit,
+        "--transfers", str(cfg.transfers),
+        "--checkers", str(cfg.checkers),
         "--workdir", f"{cfg.state_dir}/workdir",
         "-v",
     ] + DRIVE_FLAGS
