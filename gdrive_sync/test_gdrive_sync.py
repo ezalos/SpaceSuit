@@ -156,3 +156,100 @@ def test_unresolved_ref_after_secrets_dies_instead_of_looping(env_file, fake_rcl
         gdrive_sync.main(["--env", str(env_file), "plan"], notifier=lambda t: None)
     assert e.value.code == 2
     assert calls(fake_rclone) == []
+
+
+def _state(env_file):
+    cfg = gdrive_sync.Config.from_env(gdrive_sync.load_env(env_file))
+    return json.loads(cfg.state_file.read_text())
+
+
+def test_run_success_writes_state_and_no_notify(env_file, fake_rclone):
+    sent = []
+    rc = gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append)
+    assert rc == 0 and sent == []
+    st = _state(env_file)
+    assert st["last_result"] == "ok" and st["consecutive_failures"] == 0 and st["halted"] is False
+    assert st["last_success"] is not None
+    c = calls(fake_rclone)[0]
+    assert c.startswith("bisync gdrive:") and "--dry-run" not in c and "--force" not in c
+
+
+def test_run_force_passes_force(env_file, fake_rclone):
+    gdrive_sync.main(["--env", str(env_file), "run", "--force"], notifier=lambda t: None)
+    assert "--force" in calls(fake_rclone)[0]
+
+
+def test_run_critical_halts_notifies_once_and_skips_until_resync(env_file, fake_rclone, monkeypatch):
+    sent = []
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "7")
+    monkeypatch.setenv("FAKE_RCLONE_OUT", "ERROR : Bisync critical error: Safety abort: too many deletes")
+    assert gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append) == 7
+    st = _state(env_file)
+    assert st["halted"] is True and st["halt_notified"] is True and st["last_result"] == "halted"
+    assert len(sent) == 1 and "HALTED" in sent[0] and "gdrive-sync resync" in sent[0] and "too many deletes" in sent[0]
+    # second run: bisync is NOT invoked again, no second message
+    assert gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append) == 7
+    assert len(calls(fake_rclone)) == 1 and len(sent) == 1
+
+
+def test_run_transient_failures_escalate_once_at_three(env_file, fake_rclone, monkeypatch):
+    sent = []
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "1")
+    for i in range(4):
+        assert gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append) == 1
+    assert _state(env_file)["consecutive_failures"] == 4 and _state(env_file)["halted"] is False
+    assert len(sent) == 1 and "3 consecutive" in sent[0]
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "0")
+    assert gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append) == 0
+    assert _state(env_file)["consecutive_failures"] == 0 and len(sent) == 1
+
+
+def test_run_skips_when_lock_held(env_file, fake_rclone):
+    import fcntl
+    cfg = gdrive_sync.Config.from_env(gdrive_sync.load_env(env_file))
+    cfg.state_dir.mkdir(parents=True, exist_ok=True)
+    fh = open(cfg.state_dir / "lock", "w")
+    fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        assert gdrive_sync.main(["--env", str(env_file), "run"], notifier=lambda t: None) == 0
+        assert calls(fake_rclone) == []
+    finally:
+        fh.close()
+
+
+def test_resync_requires_yes_then_clears_halt(env_file, fake_rclone, monkeypatch):
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "7")
+    gdrive_sync.main(["--env", str(env_file), "run"], notifier=lambda t: None)
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "0")
+    assert gdrive_sync.main(["--env", str(env_file), "resync"], notifier=lambda t: None) == 2
+    assert len(calls(fake_rclone)) == 2  # the halted run + the diff shown by resync; no bisync yet
+    assert gdrive_sync.main(["--env", str(env_file), "resync", "--yes"], notifier=lambda t: None) == 0
+    assert "--resync --resync-mode path1" in calls(fake_rclone)[-1]
+    st = _state(env_file)
+    assert st["halted"] is False and st["halt_notified"] is False and st["consecutive_failures"] == 0
+
+
+def test_check_fails_when_halted_stale_or_missing(env_file, fake_rclone, monkeypatch):
+    assert gdrive_sync.main(["--env", str(env_file), "check"], notifier=lambda t: None) == 1  # no state yet
+    gdrive_sync.main(["--env", str(env_file), "run"], notifier=lambda t: None)
+    assert gdrive_sync.main(["--env", str(env_file), "check"], notifier=lambda t: None) == 0
+    cfg = gdrive_sync.Config.from_env(gdrive_sync.load_env(env_file))
+    st = json.loads(cfg.state_file.read_text())
+    st["last_success"] = "2020-01-01T00:00:00+00:00"
+    cfg.state_file.write_text(json.dumps(st))
+    assert gdrive_sync.main(["--env", str(env_file), "check"], notifier=lambda t: None) == 1
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "7")
+    gdrive_sync.main(["--env", str(env_file), "run"], notifier=lambda t: None)
+    assert gdrive_sync.main(["--env", str(env_file), "check"], notifier=lambda t: None) == 1
+
+
+def test_status_prints_state(env_file, fake_rclone, capsys):
+    gdrive_sync.main(["--env", str(env_file), "run"], notifier=lambda t: None)
+    assert gdrive_sync.main(["--env", str(env_file), "status"], notifier=lambda t: None) == 0
+    out = capsys.readouterr().out
+    assert "last_success" in out and "halted: False" in out
+
+
+def test_halt_reason_extracts_the_critical_line():
+    out = "INFO  : Synching Path1\nERROR : Bisync critical error: Access test failed\nERROR : Bisync aborted."
+    assert gdrive_sync.halt_reason(out) == "Bisync critical error: Access test failed"
