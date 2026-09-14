@@ -106,6 +106,7 @@ def test_diff_prints_legend_and_passes_through(env_file, fake_rclone, capsys, mo
     out = capsys.readouterr().out
     assert rc == 0
     assert "* differ" in out and "* backup/research/a.pdf" in out
+    assert "+ Drive only" in out and "- local only" in out
     assert calls(fake_rclone)[0].startswith("check gdrive:")
 
 

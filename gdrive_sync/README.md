@@ -26,7 +26,7 @@ inconsistent listings) freezes the mirror until `gdrive-sync resync --yes`.
 
 ## Subcommands
 
-`diff` (read-only compare, `= + - *`), `plan` (bisync `--dry-run`), `run [--force]`,
+`diff` (read-only compare: = same, + Drive only, - local only, * differ), `plan` (bisync `--dry-run`), `run [--force]`,
 `resync [--yes]`, `status`, `check` (exit 1 = halted/never/stale), `markers`, `auth`.
 
 ## Widening the mirror

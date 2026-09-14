@@ -136,7 +136,7 @@ def run_rclone(argv: list, log_path: Path = None) -> tuple:
 
 
 def cmd_diff(cfg: Config) -> int:
-    print("legend: = same   + local only   - Drive only   * differ   ! error")
+    print("legend: = same   + Drive only   - local only   * differ   ! error")
     rc, _ = run_rclone(check_argv(cfg))
     # rclone check exits 1 when the sides differ; for `diff` a difference is information, not failure.
     return 0 if rc in (0, 1) else rc
