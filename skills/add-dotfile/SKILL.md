@@ -65,7 +65,7 @@ From the user's request, extract:
 Determine the current device:
 
 ```bash
-cd ~/42/SpaceSuit && python -c "from src_dotfiles.config import config; print(config.identifier)"
+cd ~/42/SpaceSuit && .venv/bin/python -c "from src_dotfiles.config import config; print(config.identifier)"
 ```
 
 Capture as `current_device` (e.g. `TheBeast.ezalos`).
@@ -87,9 +87,9 @@ Inspect:
 - If yes: does that entry have a `deploy[<current_device>]` block?
 - If yes: does the entry's `main` file exist at the expected location?
 
-**First, check whether `target_path` is inside `~/42/SpaceSuit/dotfiles/`** (i.e. the file was authored directly into the dotfiles directory, e.g. a freshly written SKILL.md). If yes: there is no copy-from-system step to perform — the source is already in place; only the registry entry and the deploy symlink need to be created. The canonical `python -m src_dotfiles add` subcommand assumes target_path is the deploy_path and would set the wrong fields. **STOP** and route to the `register` subcommand instead: `python -m src_dotfiles register <alias> <absolute deploy_path>` (`--main=` defaults to `dotfiles/<alias>`; pass `--only-device=<current_device>` to scope it to this machine, or omit for a global skill and `extend_to` the other devices afterward). It creates the registry entry and symlink without backing up or copying — the source is already in place. Do not hand-edit the JSON as a shortcut.
+**First, check whether `target_path` is inside `~/42/SpaceSuit/dotfiles/`** (i.e. the file was authored directly into the dotfiles directory, e.g. a freshly written SKILL.md). If yes: there is no copy-from-system step to perform — the source is already in place; only the registry entry and the deploy symlink need to be created. The canonical `.venv/bin/python -m src_dotfiles add` subcommand assumes target_path is the deploy_path and would set the wrong fields. **STOP** and route to the `register` subcommand instead: `.venv/bin/python -m src_dotfiles register <alias> <absolute deploy_path>` (`--main=` defaults to `dotfiles/<alias>`; pass `--only-device=<current_device>` to scope it to this machine, or omit for a global skill and `extend_to` the other devices afterward). It creates the registry entry and symlink without backing up or copying — the source is already in place. Do not hand-edit the JSON as a shortcut.
 
-**Owned Claude skills are a special case — they use the `skills` fan-out entry, not a per-skill entry.** Every skill Louis authors lives in `~/42/SpaceSuit/skills/<name>/` and is deployed by the single `skills` registry entry (`fanout: true`), which symlinks each child directory into `~/.claude/skills/`. To add a new owned skill: place its directory at `~/42/SpaceSuit/skills/<name>/` (create it there, or `mv`/`git mv` it in) and run `python -m src_dotfiles deploy skills` — the fan-out picks up the new child. Do NOT create an individual `register` entry for it; the old per-skill model was retired 2026-07-07 (see `docs/plans/2026-07-07-skills-fanout-deploy-design.md`). Third-party skills you did not author stay as untracked real dirs in `~/.claude/skills/` and are recorded in `skills/EXTERNAL.md`. **Before treating an untracked skill as owned (folding it in), VERIFY it is actually Louis's** — absence of a `.git` is NOT proof of authorship. Grep its files for a foreign author's hardcoded paths or handles (e.g. `/home/<someone-else>/`) and check for a matching public repo (Claude Plugin Hub, GitHub); if it's external, record it in `skills/EXTERNAL.md` instead of vendoring it. (2026-07-08: `research*` was nearly folded in before a hardcoded `/home/weizhena/` path revealed it was Weizhena/Deep-Research-skills.) The per-skill `register`/`add` routing below applies to non-skill dotfiles and to external one-off directory sources only.
+**Owned Claude skills are a special case — they use the `skills` fan-out entry, not a per-skill entry.** Every skill Louis authors lives in `~/42/SpaceSuit/skills/<name>/` and is deployed by the single `skills` registry entry (`fanout: true`), which symlinks each child directory into `~/.claude/skills/`. To add a new owned skill: place its directory at `~/42/SpaceSuit/skills/<name>/` (create it there, or `mv`/`git mv` it in) and run `.venv/bin/python -m src_dotfiles deploy skills` — the fan-out picks up the new child. Do NOT create an individual `register` entry for it; the old per-skill model was retired 2026-07-07 (see `docs/plans/2026-07-07-skills-fanout-deploy-design.md`). Third-party skills you did not author stay as untracked real dirs in `~/.claude/skills/` and are recorded in `skills/EXTERNAL.md`. **Before treating an untracked skill as owned (folding it in), VERIFY it is actually Louis's** — absence of a `.git` is NOT proof of authorship. Grep its files for a foreign author's hardcoded paths or handles (e.g. `/home/<someone-else>/`) and check for a matching public repo (Claude Plugin Hub, GitHub); if it's external, record it in `skills/EXTERNAL.md` instead of vendoring it. (2026-07-08: `research*` was nearly folded in before a hardcoded `/home/weizhena/` path revealed it was Weizhena/Deep-Research-skills.) The per-skill `register`/`add` routing below applies to non-skill dotfiles and to external one-off directory sources only.
 
 Otherwise use the standard routing table:
 
@@ -134,7 +134,7 @@ For skill-style dotfiles that should not auto-deploy to every device, add `--onl
 > (`~/.claude/skills/<name>/` with a `SKILL.md` inside), so `add` will fail.
 > **For an owned Claude skill, use the fan-out flow instead** (see the "Owned
 > Claude skills are a special case" callout in Phase 2): `mv <target_path>
-> ~/42/SpaceSuit/skills/<name>/` then `python -m src_dotfiles deploy skills` — no
+> ~/42/SpaceSuit/skills/<name>/` then `.venv/bin/python -m src_dotfiles deploy skills` — no
 > per-skill entry. For any OTHER directory target (a non-skill dotfile dir), do
 > NOT use `add` — instead:
 > 1. `mv <target_path> ~/42/SpaceSuit/dotfiles/<alias>` (move the dir into the dotfiles tree),
@@ -192,10 +192,10 @@ When intent classified as DEPLOY-HERE:
 3. Add the deploy entry via the CLI (do **not** hand-edit `dotfiles.json`):
 
    ```bash
-   cd ~/42/SpaceSuit && python -m src_dotfiles extend_to <alias> <current_device> --deploy-path=<provided>
+   cd ~/42/SpaceSuit && .venv/bin/python -m src_dotfiles extend_to <alias> <current_device> --deploy-path=<provided>
    ```
 
-4. Deploy: `python -m src_dotfiles deploy --alias=<alias>`. Same error handling as Phase 3b.
+4. Deploy: `.venv/bin/python -m src_dotfiles deploy --alias=<alias>`. Same error handling as Phase 3b.
 5. Verify: symlink at `<provided>` → `~/42/SpaceSuit/<main>`.
 6. Commit: `dotfiles: deploy <alias> on <current_device>`.
 7. Log INFO `add-dotfile: first deploy for <alias> on <current_device>`.
@@ -205,7 +205,7 @@ When intent classified as DEPLOY-HERE:
 When intent classified as REDEPLOY (entry exists, deploy block exists, but symlink missing or broken):
 
 1. Confirm with Louis using AskUserQuestion: "Entry for `<alias>` exists for this device but the symlink is missing/broken. Re-deploy?" Default: yes.
-2. On confirm: `python -m src_dotfiles deploy --alias=<alias>`. Same error handling.
+2. On confirm: `.venv/bin/python -m src_dotfiles deploy --alias=<alias>`. Same error handling.
 3. Verify: symlink restored.
 4. **No `dotfiles.json` change. No commit.**
 5. Log INFO `add-dotfile: redeploy for <alias> on <current_device>`.
@@ -227,5 +227,5 @@ After completing any path (ADD / DEPLOY-HERE / REDEPLOY / NO-OP / abort), review
 - **Never use `git add -A`** — stage explicit paths.
 - **Never use `--no-verify`** — if a hook fails, report and stop.
 - **Never delete original target_path** before the deployer succeeds — the deployer itself does the swap (file → symlink) atomically.
-- **Never hand-edit `dotfiles/dotfiles.json`.** All registry mutations go through `python -m src_dotfiles <subcommand>` (`add`, `register`, `extend_to`, `deploy`). If no subcommand fits the case, add one to `src_dotfiles/__main__.py` first — write/Edit on the JSON is a violation even "just to bridge the gap." The registry persists model invariants that drift silently when bypassed.
+- **Never hand-edit `dotfiles/dotfiles.json`.** All registry mutations go through `.venv/bin/python -m src_dotfiles <subcommand>` (`add`, `register`, `extend_to`, `deploy`). If no subcommand fits the case, add one to `src_dotfiles/__main__.py` first — write/Edit on the JSON is a violation even "just to bridge the gap." The registry persists model invariants that drift silently when bypassed.
 - **Cross-platform paths**: use `python -c "import os; print(os.path.expanduser('<path>'))"` for `~`-resolution rather than relying on shell tilde expansion in passed-through Bash strings.

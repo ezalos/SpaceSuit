@@ -43,7 +43,11 @@ is a `proton-agent item view` round-trip — measured **~7s per ref, warm sessio
   `secrets run --` and dropping back to capability mode.
 
 Contexts = PAT files: `ls ~/.claude/channels/proton-pass/*.pat`. One context
-= one vault. Cross-context refs fail `denied` by design; do not work around.
+= one vault. The context name is NOT the vault name: `general` reads the Pass vault
+named **Agent**, `alakazam` reads **Agent Alakazam**. When Louis creates an item
+for an agent, name the Pass vault, not the context (2026-09-15: an item made in
+the wrong vault was invisible to `proton-envrc general`). To check what a context
+sees: `PROTON_AGENT_CONTEXT=<ctx> proton-agent vault list`. Cross-context refs fail `denied` by design; do not work around.
 
 ## Add a NEW secret
 
