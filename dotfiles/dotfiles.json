@@ -1202,6 +1202,51 @@
             ],
             "variants": null,
             "fanout": false
+        },
+        "claude_usage": {
+            "alias": "claude_usage",
+            "main": "~/42/GroundControl/dotfiles/claude-usage/claude-usage.js",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/claude-usage/claude-usage.js",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
+        },
+        "claude_usage_command": {
+            "alias": "claude_usage_command",
+            "main": "~/42/GroundControl/dotfiles/claude-usage/commands/claude-usage.md",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/commands/claude-usage.md",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
+        },
+        "claude_usage_bin": {
+            "alias": "claude_usage_bin",
+            "main": "~/42/GroundControl/dotfiles/claude-usage/bin/claude-usage",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/claude-usage",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
         }
     },
     "devices": {
