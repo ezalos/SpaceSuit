@@ -77,7 +77,7 @@ def test_bisync_argv_carries_every_safety_flag(env_file):
         "--max-delete 10", "--check-access",
         f"--backup-dir2 {cfg.state_dir}/backup/20260914T180000Z",
         "--resilient", "--recover", "--max-lock 10m", "--bwlimit 25M",
-        "--transfers 8", "--checkers 16",
+        "--transfers 8", "--checkers 16", "--color never",
         "--drive-skip-gdocs", "--drive-skip-shortcuts", f"--workdir {cfg.state_dir}/workdir",
     ):
         assert flag in s, flag
@@ -105,6 +105,7 @@ def test_check_argv_is_read_only_combined(env_file):
     assert s.startswith(f"rclone check gdrive: {cfg.local}")
     assert f"--filter-from {cfg.filters}" in s and "--combined -" in s
     assert "--drive-skip-gdocs" in s and "--drive-skip-shortcuts" in s
+    assert "--color never" in s
 
 
 def test_diff_prints_legend_and_passes_through(env_file, fake_rclone, capsys, monkeypatch):
@@ -189,6 +190,67 @@ def test_plan_still_reexecs_when_ref_present(env_file, fake_rclone, monkeypatch)
     except SystemExit:
         pass
     assert len(calls_) == 1 and calls_[0][0] == "secrets"
+
+
+def test_run_accounts_for_failure_before_child_writes_state(env_file, fake_rclone, monkeypatch, tmp_path):
+    """secrets itself fails (vault unreachable) without ever exec'ing the child: the parent must
+    still record a transient failure so the '3 consecutive failures escalate once' promise holds."""
+    env_file.write_text(env_file.read_text().replace(
+        "RCLONE_CONFIG_PASS=already-resolved", "RCLONE_CONFIG_PASS=pass://x/y/Secret"))
+    bindir = tmp_path / "secretsbin"
+    bindir.mkdir()
+    log = tmp_path / "secrets.log"
+    fake_secrets = bindir / "secrets"
+    fake_secrets.write_text(textwrap.dedent(f"""\
+        #!/bin/sh
+        printf '%s\\n' "$*" >> "{log}"
+        exit 1
+    """))
+    fake_secrets.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
+    sent = []
+    for _ in range(3):
+        monkeypatch.delenv(gdrive_sync.REEXEC_SENTINEL, raising=False)
+        monkeypatch.delenv("RCLONE_CONFIG_PASS", raising=False)
+        with pytest.raises(SystemExit) as e:
+            gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append)
+        assert e.value.code == 1
+    st = _state(env_file)
+    assert st["consecutive_failures"] == 3
+    assert "before syncing" in st["last_error"]
+    assert len(sent) == 1
+    assert calls(fake_rclone) == []          # secrets died before rclone was ever reached
+    assert len(log.read_text().splitlines()) == 3
+
+
+def test_run_reexec_success_does_not_double_account(env_file, fake_rclone, monkeypatch, tmp_path):
+    """secrets resolves the ref and execs the child, which writes state itself: the parent must not
+    also account for the (successful) exit code."""
+    env_file.write_text(env_file.read_text().replace(
+        "RCLONE_CONFIG_PASS=already-resolved", "RCLONE_CONFIG_PASS=pass://x/y/Secret"))
+    monkeypatch.delenv(gdrive_sync.REEXEC_SENTINEL, raising=False)
+    monkeypatch.delenv("RCLONE_CONFIG_PASS", raising=False)
+    bindir = tmp_path / "secretsbin"
+    bindir.mkdir()
+    log = tmp_path / "secrets.log"
+    fake_secrets = bindir / "secrets"
+    fake_secrets.write_text(textwrap.dedent(f"""\
+        #!/bin/sh
+        printf '%s\\n' "$*" >> "{log}"
+        shift 2
+        RCLONE_CONFIG_PASS=resolved-by-fake exec "$@"
+    """))
+    fake_secrets.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
+    sent = []
+    with pytest.raises(SystemExit) as e:
+        gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append)
+    assert e.value.code == 0
+    st = _state(env_file)
+    assert st["last_result"] == "ok" and st["consecutive_failures"] == 0
+    assert len(log.read_text().splitlines()) == 1          # exactly one `secrets run`, no retry
+    assert any(c.startswith("bisync gdrive:") for c in calls(fake_rclone))
+    assert sent == []
 
 
 def _state(env_file):
@@ -288,7 +350,12 @@ def test_halt_reason_extracts_the_critical_line():
     assert gdrive_sync.halt_reason(out) == "Bisync critical error: Access test failed"
 
 
-REFUSAL = "ERROR : Safety abort: too many deletes (>10%, 3 of 22) on Path2. Run with --force if desired."
+def test_halt_reason_strips_ansi_colour_escapes():
+    out = "\x1b[31mERROR : Bisync critical error: check file check failed\x1b[0m"
+    assert gdrive_sync.halt_reason(out) == "Bisync critical error: check file check failed"
+
+
+REFUSAL = 'ERROR : Safety abort: too many deletes (>10%, 3 of 22) on Path2 "/x/". Run with --force if desired.'
 
 
 def test_max_delete_refusal_notifies_once_and_keeps_retrying(env_file, fake_rclone, monkeypatch):
@@ -327,12 +394,74 @@ def test_refusal_notification_retried_until_delivered(env_file, fake_rclone, mon
     assert len(sent) == 2
 
 
+def test_refusal_message_names_path1_in_words(env_file):
+    cfg = gdrive_sync.Config.from_env(gdrive_sync.load_env(env_file))
+    reason = 'Safety abort: too many deletes (>10%, 5 of 40) on Path1 "/x/"'
+    msg = gdrive_sync.refusal_message(cfg, reason)
+    assert "deleted on Drive" in msg
+    assert "the local mirror (moved to backup/)" in msg
+    assert "5 of 40" in msg
+
+
+def test_refusal_message_names_path2_in_words(env_file):
+    cfg = gdrive_sync.Config.from_env(gdrive_sync.load_env(env_file))
+    reason = 'Safety abort: too many deletes (>10%, 3 of 22) on Path2 "/x/"'
+    msg = gdrive_sync.refusal_message(cfg, reason)
+    assert "deleted on the local mirror" in msg
+    assert "Drive (to Drive trash)" in msg
+    assert "3 of 22" in msg
+
+
+def test_refusal_message_falls_back_to_raw_text_when_unparsable(env_file):
+    cfg = gdrive_sync.Config.from_env(gdrive_sync.load_env(env_file))
+    reason = "some other rclone error that does not match the delete pattern"
+    msg = gdrive_sync.refusal_message(cfg, reason)
+    assert reason in msg
+
+
 def test_halt_message_has_no_force_advice(env_file, fake_rclone, monkeypatch):
     sent = []
     monkeypatch.setenv("FAKE_RCLONE_EXIT", "7")
     monkeypatch.setenv("FAKE_RCLONE_OUT", "ERROR : Bisync critical error: check file check failed")
     gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append)
     assert len(sent) == 1 and "--force" not in sent[0] and "gdrive-sync resync --yes" in sent[0]
+
+
+def test_recovery_advice_prioritizes_markers_for_check_access_failures():
+    advice = gdrive_sync.recovery_advice("Bisync critical error: check file check failed")
+    assert "gdrive-sync markers" in advice
+    assert advice.index("gdrive-sync markers") < advice.index("resync --yes")
+
+
+def test_recovery_advice_default_resync_for_other_reasons():
+    advice = gdrive_sync.recovery_advice("Bisync critical error: empty listing")
+    assert "gdrive-sync resync --yes" in advice
+    assert "gdrive-sync markers" not in advice
+
+
+def test_halt_notification_for_marker_failure_points_at_markers_first(env_file, fake_rclone, monkeypatch):
+    sent = []
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "7")
+    monkeypatch.setenv("FAKE_RCLONE_OUT", "ERROR : Bisync critical error: check file check failed")
+    gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append)
+    assert len(sent) == 1
+    msg = sent[0]
+    assert "gdrive-sync markers" in msg
+    assert msg.index("gdrive-sync markers") < msg.index("resync --yes")
+
+
+def test_resync_failure_after_halt_gives_recovery_advice(env_file, fake_rclone, monkeypatch, capsys):
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "7")
+    monkeypatch.setenv("FAKE_RCLONE_OUT", "ERROR : Bisync critical error: check file check failed")
+    gdrive_sync.main(["--env", str(env_file), "run"], notifier=lambda t: None)
+    assert _state(env_file)["halted"] is True
+    capsys.readouterr()
+    rc = gdrive_sync.main(["--env", str(env_file), "resync", "--yes"], notifier=lambda t: None)
+    assert rc == 7
+    assert _state(env_file)["halted"] is True
+    out = capsys.readouterr().out
+    assert "resync failed" in out
+    assert "gdrive-sync markers" in out
 
 
 def test_halt_notification_is_retried_until_delivered(env_file, fake_rclone, monkeypatch):

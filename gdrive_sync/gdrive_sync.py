@@ -19,6 +19,7 @@ import datetime as dt
 import fcntl
 import json
 import os
+import re
 import shlex
 import socket
 import subprocess
@@ -115,6 +116,7 @@ def bisync_argv(cfg: Config, *, dry_run=False, resync=False, force=False, ts: st
         "--transfers", str(cfg.transfers),
         "--checkers", str(cfg.checkers),
         "--workdir", f"{cfg.state_dir}/workdir",
+        "--color", "never",           # rclone colours even into a pipe; keeps ANSI out of Telegram/state.json
         "-v",
     ] + DRIVE_FLAGS
     if dry_run:
@@ -128,7 +130,7 @@ def bisync_argv(cfg: Config, *, dry_run=False, resync=False, force=False, ts: st
 
 def check_argv(cfg: Config) -> list:
     return ["rclone", "check", cfg.remote, str(cfg.local),
-            "--filter-from", str(cfg.filters), "--combined", "-"] + DRIVE_FLAGS
+            "--filter-from", str(cfg.filters), "--combined", "-", "--color", "never"] + DRIVE_FLAGS
 
 
 def run_rclone(argv: list, log_path: Path = None) -> tuple:
@@ -172,11 +174,14 @@ def write_state(cfg: Config, state: dict) -> None:
 
 
 def halt_reason(output: str) -> str:
-    for line in output.splitlines():
+    """rclone colours messages even into a pipe; strip ANSI before matching or returning so a
+    coloured escape never lands in Telegram, state.json, or the sweep's facts."""
+    for raw in output.splitlines():
+        line = re.sub(r"\x1b\[[0-9;]*m", "", raw)
         if "critical" in line.lower() or "safety abort" in line.lower():
             return line.split(" : ", 1)[-1].strip()
-    lines = [ln for ln in output.splitlines() if ln.strip()]
-    return lines[-1].strip() if lines else "no output"
+    lines = [re.sub(r"\x1b\[[0-9;]*m", "", ln).strip() for ln in output.splitlines() if ln.strip()]
+    return lines[-1] if lines else "no output"
 
 
 def telegram_send(text: str) -> bool:
@@ -204,17 +209,36 @@ def telegram_send(text: str) -> bool:
         return False
 
 
+def recovery_advice(reason: str) -> str:
+    """What a human does after a halt, by cause. The marker case must be restored BEFORE a resync,
+    because --check-access is enforced during --resync too."""
+    if "check file check failed" in reason:
+        return "Restore the marker first: `gdrive-sync markers`, then `gdrive-sync resync --yes`."
+    return "Resume: `gdrive-sync resync --yes` (Drive wins on differing files; the previous local version goes to backup/)."
+
+
 def halt_message(cfg: Config, reason: str) -> str:
     return (f"HALTED: {reason}. The mirror at {cfg.local} is frozen — no sync in either direction — "
             f"until a human resyncs. Inspect: `gdrive-sync diff`, `gdrive-sync plan`. "
-            f"Resume: `gdrive-sync resync --yes` (Drive wins on differing files).")
+            f"{recovery_advice(reason)}")
+
+
+REFUSAL_RE = re.compile(r"too many deletes \(>(\d+)%, (\d+) of (\d+)\) on (Path[12])")
 
 
 def refusal_message(cfg: Config, reason: str) -> str:
-    return (f"REFUSED: {reason} Nothing was changed. The sync retries every run and will keep refusing "
+    m = REFUSAL_RE.search(reason)
+    if m:
+        pct, gone, total, side = m.groups()
+        where = "Drive" if side == "Path1" else "the local mirror"
+        other = "the local mirror (moved to backup/)" if side == "Path1" else "Drive (to Drive trash)"
+        what = (f"{gone} of {total} files were deleted on {where} (>{pct}% of it). "
+                f"`gdrive-sync run --force` would delete them on {other}.")
+    else:
+        what = reason
+    return (f"REFUSED: {what} Nothing was changed. The sync retries every run and will keep refusing "
             f"until this is resolved. If the deletes are intended: `gdrive-sync run --force`. If not: "
-            f"restore the files (Drive trash for a Drive-side delete) and the next run picks them up. "
-            f"Inspect: `gdrive-sync plan`.")
+            f"restore the files and the next run picks them up. Inspect: `gdrive-sync plan`.")
 
 
 def is_refusal(rc: int, output: str) -> bool:
@@ -251,7 +275,7 @@ def cmd_run(cfg: Config, notify, force: bool) -> int:
                 state["halt_notified"] = notify(halt_message(cfg, state["last_error"]))
                 write_state(cfg, state)
             print(f"gdrive-sync: HALTED since a critical abort ({state['last_error']}). "
-                  f"Inspect with `gdrive-sync diff` / `gdrive-sync plan`, resume with `gdrive-sync resync --yes`.")
+                  f"Inspect with `gdrive-sync diff` / `gdrive-sync plan`. {recovery_advice(state['last_error'])}")
             return EXIT_CRITICAL
         rc, out = run_rclone(bisync_argv(cfg, force=force, ts=utc_ts()), cfg.state_dir / "last-run.log")
         now = dt.datetime.now(dt.timezone.utc).isoformat()
@@ -291,7 +315,9 @@ def cmd_resync(cfg: Config, yes: bool) -> int:
                          consecutive_failures=0, halted=False, halt_notified=False, last_error="",
                          refusal_notified=False)
         else:
-            state.update(last_result="failed", last_error=halt_reason(out))
+            reason = halt_reason(out)
+            state.update(last_result="failed", last_error=reason)
+            print(f"gdrive-sync: resync failed ({reason}). {recovery_advice(reason)}")
         write_state(cfg, state)
         return rc
 
@@ -351,11 +377,12 @@ def cmd_markers(cfg: Config) -> int:
         if not local.exists():
             local.write_text("")
         remote = f"{cfg.remote}{root}/{MARKER}"
-        rc, out = run_rclone(["rclone", "lsf", f"{cfg.remote}{root}/", "--files-only", "--include", MARKER] + DRIVE_FLAGS)
+        rc, out = run_rclone(["rclone", "lsf", f"{cfg.remote}{root}/", "--files-only", "--include", MARKER,
+                              "--color", "never"] + DRIVE_FLAGS)
         if rc == 0 and MARKER in out:
             print(f"marker present: {remote}")
             continue
-        rc, _ = run_rclone(["rclone", "touch", remote] + DRIVE_FLAGS)
+        rc, _ = run_rclone(["rclone", "touch", remote, "--color", "never"] + DRIVE_FLAGS)
         if rc != 0:
             return rc
     return 0
@@ -380,10 +407,42 @@ def cmd_auth(cfg: Config) -> int:
     return rc
 
 
-def maybe_reexec_under_secrets(env: dict, argv: list) -> None:
+def state_mtime(cfg: Config):
+    try:
+        return cfg.state_file.stat().st_mtime_ns
+    except FileNotFoundError:
+        return None
+
+
+def account_external_failure(cfg: Config, rc: int, notify, *, before) -> None:
+    """The child exited rc without writing state: secrets/vault failure, rclone missing, a crash
+    before write_state. Record it as a transient failure so the escalation promise holds."""
+    if rc == 0 or state_mtime(cfg) != before:
+        return
+    with state_lock(cfg, wait=False) as held:
+        if held is None:
+            return
+        try:
+            state = read_state(cfg)
+        except ValueError:
+            print("gdrive-sync: state.json is unreadable; leaving it alone", file=sys.stderr)
+            return
+        state["consecutive_failures"] += 1
+        state.update(last_result="failed",
+                     last_error=f"run exited {rc} before syncing (secrets/vault unreachable, or rclone missing?)")
+        if state["consecutive_failures"] == ESCALATE_AFTER:
+            notify(f"{ESCALATE_AFTER} consecutive failed runs (last: {state['last_error']}). "
+                   f"Mirror last fresh {state['last_success']}. See `journalctl --user -u gdrive-sync`.")
+        write_state(cfg, state)
+
+
+def reexec_under_secrets(env: dict, argv: list, *, wait_and_account=None) -> None:
     """If RCLONE_CONFIG_PASS is a vault ref, re-exec ourselves ONCE through `secrets run --`.
     The sentinel is the loop guard: the child inherits it and never execs again. A child that
-    still sees an unresolved ref means secrets did not resolve it: die rather than loop."""
+    still sees an unresolved ref means secrets did not resolve it: die rather than loop.
+    wait_and_account is None for plan/diff/resync/markers/auth (replace ourselves outright, as
+    before); `run` passes a callback so a failure before the child can write state (vault
+    unreachable, rclone missing) still gets accounted for instead of vanishing silently."""
     ref = env.get("RCLONE_CONFIG_PASS", "")
     if not ref.startswith("pass://"):
         return
@@ -394,7 +453,13 @@ def maybe_reexec_under_secrets(env: dict, argv: list) -> None:
     os.environ["RCLONE_CONFIG_PASS"] = ref
     os.environ.setdefault("PROTON_AGENT_CONTEXT", env.get("PROTON_AGENT_CONTEXT", "general"))
     os.environ[REEXEC_SENTINEL] = "1"
-    os.execvp("secrets", ["secrets", "run", "--", sys.executable, os.path.abspath(__file__)] + argv)
+    child = ["secrets", "run", "--", sys.executable, os.path.abspath(__file__)] + argv
+    if wait_and_account is None:
+        os.execvp("secrets", child)          # plan/diff/resync/markers/auth: replace ourselves
+        return                               # unreachable in real life; keeps a mocked execvp from falling through
+    rc = subprocess.call(child)             # run: stay alive to account for a pre-state failure
+    wait_and_account(rc)
+    sys.exit(rc)
 
 
 def notifier_or_telegram(notifier):
@@ -429,16 +494,23 @@ def main(argv: list = None, notifier=None) -> int:
     env = load_env(args.env)
     if env.get("RCLONE_CONFIG_PASS", "").startswith("pass://") and "--env" not in argv:
         argv = ["--env", str(args.env)] + argv
+    if args.cmd == "run":
+        # Config.from_env needs no secrets: build cfg/notify before a possible re-exec so a
+        # pre-state failure (vault unreachable, rclone missing) during `run` is still accounted for.
+        cfg = Config.from_env(env)
+        notify = notifier_or_telegram(notifier)
+        before = state_mtime(cfg)
+        reexec_under_secrets(
+            env, argv, wait_and_account=lambda rc: account_external_failure(cfg, rc, notify, before=before))
+        return cmd_run(cfg, notify, args.force)
     if args.cmd in RCLONE_COMMANDS:
-        maybe_reexec_under_secrets(env, argv)
+        reexec_under_secrets(env, argv)
     cfg = Config.from_env(env)
     if args.cmd == "diff":
         return cmd_diff(cfg)
     if args.cmd == "plan":
         return cmd_plan(cfg)
     notify = notifier_or_telegram(notifier)
-    if args.cmd == "run":
-        return cmd_run(cfg, notify, args.force)
     if args.cmd == "resync":
         return cmd_resync(cfg, args.yes)
     if args.cmd == "status":

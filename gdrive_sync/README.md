@@ -9,7 +9,9 @@ percent of either side is *refused*: nothing changes, one Telegram goes out
 immediately, and every later run retries (so restoring the files heals it without
 touching the wrapper); `gdrive-sync run --force` is the human override. A *halt* is
 different: bisync's own critical abort (empty listing, missing `RCLONE_TEST` marker,
-inconsistent listings) freezes the mirror until `gdrive-sync resync --yes`.
+inconsistent listings) freezes the mirror until `gdrive-sync resync --yes`. A resync
+overwrites local files in place but moves the previous version to `<state>/backup/<ts>/`
+first.
 
 ## Config: `~/.config/gdrive-sync/env` (override: `--env`, `$GDRIVE_SYNC_ENV`)
 
@@ -29,7 +31,8 @@ inconsistent listings) freezes the mirror until `gdrive-sync resync --yes`.
 ## Subcommands
 
 `diff` (read-only compare: = same, + Drive only, - local only, * differ), `plan` (bisync `--dry-run`), `run [--force]`,
-`resync [--yes]`, `status`, `check` (exit 1 = halted/never/stale), `markers`, `auth`.
+`resync [--yes]` (shows diff; requires --yes; Drive wins; previous local versions land in backup/), `status`,
+`check` (exit 1 = halted/refused/never/stale), `markers`, `auth`.
 
 ## Widening the mirror
 
