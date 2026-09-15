@@ -96,6 +96,13 @@ mismatched labels are the same defect class.
   offender, then fix or delete that ref instead of routing around it. Do not
   read this refusal as "the vault is down" — it fires on a single bad ref.
 - `denied` = wrong context for that vault. That is enforcement, not a bug.
+- `422 Unprocessable Entity` (`secrets check`: `error`) on refs copied from ANOTHER
+  machine's `.envrc`: the `pass://<share>/` segment is per agent identity, not per
+  vault, so a second machine's PAT has a different share id for the same vault and
+  the item id alone is not enough. Looks exactly like an ungranted item. Never copy
+  refs across machines: regenerate with `proton-envrc <ctx>` (or rewrite only the
+  share segment, matching `pass://[^/\n]+/` so the pattern cannot eat newlines).
+  A committed `.envrc.example` must say so next to its refs.
 - Offline: resolution fails fast and loud; refs stay refs. Retry online.
 - `proton-agent: login failed (token expired or revoked?)` almost never means
   the token: a stale session store poisons fresh logins (~daily, seen
