@@ -416,8 +416,15 @@ def state_mtime(cfg: Config):
 
 def account_external_failure(cfg: Config, rc: int, notify, *, before) -> None:
     """The child exited rc without writing state: secrets/vault failure, rclone missing, a crash
-    before write_state. Record it as a transient failure so the escalation promise holds."""
-    if rc == 0 or state_mtime(cfg) != before:
+    before write_state. Record it as a transient failure so the escalation promise holds.
+
+    Excludes rc == EXIT_CRITICAL and an already-halted state: cmd_run's own halted short-circuit
+    legitimately exits EXIT_CRITICAL without writing state once a halt has already been notified
+    (there is nothing new to record). Treating that exit as a fresh external failure would
+    overwrite the real halt reason with this function's generic message and bump
+    consecutive_failures, degrading recovery_advice and sending a misleading escalation Telegram
+    partway into a halt that is already known about."""
+    if rc == 0 or rc == EXIT_CRITICAL or state_mtime(cfg) != before:
         return
     with state_lock(cfg, wait=False) as held:
         if held is None:
@@ -426,6 +433,8 @@ def account_external_failure(cfg: Config, rc: int, notify, *, before) -> None:
             state = read_state(cfg)
         except ValueError:
             print("gdrive-sync: state.json is unreadable; leaving it alone", file=sys.stderr)
+            return
+        if state["halted"]:
             return
         state["consecutive_failures"] += 1
         state.update(last_result="failed",

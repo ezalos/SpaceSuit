@@ -253,6 +253,66 @@ def test_run_reexec_success_does_not_double_account(env_file, fake_rclone, monke
     assert sent == []
 
 
+def test_halted_run_under_parent_does_not_rewrite_halt_state(env_file, fake_rclone, monkeypatch, tmp_path):
+    """A halted, already-notified run legitimately exits EXIT_CRITICAL without writing state (cmd_run's
+    own short-circuit skips write_state once halt_notified is True). The parent's post-reexec
+    accounting must not mistake that for an external failure: it would overwrite the marker halt
+    reason with a generic one and bump consecutive_failures, degrading recovery_advice and sending a
+    misleading '3 consecutive failed runs' Telegram 30 minutes into the halt."""
+    sent = []
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "7")
+    monkeypatch.setenv("FAKE_RCLONE_OUT", "ERROR : Bisync critical error: check file check failed")
+    assert gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append) == 7
+    st = _state(env_file)
+    assert st["halted"] is True and st["halt_notified"] is True
+    assert "check file check failed" in st["last_error"]
+    failures_before = st["consecutive_failures"]
+    sent_before = len(sent)
+
+    env_file.write_text(env_file.read_text().replace(
+        "RCLONE_CONFIG_PASS=already-resolved", "RCLONE_CONFIG_PASS=pass://x/y/Secret"))
+    bindir = tmp_path / "secretsbin"
+    bindir.mkdir()
+    log = tmp_path / "secrets.log"
+    fake_secrets = bindir / "secrets"
+    fake_secrets.write_text(textwrap.dedent(f"""\
+        #!/bin/sh
+        printf '%s\\n' "$*" >> "{log}"
+        shift 2
+        RCLONE_CONFIG_PASS=resolved-by-fake exec "$@"
+    """))
+    fake_secrets.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
+
+    for _ in range(2):
+        monkeypatch.delenv(gdrive_sync.REEXEC_SENTINEL, raising=False)
+        monkeypatch.delenv("RCLONE_CONFIG_PASS", raising=False)
+        with pytest.raises(SystemExit) as e:
+            gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append)
+        assert e.value.code == 7
+
+    st = _state(env_file)
+    assert "check file check failed" in st["last_error"]
+    assert st["consecutive_failures"] == failures_before
+    assert st["halted"] is True
+    assert len(sent) == sent_before
+
+
+def test_account_external_failure_leaves_halted_state_untouched(env_file):
+    """Direct unit test: rc != 0/EXIT_CRITICAL but the state it reads is already halted -> untouched."""
+    cfg = gdrive_sync.Config.from_env(gdrive_sync.load_env(env_file))
+    state = gdrive_sync.read_state(cfg)
+    state.update(halted=True, halt_notified=True,
+                 last_error="Bisync critical error: check file check failed", consecutive_failures=0)
+    gdrive_sync.write_state(cfg, state)
+    before = gdrive_sync.state_mtime(cfg)
+    raw_before = cfg.state_file.read_bytes()
+    sent = []
+    gdrive_sync.account_external_failure(cfg, 1, sent.append, before=before)
+    assert cfg.state_file.read_bytes() == raw_before
+    assert sent == []
+
+
 def _state(env_file):
     cfg = gdrive_sync.Config.from_env(gdrive_sync.load_env(env_file))
     return json.loads(cfg.state_file.read_text())
