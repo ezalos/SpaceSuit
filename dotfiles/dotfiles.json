@@ -1214,11 +1214,16 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.claude/claude-usage/claude-usage.js",
                     "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/claude-usage/claude-usage.js",
+                    "backups": []
                 }
             },
             "only_devices": [
                 "TheBeast.ezalos",
-                "Louiss.MacBook.Pro.3.local.ezalos"
+                "Louiss.MacBook.Pro.3.local.ezalos",
+                "TinyButMighty.ezalos"
             ],
             "variants": null,
             "fanout": false
@@ -1234,11 +1239,16 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.claude/commands/claude-usage.md",
                     "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/commands/claude-usage.md",
+                    "backups": []
                 }
             },
             "only_devices": [
                 "TheBeast.ezalos",
-                "Louiss.MacBook.Pro.3.local.ezalos"
+                "Louiss.MacBook.Pro.3.local.ezalos",
+                "TinyButMighty.ezalos"
             ],
             "variants": null,
             "fanout": false
@@ -1254,11 +1264,16 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.local/bin/claude-usage",
                     "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/claude-usage",
+                    "backups": []
                 }
             },
             "only_devices": [
                 "TheBeast.ezalos",
-                "Louiss.MacBook.Pro.3.local.ezalos"
+                "Louiss.MacBook.Pro.3.local.ezalos",
+                "TinyButMighty.ezalos"
             ],
             "variants": null,
             "fanout": false
