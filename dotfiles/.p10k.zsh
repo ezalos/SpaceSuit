@@ -1751,7 +1751,13 @@ function prompt_my_temp() {
   # One sub-segment per hardware, colored by its own limits (CPU throttles ~90,
   # GPU ~83 = the thermal-guard alert line, drives are unhappy past ~70).
   local icon text color
-  local -a spec=(cpu $'\u2699\uFE0F' 60 80  gpu $'\U0001F680' 70 83  dsk $'\U0001F4BE' 50 60)
+  # Every icon here MUST be a codepoint whose wcwidth() matches how a terminal
+  # draws it, because that is what zsh uses to place the cursor. U+26A1/U+1F680/
+  # U+1F4BE are East-Asian Wide: wcwidth 2, drawn 2. Never append U+FE0F (VS16)
+  # to force emoji presentation -- wcwidth counts it 0 while the terminal widens
+  # the glyph to 2 cells, so zle's screen model drifts one column and typed text
+  # gets duplicated on redraw (cpu was U+2699+VS16 until 2026-09-17).
+  local -a spec=(cpu $'\u26A1' 60 80  gpu $'\U0001F680' 70 83  dsk $'\U0001F4BE' 50 60)
   integer i warm hot
   for (( i=1; i<=$#spec; i+=4 )); do
     kind=$spec[i]; icon=$spec[i+1]; warm=$spec[i+2]; hot=$spec[i+3]
