@@ -1,6 +1,6 @@
 ---
 name: deep-research-claude-web
-description: Use when Louis wants a deep research run that should NOT consume this session - e.g. "research X properly", "go deep on Y", "launch a research run on Z", "find out everything about W and report back". Launches a detached Claude Code background session with a written charter and collects a cited Markdown report. Use the in-session research skills instead when the answer must inform the current conversation.
+description: Use when Louis wants a deep research run that should NOT consume this session - e.g. "research X properly", "go deep on Y", "launch a research run on Z", "find out everything about W and report back". Runs the charter as a Research conversation on claude.ai in his own account (visible and continuable in the Claude app) through the deep-research-web engine, and collects a cited Markdown report with graded citations. Use the in-session research skills instead when the answer must inform the current conversation.
 allowed-tools: Read, Write, Bash, AskUserQuestion
 ---
 
@@ -37,9 +37,10 @@ claude-log deep-research-claude-web CRITICAL "deep-research: preflight refused: 
 
 # deep-research-claude-web
 
-Run a deep research task in a detached background session, so it costs neither this
-session's context window nor the terminal's attention, and come back with a cited report
-on disk.
+Run a deep research task as a Research conversation on claude.ai in Louis's own account,
+so it costs neither this session's context window nor the terminal's attention, stays
+visible and continuable in the Claude app, and comes back as a cited report on disk with
+every citation graded.
 
 ## When to use this instead of researching in-session
 
@@ -49,7 +50,7 @@ answer must immediately inform what you are both doing right now.
 
 ## Phase 1: Build the charter
 
-An expensive detached run must not start from a misunderstanding. Before launching:
+An expensive research run must not start from a misunderstanding. Before launching:
 
 1. Draft a charter with these sections: the question as a level-1 heading, then
    `## Decision this feeds`, `## Must answer` (3-8 bullets), `## Source bar` with
@@ -98,6 +99,12 @@ documented in GroundControl's design doc history. Use it only when Louis asks fo
 deep-research-web status                 # every run; running / done / failed / stale / plain-chat
 deep-research-web collect <run-id>       # report.md, sources.md, run-result.json, grades
 ```
+
+`deep-research-web stop <run-id>` stops a run that is still in flight; `deep-research-web list`
+shows every known run with its state and link.
+
+Exit 2 from any command means the browser profile is logged out or busy; run
+`deep-research-web login` in a normal tmux window, or wait for the other command.
 
 `collect` writes `report.md` with `[n]` markers at the citation offsets, `sources.md`,
 `run-result.json` in the v1 shape, and the raw `conversation.json`. Exit 6 means still
