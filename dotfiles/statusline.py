@@ -4,6 +4,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -14,8 +15,33 @@ model = (data.get("model") or {}).get("display_name") or "Claude"
 directory = os.path.basename((data.get("workspace") or {}).get("current_dir") or os.getcwd())
 version = data.get("version") or "?"
 
-# Cost tracking
+# Cost tracking. Claude Code's own total prices a model it does not recognise with its fallback table, so a session
+# on a gateway model (a GPT or Grok row served through a local proxy) is billed at the wrong rate - measured at about
+# half the real one. When the claude-usage cost tool is present it recomputes this session from its transcript against
+# a sourced price table; if anything about that fails we keep Claude Code's number rather than show nothing.
 cost = (data.get("cost") or {}).get("total_cost_usd", 0) or 0
+_cost_exact = True
+_session = data.get("session_id")
+_tool = os.path.expanduser("~/.claude/claude-usage/claude-usage.js")
+if _session and os.path.exists(_tool):
+    try:
+        # A status line inherits whatever PATH the client had, which on some setups has no node at all. Falling
+        # back silently would leave the wrong figure on screen forever, so look in the usual places too.
+        _node = shutil.which("node") or next(
+            (c for c in ("/usr/local/bin/node", "/opt/homebrew/bin/node", "/usr/bin/node") if os.path.exists(c)),
+            None,
+        )
+        if not _node:
+            raise FileNotFoundError("node")
+        _out = subprocess.run(
+            [_node, _tool, "session-cost", _session],
+            capture_output=True, text=True, timeout=3,
+        ).stdout.strip()
+        if _out:
+            _cost_exact = not _out.endswith("?")
+            cost = float(_out.rstrip("?"))
+    except Exception:
+        pass  # a status line must never be the thing that breaks a prompt
 
 # Context window metrics
 ctx = data.get("context_window") or {}
@@ -68,5 +94,5 @@ print(f"{CYAN}{BOLD}🧠 {model}{RESET} {DIM}v{version}{RESET} | 📁 {directory
 print(
     f"{bar_color}{bar}{RESET} {pct}%"
     f" {DIM}({fmt_tokens(input_tokens)}↓ {fmt_tokens(output_tokens)}↑ / {ctx_k}){RESET}"
-    f" | {YELLOW}💰 ${cost:.2f}{RESET}"
+    f" | {YELLOW}💰 ${cost:.2f}{'?' if not _cost_exact else ''}{RESET}"
 )
