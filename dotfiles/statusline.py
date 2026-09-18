@@ -75,6 +75,15 @@ try:
 except Exception:
     branch = ""
 
+# Session title: what this session is about, the same title `tls` shows. Claude Code sends it as `session_name` -
+# the /rename name when there is one, else its own AI-generated title - so there is no transcript to read here.
+# Absent until the first title exists. Whitespace is collapsed because a newline in it would break the two-line layout.
+TITLE_MAX = 48
+title = " ".join((data.get("session_name") or "").split())
+if len(title) > TITLE_MAX:
+    title = title[: TITLE_MAX - 1].rstrip() + "…"
+title = f" | 💬 {title}" if title else ""
+
 
 def fmt_tokens(n: int) -> str:
     """Format token counts as human-readable strings (e.g., 123k, 1.2M)."""
@@ -87,8 +96,8 @@ def fmt_tokens(n: int) -> str:
 
 ctx_k = f"{ctx_size // 1000}k"
 
-# Line 1: Model with version inline, directory, git branch
-print(f"{CYAN}{BOLD}🧠 {model}{RESET} {DIM}v{version}{RESET} | 📁 {directory}{branch}")
+# Line 1: Model with version inline, directory, git branch, session title
+print(f"{CYAN}{BOLD}🧠 {model}{RESET} {DIM}v{version}{RESET} | 📁 {directory}{branch}{title}")
 
 # Line 2: Visual context bar, token usage, cost
 print(
