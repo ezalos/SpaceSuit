@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# ABOUTME: Print a state badge for each Claude Code session running in the given tmux panes.
+# ABOUTME: Called from tmux window-status-format via #(); reads Claude Code's own session files.
+set -uo pipefail
+# Usage: claude-badge %12=/dev/pts/5 %40=/dev/pts/9 ...  ->  "🔴✅ "
+#        (tmux passes #{P:#{pane_id}=#{pane_tty} }; one badge per Claude pane, then a space)
+#
+# Claude Code keeps ~/.claude/sessions/<pid>.json current itself: "status" is
+# busy|shell|idle|waiting, "tmux" names the pane (session:@window.%pane). That is
+# the first-party source tls reads too. Hooks were rejected: no hook fires when
+# a permission is approved or a turn is interrupted with Esc, so a hook-driven
+# badge would stay stale in both cases.
+#
+# Pane ids restart at %0 on every tmux server and the file does not name the
+# server, so a pane-id match is confirmed against the pane's tty (unique across
+# servers, the key tls matches on). That same `ps` check drops dead pids.
+#
+# Hot path: tmux runs this once per visible window every status-interval, so on
+# Linux it runs on bash builtins only - no jq, no python, no fork at all. Bash 3.2
+# compatible (macOS /bin/bash).
+
+sessions_dir="${CLAUDE_BADGE_SESSIONS_DIR:-$HOME/.claude/sessions}"
+procfs="${CLAUDE_BADGE_PROCFS:-/proc}"
+
+# Is <pid> alive with <tty> (ps form: pts/5, ttys005) as its controlling terminal?
+# Linux: procps `ps -p` still walks all of /proc (~75 ms a call measured with
+# 1400 processes - too slow at every status-interval), so read tty_nr from
+# /proc/<pid>/stat and compare it to the pts device number, kernel
+# new_encode_dev(MKDEV(136, n)). macOS has no /proc and a cheap ps.
+on_tty() {
+  local pid=$1 want=$2 stat fields n tty
+  if [ -d "$procfs/self" ]; then
+    stat=""
+    IFS= read -r stat 2>/dev/null < "$procfs/$pid/stat" || [ -n "$stat" ] || return 1
+    fields=(${stat##*) })  # state ppid pgrp session tty_nr ... (comm may hold spaces)
+    case "$want" in
+      pts/*) n=${want#pts/} ;;
+      *) return 1 ;;
+    esac
+    [ "${fields[4]:-0}" -eq $(( (n & 0xff) | (136 << 8) | ((n & ~0xff) << 12) )) ]
+  else
+    tty="$(ps -o tty= -p "$pid" 2>/dev/null)"
+    [ "${tty// /}" = "$want" ]
+  fi
+}
+
+re_pane='"tmux":"[^"]*\.(%[0-9]+)"'
+re_pid='"pid":([0-9]+)'
+re_status='"status":"([a-z_-]+)"'
+
+found=()  # "%pane pid badge" triples
+for f in "$sessions_dir"/*.json; do
+  [ -f "$f" ] || continue  # unmatched glob when the dir is empty or absent
+  json=""
+  IFS= read -r -d '' json < "$f"
+  [[ $json =~ $re_pane ]] || continue
+  pane="${BASH_REMATCH[1]}"
+  [[ $json =~ $re_pid ]] || continue
+  pid="${BASH_REMATCH[1]}"
+  status=""
+  [[ $json =~ $re_status ]] && status="${BASH_REMATCH[1]}"
+  case "$status" in
+    idle) badge="✅" ;;
+    waiting) badge="🔴" ;;  # waitingFor: "permission prompt" | "input needed"
+    # busy, shell, and anything unknown read as working - the tls fail-safe:
+    # never claim a session is stopped or needs the user on a status we don't know.
+    *) badge="⏳" ;;
+  esac
+  found+=("$pane $pid $badge")
+done
+
+out=""
+for want in "$@"; do
+  want_pane="${want%%=*}"
+  want_tty="${want#*=/dev/}"  # ps prints pts/5 (Linux) / ttys005 (macOS)
+  for entry in ${found[@]+"${found[@]}"}; do
+    [ "${entry%% *}" = "$want_pane" ] || continue
+    rest="${entry#* }"
+    # A crashed Claude leaves its file behind (a dead pid is on no tty), and the
+    # same pane id on another tmux server sits on another tty.
+    on_tty "${rest%% *}" "$want_tty" && out="$out${rest#* }"
+  done
+done
+[ -n "$out" ] && printf '%s ' "$out"
+exit 0

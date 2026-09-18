@@ -1277,6 +1277,26 @@
             ],
             "variants": null,
             "fanout": false
+        },
+        "claude-badge": {
+            "alias": "claude-badge",
+            "main": "dotfiles/bin/claude-badge",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/claude-badge",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.local/bin/claude-badge",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos",
+                "Louiss.MacBook.Pro.3.local.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
         }
     },
     "devices": {
