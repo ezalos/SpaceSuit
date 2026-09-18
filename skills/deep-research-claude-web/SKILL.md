@@ -78,18 +78,20 @@ URL in the reply. Runs land under the configured runs root (`~/research-runs` by
 default) and inside the configured claude.ai Project.
 
 Exit codes: 0 launched; 2 the browser profile is not logged in (run
-`deep-research-web login` in a normal tmux window, it prompts for the emailed code);
+`deep-research-web login <name>` (the claude-usage account name) in a normal tmux window,
+it prompts for the emailed code);
 3 preflight refused (an account flag, an unavailable model, an unknown project, or a run
-already in flight: report which, never `--force` silently); 4 the usage window is
-exhausted (tell Louis to check `/usage`); 5 no research started and the assistant is
+already in flight: report which, never `--force` silently); 4 the usage window is exhausted:
+no saved account had room, the account switched to was refused too, or claude-usage could
+not run (tell Louis to check `/usage`); 5 no research started and the assistant is
 waiting on an answer (the URL is printed; look at it with Louis before relaunching).
 
-`login` cannot switch a live session: it short-circuits on an already-logged-in profile.
-Its account line is now read from `/api/account`, and it exits 1 naming both accounts when
-the profile is not the configured one. To actually change account, move the profile
-directory aside FIRST, then log in. Never conclude which account a run is on from anything
-but `/api/account` — and remember the usage window that refuses a launch belongs to that
-account, not to the one Claude Code is checked into (`claude-usage switch` does nothing here).
+Each account has its own saved profile, named as in claude-usage. `deep-research-web login <name>`
+logs one in. `deep-research-web switch [<name>]` makes one live. With no name, `switch` picks
+the saved account with the most weekly room by claude-usage's meters. `deep-research-web profiles`
+lists them. A launch refused on usage switches once and retries; an account flag never switches.
+Judge which account a profile holds only from `/api/account`, which `login` prints. This engine's
+live account is separate from Claude Code's; `claude-usage switch` only moves Claude Code's.
 
 At most 1 claude-web run in flight. The watcher polls every five minutes and pings
 Louis's Telegram once when the run is done, failed, needs a reply, stale (90 minutes
@@ -122,7 +124,8 @@ persists it (such a run would otherwise age into `stale`), but never persists `d
 the watcher owns that, and writing it early would steal the auto-collect and the ping.
 
 Exit 2 from any command means the browser profile is logged out or busy; run
-`deep-research-web login` in a normal tmux window, or wait for the other command.
+`deep-research-web login <name>` (the claude-usage account name) in a normal tmux window,
+or wait for the other command.
 
 `collect` writes `report.md` with `[n]` markers at the citation offsets, `sources.md`,
 `run-result.json` in the v1 shape, and the raw `conversation.json`. Exit 6 means still
