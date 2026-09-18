@@ -99,9 +99,13 @@ ctx_k = f"{ctx_size // 1000}k"
 # Line 1: Model with version inline, directory, git branch, session title
 print(f"{CYAN}{BOLD}🧠 {model}{RESET} {DIM}v{version}{RESET} | 📁 {directory}{branch}{title}")
 
-# Line 2: Visual context bar, token usage, cost
+# Session id, whole and last on its line so it can be selected and pasted into `claude --resume <id>` as it stands.
+session_tag = f" | 🆔 {DIM}{_session}{RESET}" if _session else ""
+
+# Line 2: Visual context bar, token usage, cost, session id
 print(
     f"{bar_color}{bar}{RESET} {pct}%"
     f" {DIM}({fmt_tokens(input_tokens)}↓ {fmt_tokens(output_tokens)}↑ / {ctx_k}){RESET}"
     f" | {YELLOW}💰 ${cost:.2f}{'?' if not _cost_exact else ''}{RESET}"
+    f"{session_tag}"
 )
