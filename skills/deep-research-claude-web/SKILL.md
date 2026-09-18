@@ -84,6 +84,13 @@ already in flight: report which, never `--force` silently); 4 the usage window i
 exhausted (tell Louis to check `/usage`); 5 no research started and the assistant is
 waiting on an answer (the URL is printed; look at it with Louis before relaunching).
 
+`login` cannot switch a live session: it short-circuits on an already-logged-in profile.
+Its account line is now read from `/api/account`, and it exits 1 naming both accounts when
+the profile is not the configured one. To actually change account, move the profile
+directory aside FIRST, then log in. Never conclude which account a run is on from anything
+but `/api/account` — and remember the usage window that refuses a launch belongs to that
+account, not to the one Claude Code is checked into (`claude-usage switch` does nothing here).
+
 At most 1 claude-web run in flight. The watcher polls every five minutes and pings
 Louis's Telegram once when the run is done, failed, needs a reply, stale (90 minutes
 without a report) or halted (an account flag appeared: stop everything, tell Louis what
