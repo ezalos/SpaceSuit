@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# ABOUTME: Print a state badge for each Claude Code session running in the given tmux panes.
+# ABOUTME: Print a state badge and short session id for each Claude Code session in the given tmux panes.
 # ABOUTME: Called from tmux window-status-format via #(); reads Claude Code's own session files.
 set -uo pipefail
-# Usage: claude-badge %12=/dev/pts/5 %40=/dev/pts/9 ...  ->  "🔴✅ "
-#        (tmux passes #{P:#{pane_id}=#{pane_tty} }; one badge per Claude pane, then a space)
+# Usage: claude-badge %12=/dev/pts/5 %40=/dev/pts/9 ...  ->  "🔴 a1c ✅ 7f8 "
+#        (tmux passes #{P:#{pane_id}=#{pane_tty} }; per Claude pane its badge and the first
+#        3 chars of its session id - the 🆔 UUID the Claude status line shows - then a space)
 #
 # Claude Code keeps ~/.claude/sessions/<pid>.json current itself: "status" is
-# busy|shell|idle|waiting, "tmux" names the pane (session:@window.%pane). That is
+# busy|shell|idle|waiting, "tmux" names the pane (session:@window.%pane), and
+# "sessionId" follows /clear (checked 2026-09-18: rewritten within seconds). That is
 # the first-party source tls reads too. Hooks were rejected: no hook fires when
 # a permission is approved or a turn is interrupted with Esc, so a hook-driven
 # badge would stay stale in both cases.
@@ -47,8 +49,9 @@ on_tty() {
 re_pane='"tmux":"[^"]*\.(%[0-9]+)"'
 re_pid='"pid":([0-9]+)'
 re_status='"status":"([a-z_-]+)"'
+re_sid='"sessionId":"([0-9a-fA-F]{3})'
 
-found=()  # "%pane pid badge" triples
+found=()  # "%pane pid badge [sid]" entries
 for f in "$sessions_dir"/*.json; do
   [ -f "$f" ] || continue  # unmatched glob when the dir is empty or absent
   json=""
@@ -66,6 +69,7 @@ for f in "$sessions_dir"/*.json; do
     # never claim a session is stopped or needs the user on a status we don't know.
     *) badge="⏳" ;;
   esac
+  [[ $json =~ $re_sid ]] && badge="$badge ${BASH_REMATCH[1]}"
   found+=("$pane $pid $badge")
 done
 
@@ -78,7 +82,7 @@ for want in "$@"; do
     rest="${entry#* }"
     # A crashed Claude leaves its file behind (a dead pid is on no tty), and the
     # same pane id on another tmux server sits on another tty.
-    on_tty "${rest%% *}" "$want_tty" && out="$out${rest#* }"
+    on_tty "${rest%% *}" "$want_tty" && out="${out:+$out }${rest#* }"
   done
 done
 [ -n "$out" ] && printf '%s ' "$out"

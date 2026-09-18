@@ -57,11 +57,14 @@ def dead_pid():
     return proc.pid
 
 
-def write_session(sessions_dir, pid, pane, status):
+SID = "5102a1a3-7167-4ee4-82c0-b214aa6be0eb"
+
+
+def write_session(sessions_dir, pid, pane, status, sid=SID):
     # Same shape and key order as Claude Code writes (compact JSON.stringify).
     data = {
         "pid": pid,
-        "sessionId": f"s-{pid}-{pane}",
+        "sessionId": sid,
         "cwd": "/tmp",
         "tmux": f"work@2026-09-18-10h00:@7.{pane}",
         "name": "some-session",
@@ -70,6 +73,8 @@ def write_session(sessions_dir, pid, pane, status):
     }
     if pane is None:
         del data["tmux"]
+    if sid is None:
+        del data["sessionId"]
     path = sessions_dir / f"{pid}-{pane}.json"
     path.write_text(json.dumps(data, separators=(",", ":")))
     return path
@@ -99,7 +104,7 @@ def test_status_maps_to_badge(tmp_path, claude_on_tty, status, badge):
     write_session(tmp_path, pid, "%12", status)
     result = run(tmp_path, f"%12={tty}")
     assert result.returncode == 0, result.stderr
-    assert result.stdout == f"{badge} "
+    assert result.stdout == f"{badge} 510 "
 
 
 def test_ps_path_without_procfs(tmp_path, claude_on_tty, dead_pid):
@@ -111,7 +116,7 @@ def test_ps_path_without_procfs(tmp_path, claude_on_tty, dead_pid):
     _, other_tty = claude_on_tty()
     write_session(sessions, pid, "%12", "waiting")
     write_session(sessions, dead_pid, "%13", "busy")
-    assert run(sessions, f"%12={tty}", procfs=no_procfs).stdout == "🔴 "
+    assert run(sessions, f"%12={tty}", procfs=no_procfs).stdout == "🔴 510 "
     assert run(sessions, f"%12={other_tty}", procfs=no_procfs).stdout == ""
     assert run(sessions, f"%13={tty}", procfs=no_procfs).stdout == ""
 
@@ -133,7 +138,7 @@ def test_unknown_status_reads_as_working(tmp_path, claude_on_tty):
     # stopped or needs the user on a status this script does not know.
     pid, tty = claude_on_tty()
     write_session(tmp_path, pid, "%12", "some-future-status")
-    assert run(tmp_path, f"%12={tty}").stdout == "⏳ "
+    assert run(tmp_path, f"%12={tty}").stdout == "⏳ 510 "
 
 
 def test_dead_pid_is_ignored(tmp_path, claude_on_tty, dead_pid):
@@ -169,10 +174,17 @@ def test_one_badge_per_claude_pane_in_argument_order(tmp_path, claude_on_tty):
     pid_a, tty_a = claude_on_tty()
     pid_b, tty_b = claude_on_tty()
     _, tty_shell = claude_on_tty()
-    write_session(tmp_path, pid_a, "%12", "idle")
-    write_session(tmp_path, pid_b, "%40", "waiting")
+    # Each badge keeps its own session id next to it.
+    write_session(tmp_path, pid_a, "%12", "idle", sid="7f8ea14d-0c4a-4204-9dba-d4a828e7ebf9")
+    write_session(tmp_path, pid_b, "%40", "waiting", sid="a1c2e3f4-0000-4000-8000-000000000000")
     result = run(tmp_path, f"%40={tty_b}", f"%7={tty_shell}", f"%12={tty_a}")
-    assert result.stdout == "🔴✅ "
+    assert result.stdout == "🔴 a1c ✅ 7f8 "
+
+
+def test_missing_session_id_still_shows_the_badge(tmp_path, claude_on_tty):
+    pid, tty = claude_on_tty()
+    write_session(tmp_path, pid, "%12", "waiting", sid=None)
+    assert run(tmp_path, f"%12={tty}").stdout == "🔴 "
 
 
 def test_session_outside_tmux_is_ignored(tmp_path, claude_on_tty):
@@ -187,7 +199,7 @@ def test_corrupt_file_costs_only_itself(tmp_path, claude_on_tty):
     write_session(tmp_path, pid, "%12", "idle")
     result = run(tmp_path, f"%12={tty}")
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "✅ "
+    assert result.stdout == "✅ 510 "
 
 
 def test_missing_sessions_dir_prints_nothing(tmp_path):
