@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# ABOUTME: Tests for hf_pull: the two checksums must match what git and sha256sum compute,
-# ABOUTME: the rate parser must read curl-style values, and the night window must be
-# ABOUTME: judged in the LINE's timezone, never this machine's. No network, no mocks.
+# ABOUTME: Tests for hf_pull: checksums must match git/sha256sum, the night window must be
+# ABOUTME: judged in the LINE's timezone never this machine's, and worker_plan() must never
+# ABOUTME: let per-worker rate * job count exceed the configured aggregate. No network, no mocks.
 import datetime
 import hashlib
 import os
@@ -40,6 +40,64 @@ def test_parse_rate():
     assert hf_pull.parse_rate("800k") == 800 * 1024
     assert hf_pull.parse_rate("1g") == 1024**3
     assert hf_pull.parse_rate("4096") == 4096
+
+
+# --- concurrency: the aggregate-cap invariant --------------------------------
+# The bug these guard: --limit-rate caps ONE curl. Running N of them at the configured
+# rate multiplies aggregate bandwidth by N -- this is the exact 254 GB / 73-outage
+# incident. Every worker_plan() output, for any (rate, jobs), must keep
+# per_worker * workers at or under the configured aggregate. Never weaken this.
+
+
+def test_worker_plan_never_exceeds_the_aggregate_cap():
+    for rate in (hf_pull.parse_rate("50M"), hf_pull.parse_rate("10M"), hf_pull.parse_rate("800k"), 1, 5, 12345):
+        for jobs in (1, 2, 8, 16, 64, 1000, 1_000_000):
+            workers, per_worker = hf_pull.worker_plan(rate, jobs)
+            assert workers >= 1
+            assert per_worker >= 1
+            assert per_worker * workers <= rate, (rate, jobs, workers, per_worker)
+
+
+def test_worker_plan_matches_the_worked_example():
+    # 50M aggregate over 8 jobs floors to 6M/worker (50/8 = 6.25) -- the numbers used
+    # in the README and the startup line ("8 jobs x 6M").
+    rate = hf_pull.parse_rate("50M")
+    workers, per_worker = hf_pull.worker_plan(rate, 8)
+    assert workers == 8
+    assert per_worker == rate // 8
+    assert hf_pull.fmt_rate(per_worker) == "6M"
+
+
+def test_worker_plan_with_one_job_reproduces_the_old_single_curl_behaviour():
+    rate = hf_pull.parse_rate("50M")
+    workers, per_worker = hf_pull.worker_plan(rate, 1)
+    assert (workers, per_worker) == (1, rate)
+
+
+def test_worker_plan_shrinks_jobs_instead_of_flooring_the_rate_to_zero():
+    # A silly --jobs relative to a tiny rate must not push any worker's --limit-rate
+    # toward 0 -- curl treats --limit-rate 0 as UNLIMITED, which is the failure mode
+    # this whole tool exists to prevent.
+    rate = hf_pull.parse_rate("800k")
+    workers, per_worker = hf_pull.worker_plan(rate, 1000)
+    assert workers < 1000
+    assert per_worker > 0
+    assert per_worker * workers <= rate
+
+
+def test_fmt_rate():
+    assert hf_pull.fmt_rate(50 * 1024**2) == "50M"
+    assert hf_pull.fmt_rate(6 * 1024**2) == "6M"
+    assert hf_pull.fmt_rate(800 * 1024) == "800k"
+    assert hf_pull.fmt_rate(512) == "512"
+
+
+def test_curl_cmd_places_the_given_rate_after_limit_rate():
+    cmd = hf_pull.curl_cmd("/tmp/x.curlrc", 6553600, "/tmp/out.part")
+    assert cmd[cmd.index("--limit-rate") + 1] == "6553600"
+    assert cmd[cmd.index("-K") + 1] == "/tmp/x.curlrc"
+    assert cmd[cmd.index("-o") + 1] == "/tmp/out.part"
+    assert "-C" in cmd and cmd[cmd.index("-C") + 1] == "-"
 
 
 # --- the night window -------------------------------------------------------
@@ -161,6 +219,18 @@ def test_fallbacks_match_the_doctrine():
     assert hf_pull.WINDOW == (1, 7)
     # SpaceSuit is public and a timezone names a place: none may be hardcoded.
     assert hf_pull.FALLBACKS["HF_PULL_LINE_TZ"] == ""
+    assert hf_pull.FALLBACKS["HF_PULL_JOBS"] == "8"
+
+
+def test_jobs_setting_resolves_env_then_config_then_fallback():
+    cfg = {"HF_PULL_JOBS": "4"}
+    os.environ["HF_PULL_JOBS"] = "16"
+    try:
+        assert hf_pull.setting("HF_PULL_JOBS", cfg) == "16"
+    finally:
+        del os.environ["HF_PULL_JOBS"]
+    assert hf_pull.setting("HF_PULL_JOBS", cfg) == "4"
+    assert hf_pull.setting("HF_PULL_JOBS", {}) == "8"
 
 
 if __name__ == "__main__":
