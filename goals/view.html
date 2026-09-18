@@ -1,0 +1,221 @@
+<!doctype html>
+<!-- ABOUTME: The shell of the goal report: slots, both themes, the unknown chip, and the two
+     ABOUTME: scripts (preview state, viewer-clock staleness). goals/view.py fills the slots.
+     No slot token may appear in a comment: every slot in this file is substituted, comments
+     included, and a second body slot here filled the head with an invisible copy of the whole
+     report. goals/view.py enforces exactly one of each. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{TITLE}}</title>
+<style>
+/* One column, one job: let a reader tell a MEASURED figure, an ATTESTED claim and an
+   UNKNOWN apart at a glance. Status hue never carries meaning alone - every state is
+   spelled out in text ink beside its marker (the documented relief for the status
+   palette, whose warning step sits below 3:1 on a light surface). */
+:root {
+  color-scheme: light;
+  --gutter: 16px;
+  --surface: #fcfcfb;
+  --panel: #ffffff;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-3: #76746d;
+  --rule: #e4e2dc;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --critical: #d03b3b;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface: #1a1a19;
+    --panel: #222220;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --ink-3: #94938a;
+    --rule: #37372f;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #1a1a19;
+  --panel: #222220;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --ink-3: #94938a;
+  --rule: #37372f;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+/* No `overflow-x: hidden` here. It hid nothing that belonged hidden - it only meant that content
+   too wide to fit was silently cut instead of being reachable. Long tokens wrap instead. */
+body {
+  margin: 0;
+  overflow-wrap: break-word;
+  background: var(--surface);
+  color: var(--ink);
+  font: 400 16px/1.55 var(--sans);
+  padding: 0 var(--gutter) 64px;
+}
+main { max-width: 720px; margin: 0 auto; }
+h1 { font-size: 1.5rem; line-height: 1.25; margin: 4px 0 8px; letter-spacing: -0.01em; }
+h2 { font-size: 1.05rem; margin: 0 0 2px; letter-spacing: -0.005em; }
+p { margin: 8px 0; }
+a { color: inherit; text-underline-offset: 3px; overflow-wrap: anywhere; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* The eyebrow is not decoration: it names the epistemic class of everything under it. */
+.eyebrow {
+  font: 600 11px/1.2 var(--mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0;
+}
+header.page { padding: 28px 0 8px; }
+section {
+  border-top: 1px solid var(--rule);
+  padding: 20px 0 4px;
+}
+.provenance {
+  font: 400 12px/1.6 var(--mono);
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+  margin: 12px 0 0;
+}
+
+/* The signature device: an unknown is a CHIP, never a blank and never a zero. */
+.unknown {
+  display: inline-block;
+  font: 600 12px/1.5 var(--mono);
+  letter-spacing: 0.04em;
+  padding: 0 6px;
+  border: 1px dashed var(--ink-3);
+  border-radius: 4px;
+  color: var(--ink-2);
+  background: transparent;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 12px/1.9 var(--mono);
+  letter-spacing: 0.04em;
+  padding: 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); flex: none; }
+.dot.good { background: var(--good); }
+.dot.warning { background: var(--warning); }
+.dot.critical { background: var(--critical); }
+
+.banner {
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--warning);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin: 12px 0;
+  font: 600 12px/1.5 var(--mono);
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+.banner.blocker { border-left-color: var(--critical); font-family: var(--sans); font-weight: 400; letter-spacing: 0; }
+#preview-banner { display: none; }
+body[data-preview] #preview-banner { display: block; }
+
+/* Flex, not grid: an odd number of tiles in a grid leaves a hole that reads as a missing figure.
+   Here the last row's tiles grow to fill it instead. */
+.tiles { display: flex; flex-wrap: wrap; gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; margin: 14px 0; }
+.tile { background: var(--panel); padding: 10px 12px; min-width: 0; flex: 1 1 150px; }
+.tile-label { display: block; font: 400 12px/1.4 var(--sans); color: var(--ink-2); }
+.tile-value { display: block; font: 600 20px/1.35 var(--mono); margin-top: 2px; overflow-wrap: anywhere; }
+.tile-note { display: block; font: 400 12px/1.4 var(--sans); color: var(--ink-3); margin-top: 2px; }
+
+dl.facts { display: grid; grid-template-columns: minmax(0, 15em) minmax(0, 1fr); gap: 2px 14px; margin: 12px 0; }
+dl.facts dt { font: 400 13px/1.5 var(--sans); color: var(--ink-2); min-width: 0; }
+dl.facts dd { margin: 0; font: 400 13px/1.5 var(--mono); overflow-wrap: anywhere; min-width: 0; }
+
+ul.plain { list-style: none; padding: 0; margin: 10px 0; }
+ul.plain li { padding: 8px 0; border-bottom: 1px solid var(--rule); }
+ul.plain li:last-child { border-bottom: 0; }
+.evidence-label { font-weight: 600; }
+.evidence-ref { font: 400 12px/1.5 var(--mono); color: var(--ink-2); overflow-wrap: anywhere; display: block; }
+
+/* A table too wide for the viewport SCROLLS inside its own focusable region and stays a real
+   table. Turning a table into blocks drops the implicit table roles in every major engine, which
+   is how a carefully-hidden header row quietly stops being a header for assistive technology.
+   The comparison page settled this question; this page gives the same answer. */
+.scroll { overflow-x: auto; margin: 10px 0; }
+.scroll:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; margin: 10px 0; }
+/* Six columns cannot be read at 390px however they are styled, so they keep their real width and
+   the region scrolls to them instead of the page losing a column off the edge. */
+table.wide { min-width: 560px; }
+caption { text-align: left; color: var(--ink-3); font: 400 12px/1.5 var(--sans); padding-bottom: 6px; }
+th, td { text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th:first-child, td:first-child { text-align: left; font-family: var(--mono); }
+th { font: 600 12px/1.4 var(--sans); color: var(--ink-2); }
+/* The label that names a cell when a header row is not beside it is a REAL element, never
+   generated content: generated content is not reliably read out as text. */
+.cell { display: block; min-width: 0; }
+.cell-label { display: none; font: 400 11px/1.5 var(--sans); color: var(--ink-2); }
+
+.limits li { display: flex; gap: 10px; align-items: flex-start; }
+/* `flex: 0 0 auto` keeps a code on one line where there is room for it; `overflow-wrap: anywhere`
+   is the escape hatch for one longer than its container, which now wraps instead of being clipped
+   by a hidden overflow. Without the first rule a flex item shrinks to min-content and every code
+   breaks mid-word at desktop width. */
+.limit-code { font: 600 11px/1.6 var(--mono); color: var(--ink-2); flex: 0 0 auto; overflow-wrap: anywhere; }
+.note { color: var(--ink-2); font-size: 14px; }
+footer { border-top: 1px solid var(--rule); margin-top: 24px; padding-top: 14px; color: var(--ink-3); font-size: 13px; }
+/* At phone width a side-by-side code and explanation gave a long code most of the row and
+   squeezed the sentence into two or three words a line. Stack them: the code becomes a label. */
+@media (max-width: 420px) {
+  dl.facts { grid-template-columns: 1fr; }
+  dl.facts dd { margin-bottom: 6px; }
+  .limits li { display: block; }
+  .limit-code { display: block; margin-bottom: 2px; }
+  /* Six columns cannot fit 390px. They keep their real width and the table SCROLLS inside its
+     region - nothing here changes a table element's `display`, which is what would drop the roles
+     the header cells serve. The header row stays visible above the scrolling body. */
+  table { font-size: 12px; }
+  td { padding: 8px 4px; }
+}
+</style>
+</head>
+<body data-snapshot-at="{{SNAPSHOT_AT}}">
+<main>
+{{BODY}}
+</main>
+<script>
+// Staleness is the VIEWER's question, so it is answered by the viewer's clock and re-answered
+// as that clock moves. Freezing it into the document would make an old page look fresh.
+(function () {
+  var body = document.body;
+  if (new URLSearchParams(location.search).has("preview")) body.setAttribute("data-preview", "");
+  var slot = document.getElementById("snapshot-age");
+  var at = Date.parse(body.getAttribute("data-snapshot-at") || "");
+  if (!slot || isNaN(at)) return;
+  function tick() {
+    var seconds = Math.floor((Date.now() - at) / 1000);
+    if (seconds < 0) { slot.textContent = "(snapshot is dated in the future)"; return; }
+    var days = Math.floor(seconds / 86400), hours = Math.floor(seconds % 86400 / 3600);
+    var minutes = Math.floor(seconds % 3600 / 60);
+    slot.textContent = "(" + (days ? days + "d " : "") + (days || hours ? hours + "h " : "") +
+      minutes + "m old at your clock)";
+  }
+  tick();
+  setInterval(tick, 30000);
+})();
+</script>
+</body>
+</html>
