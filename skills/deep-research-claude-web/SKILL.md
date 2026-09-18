@@ -143,6 +143,11 @@ check runs only where the report itself quotes. Every citation gets one grade:
 - **DEAD**: 4xx/5xx or a bare domain. **UNVERIFIABLE**: timeout, PDF, unreadable page.
 - **UNCHECKED**: `--no-verify`; nothing was fetched. Never the basis for calling a report clean.
 
+The quote is matched with markdown backticks removed and edge punctuation trimmed, so a
+report that pulls its own sentence period inside the closing quote mark is not called a
+misquote; the 12-character evidence floor applies to what survives trimming, not to the
+padded original. A difference in the WORDS still grades MISQUOTED.
+
 **Report every non-QUOTED citation by name, with its grade.** Never present LIVE as
 verified. `collect` also prints a word-overlap hint of must-answer questions the report
 may not have touched; it is a hint, not a verdict.
