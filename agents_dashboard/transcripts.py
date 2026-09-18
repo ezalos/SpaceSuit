@@ -38,7 +38,7 @@ PHASE_INPUT_FIELDS = {"signals", "mode"}
 
 # Fields of TranscriptInfo that are display metadata, not phase inputs.
 # Preserved when stripping phase for with_phase=False.
-DISPLAY_FIELDS = {"title", "git_branch", "model", "asked_question", "tasks"}
+DISPLAY_FIELDS = {"title", "git_branch", "model", "tasks"}
 
 
 @dataclass
@@ -48,7 +48,6 @@ class TranscriptInfo:
     title: str = ""
     git_branch: str = ""
     model: str = ""
-    asked_question: bool = False
     tasks: TaskProgress = field(default_factory=TaskProgress)
 
 

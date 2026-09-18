@@ -7,26 +7,13 @@ import time
 from dataclasses import asdict
 
 from . import claude_sessions, panescan, transcripts, tmux
-from .classify import classify_phase_with_evidence, map_activity, urgency_rank
+from .classify import (
+    classify_phase_with_evidence,
+    map_activity,
+    map_waiting_reason,
+    urgency_rank,
+)
 from .models import Activity, PaneRecord, SessionCard, Snapshot, WaitingReason, WindowRecord
-
-
-def detect_question(entries: list[dict]) -> bool:
-    """True when the last assistant turn asked Louis something explicitly."""
-    for entry in reversed(entries):
-        if entry.get("type") != "assistant":
-            continue
-        message = entry.get("message")
-        if not isinstance(message, dict):
-            continue
-        content = message.get("content")
-        if not isinstance(content, list):
-            continue
-        for block in content:
-            if isinstance(block, dict) and block.get("name") == "AskUserQuestion":
-                return True
-        return False  # only the most recent assistant turn counts
-    return False
 
 
 def build_snapshot(
@@ -49,15 +36,19 @@ def build_snapshot(
             activity = map_activity(session.status)
 
             reason = None
-            if activity is Activity.WAITING:
+            if session.status == "waiting":
+                # First-party: Claude Code says it is blocked on Louis and on
+                # what (permission prompt, AskUserQuestion, a dialog). No
+                # scraping - the pane could only disagree with the source.
+                reason = map_waiting_reason(session.waiting_for)
+            elif activity is Activity.WAITING:
                 # Only ever computed for waiting sessions: text in the prompt
                 # box while the agent works is type-ahead, not a dropped
                 # thread. This guard is also why the fragile pane capture
-                # rarely runs.
+                # rarely runs. Unsent input is the one reason Claude Code
+                # does not report itself.
                 text = pane_capturer(pane.session, pane.window_index, pane.pane_index)
-                reason = panescan.scan(text) or (
-                    WaitingReason.QUESTION if info.asked_question else WaitingReason.IDLE
-                )
+                reason = panescan.scan(text) or WaitingReason.IDLE
 
             phase, evidence = classify_phase_with_evidence(info.signals, info.mode)
             record = PaneRecord(
@@ -126,7 +117,6 @@ def collect(now: float | None = None, with_phase: bool = True) -> Snapshot:
             # trust this field"; a phase that silently means different things depending
             # on a flag is a trap for any later consumer.
             info = transcripts.strip_phase_inputs(info)
-        info.asked_question = detect_question(transcripts.read_tail(path))
         return info
 
     return build_snapshot(

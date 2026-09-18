@@ -32,6 +32,19 @@ ACTIVITY_BY_STATUS: dict[str, Activity] = {
     "busy": Activity.WORKING,
     "shell": Activity.WORKING,
     "idle": Activity.WAITING,
+    # Claude Code's requires_action: blocked on the user, reason in waitingFor.
+    "waiting": Activity.WAITING,
+}
+
+# Every waitingFor literal in the Claude Code 2.1.277 bundle. Claude Code sets
+# "input needed" for AskUserQuestion and dialog:* tools, "permission prompt" for
+# any other tool awaiting approval; the rest come from its own dialogs.
+REASON_BY_WAITING_FOR: dict[str, WaitingReason] = {
+    "permission prompt": WaitingReason.PERMISSION,
+    "sandbox request": WaitingReason.PERMISSION,  # a sandboxed command wants network
+    "input needed": WaitingReason.QUESTION,
+    "dialog open": WaitingReason.QUESTION,
+    "goal proposal": WaitingReason.QUESTION,
 }
 
 URGENCY: dict[WaitingReason, int] = {
@@ -120,3 +133,16 @@ def map_activity(status: str) -> Activity:
     if not isinstance(status, str):
         return Activity.WORKING
     return ACTIVITY_BY_STATUS.get(status, Activity.WORKING)
+
+
+def map_waiting_reason(waiting_for: str) -> WaitingReason:
+    """Map Claude Code's waitingFor to our reason, for a session whose status is waiting.
+
+    Unlike map_activity there is no fail-safe to WORKING here: status=waiting is
+    Claude Code's own statement that the session is blocked on Louis, so a blocker
+    is not being invented. Only its kind is unknown, and an unknown kind reads as
+    QUESTION rather than PERMISSION so it cannot claim the most urgent slot.
+    """
+    if not isinstance(waiting_for, str):
+        return WaitingReason.QUESTION
+    return REASON_BY_WAITING_FOR.get(waiting_for, WaitingReason.QUESTION)

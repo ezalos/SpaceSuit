@@ -12,6 +12,7 @@ from agents_dashboard.classify import (
     URGENCY,
     classify_phase,
     map_activity,
+    map_waiting_reason,
     urgency_rank,
 )
 from agents_dashboard.models import (
@@ -102,6 +103,12 @@ class TestMapActivity:
     def test_idle_is_waiting(self):
         assert map_activity("idle") == Activity.WAITING
 
+    def test_waiting_is_waiting(self):
+        # Claude Code's own "blocked on the user" status (requires_action).
+        # Before this was mapped, it fell through to WORKING, so a session
+        # sitting on a permission prompt read as busy on the board.
+        assert map_activity("waiting") == Activity.WAITING
+
     def test_unknown_status_is_working_so_it_is_never_falsely_flagged(self):
         # Fail safe: an unrecognised status must not invent a blocker.
         assert map_activity("something-new") == Activity.WORKING
@@ -112,6 +119,28 @@ class TestMapActivity:
         # own default applies, so this must be guarded explicitly rather than
         # relying on ACTIVITY_BY_STATUS.get(status, ...) alone.
         assert map_activity(["idle"]) == Activity.WORKING
+
+
+class TestMapWaitingReason:
+    # Every waitingFor literal in the Claude Code 2.1.277 bundle.
+    @pytest.mark.parametrize("waiting_for,reason", [
+        ("permission prompt", WaitingReason.PERMISSION),
+        ("sandbox request", WaitingReason.PERMISSION),
+        ("input needed", WaitingReason.QUESTION),
+        ("dialog open", WaitingReason.QUESTION),
+        ("goal proposal", WaitingReason.QUESTION),
+    ])
+    def test_known_values(self, waiting_for, reason):
+        assert map_waiting_reason(waiting_for) == reason
+
+    def test_unknown_value_is_a_question_not_a_permission(self):
+        # status=waiting already says the session is blocked on the user, so
+        # some reason is owed; an unknown kind must not claim the red top slot.
+        assert map_waiting_reason("something-new") == WaitingReason.QUESTION
+
+    def test_missing_or_malformed_value_is_a_question(self):
+        assert map_waiting_reason("") == WaitingReason.QUESTION
+        assert map_waiting_reason(["permission prompt"]) == WaitingReason.QUESTION
 
 
 class TestUrgency:
@@ -402,6 +431,24 @@ class TestLoadAll:
         assert set(loaded) == {111, 222}
         assert loaded[111].status == ""
 
+    def test_waiting_for_is_loaded(self, tmp_path):
+        session_file(tmp_path, 111, status="waiting", waitingFor="permission prompt")
+        loaded = claude_sessions.load_all(tmp_path)
+        assert loaded[111].status == "waiting"
+        assert loaded[111].waiting_for == "permission prompt"
+
+    def test_absent_waiting_for_is_empty(self, tmp_path):
+        # Claude Code only writes waitingFor while status is waiting.
+        session_file(tmp_path, 111)
+        assert claude_sessions.load_all(tmp_path)[111].waiting_for == ""
+
+    def test_non_string_waiting_for_is_coerced_not_fatal(self, tmp_path):
+        session_file(tmp_path, 111, status="waiting", waitingFor={"x": 1})
+        session_file(tmp_path, 222)
+        loaded = claude_sessions.load_all(tmp_path)
+        assert set(loaded) == {111, 222}
+        assert loaded[111].waiting_for == ""
+
     def test_non_dict_json_payload_is_skipped_not_fatal(self, tmp_path):
         # Valid JSON, but the top-level value isn't a session object at all.
         (tmp_path / "333.json").write_text(json.dumps([1, 2, 3]))
@@ -651,23 +698,18 @@ MENU_CHOICE_ONLY_PANE = """\
 ❯ 2. No
 """
 
-QUESTION_ONLY_PANE = """\
-Do you want to proceed?
-"""
-
 
 class TestPaneScan:
-    def test_detects_a_pending_permission_prompt(self):
-        assert panescan.scan(PERMISSION_PANE) == WaitingReason.PERMISSION
+    def test_permission_prompt_menu_is_not_unsent_input(self):
+        # Permission prompts are first-party now (status=waiting); the scan
+        # must still not mistake the prompt's `❯ 1. Yes` line for typed text.
+        assert panescan.scan(PERMISSION_PANE) is None
 
     def test_detects_unsent_input(self):
         assert panescan.scan(UNSENT_PANE) == WaitingReason.UNSENT_INPUT
 
     def test_empty_prompt_box_is_not_unsent_input(self):
         assert panescan.scan(IDLE_PANE) is None
-
-    def test_permission_outranks_unsent_input(self):
-        assert panescan.scan(PERMISSION_PANE + UNSENT_PANE) == WaitingReason.PERMISSION
 
     def test_unrecognised_pane_returns_none_rather_than_guessing(self):
         assert panescan.scan("some completely different program\n") is None
@@ -679,11 +721,6 @@ class TestPaneScan:
         # Catches deletion of: if re.match(r"^\d+\.\s", rest): continue
         # Menu lines also start with ❯, so without the guard this returns UNSENT_INPUT.
         assert panescan.scan(MENU_CHOICE_ONLY_PANE) is None
-
-    def test_question_without_choices_is_not_permission(self):
-        # Catches mutation of AND to OR in _has_permission_prompt.
-        # With OR, the question line alone would return PERMISSION.
-        assert panescan.scan(QUESTION_ONLY_PANE) is None
 
 
 from agents_dashboard import collect
@@ -751,14 +788,43 @@ class TestBuildSnapshot:
         )
         assert captured == []
 
-    def test_idle_session_with_permission_prompt_is_flagged_permission(self):
+    def test_waiting_session_is_flagged_with_claude_codes_own_reason(self):
+        panes = [TmuxPane("s", 0, 0, "/tmp", "/dev/pts/5")]
+        sessions = {42: ClaudeSession(42, "sid-a", "/tmp", "waiting", 900.0, "n",
+                                      waiting_for="permission prompt")}
+        snap = build(panes, sessions, {"/dev/pts/5": 42})
+        rec = snap.cards[0].panes[0]
+        assert rec.activity == Activity.WAITING
+        assert rec.waiting_reason == WaitingReason.PERMISSION
+        assert rec.waiting_since == 900.0
+
+    def test_pending_ask_user_question_is_flagged_question(self):
+        panes = [TmuxPane("s", 0, 0, "/tmp", "/dev/pts/5")]
+        sessions = {42: ClaudeSession(42, "sid-a", "/tmp", "waiting", 900.0, "n",
+                                      waiting_for="input needed")}
+        snap = build(panes, sessions, {"/dev/pts/5": 42})
+        assert snap.cards[0].panes[0].waiting_reason == WaitingReason.QUESTION
+
+    def test_waiting_session_is_never_pane_captured(self):
+        # Claude Code already named the reason; scraping could only disagree.
+        captured = []
+        panes = [TmuxPane("s", 0, 0, "/tmp", "/dev/pts/5")]
+        sessions = {42: ClaudeSession(42, "sid-a", "/tmp", "waiting", 900.0, "n",
+                                      waiting_for="input needed")}
+        collect.build_snapshot(
+            now=1000.0, panes=panes, sessions=sessions,
+            pid_lookup=lambda tty: 42,
+            transcript_reader=lambda s: transcripts.TranscriptInfo(),
+            pane_capturer=lambda s, w, p: captured.append((s, w, p)) or "",
+        )
+        assert captured == []
+
+    def test_idle_session_with_unsent_input_is_flagged_unsent(self):
         panes = [TmuxPane("s", 0, 0, "/tmp", "/dev/pts/5")]
         sessions = {42: ClaudeSession(42, "sid-a", "/tmp", "idle", 900.0, "n")}
         snap = build(panes, sessions, {"/dev/pts/5": 42},
-                     panes_text={("s", 0, 0): PERMISSION_PANE})
-        rec = snap.cards[0].panes[0]
-        assert rec.waiting_reason == WaitingReason.PERMISSION
-        assert rec.waiting_since == 900.0
+                     panes_text={("s", 0, 0): UNSENT_PANE})
+        assert snap.cards[0].panes[0].waiting_reason == WaitingReason.UNSENT_INPUT
 
     def test_idle_session_with_a_quiet_pane_is_flagged_idle(self):
         panes = [TmuxPane("s", 0, 0, "/tmp", "/dev/pts/5")]
@@ -785,10 +851,10 @@ class TestBuildSnapshot:
         ]
         sessions = {
             1: ClaudeSession(1, "sid-1", "/tmp", "idle", 900.0, "n"),
-            2: ClaudeSession(2, "sid-2", "/tmp", "idle", 900.0, "n"),
+            2: ClaudeSession(2, "sid-2", "/tmp", "waiting", 900.0, "n",
+                             waiting_for="permission prompt"),
         }
-        snap = build(panes, sessions, {"/dev/pts/1": 1, "/dev/pts/2": 2},
-                     panes_text={("blocked", 0, 0): PERMISSION_PANE})
+        snap = build(panes, sessions, {"/dev/pts/1": 1, "/dev/pts/2": 2})
         assert snap.cards[0].name == "blocked"
 
     def test_cards_tie_break_by_longest_wait(self):
@@ -815,36 +881,6 @@ class TestBuildSnapshot:
         snap = build(panes, sessions, {"/dev/pts/2": 2})
         assert [c.name for c in snap.cards] == ["busy-one", "empty"]
 
-
-class TestDetectQuestion:
-    def test_ask_user_question_in_last_turn_is_a_question(self):
-        entries = [{
-            "type": "assistant",
-            "message": {"content": [
-                {"type": "tool_use", "name": "AskUserQuestion", "input": {}}
-            ]},
-        }]
-        assert collect.detect_question(entries) is True
-
-    def test_ordinary_last_turn_is_not_a_question(self):
-        entries = [{"type": "assistant", "message": {"content": [
-            {"type": "text", "text": "done"}
-        ]}}]
-        assert collect.detect_question(entries) is False
-
-    def test_only_the_newest_assistant_turn_counts(self):
-        # An older turn asking a question must not leak through once a newer,
-        # ordinary turn has happened. A regression that checked any assistant
-        # turn instead of only the last one would wrongly return True here.
-        entries = [
-            {"type": "assistant", "message": {"content": [
-                {"type": "tool_use", "name": "AskUserQuestion", "input": {}}
-            ]}},
-            {"type": "assistant", "message": {"content": [
-                {"type": "text", "text": "done"}
-            ]}},
-        ]
-        assert collect.detect_question(entries) is False
 
 
 class TestSnapshotToDict:
@@ -1863,7 +1899,6 @@ class TestCollectWithPhaseFlag:
         monkeypatch.setattr(collect_mod.claude_sessions, "load_all", lambda **k: {42: session})
         monkeypatch.setattr(collect_mod.claude_sessions, "find_transcript",
                             lambda *a, **k: Path("/nonexistent.jsonl"))
-        monkeypatch.setattr(collect_mod.transcripts, "read_tail", lambda *a, **k: [])
         monkeypatch.setattr(collect_mod.transcripts, "read", lambda *a, **k: transcripts.TranscriptInfo())
         monkeypatch.setattr(collect_mod.transcripts, "read_for_phase",
                             lambda *a, **k: deep.append(1) or transcripts.TranscriptInfo())
@@ -1908,7 +1943,6 @@ class TestCollectWithPhaseFlag:
         monkeypatch.setattr(collect_mod.claude_sessions, "load_all", lambda **k: {42: session})
         monkeypatch.setattr(collect_mod.claude_sessions, "find_transcript",
                             lambda *a, **k: Path("/nonexistent.jsonl"))
-        monkeypatch.setattr(collect_mod.transcripts, "read_tail", lambda *a, **k: [])
         # read() returns a TranscriptInfo with signals (as it does on the real machine)
         signal_info = transcripts.TranscriptInfo(
             signals=[sig("wrap-up")],
@@ -1937,7 +1971,6 @@ class TestCollectWithPhaseFlag:
         monkeypatch.setattr(collect_mod.claude_sessions, "load_all", lambda **k: {42: session})
         monkeypatch.setattr(collect_mod.claude_sessions, "find_transcript",
                             lambda *a, **k: Path("/nonexistent.jsonl"))
-        monkeypatch.setattr(collect_mod.transcripts, "read_tail", lambda *a, **k: [])
         # read() returns a TranscriptInfo with mode="plan" but no signals
         mode_info = transcripts.TranscriptInfo(
             mode="plan",
@@ -2019,7 +2052,6 @@ def test_all_display_fields_survive_stripping():
         title="test-title",
         git_branch="test-branch",
         model="test-model",
-        asked_question=True,
         tasks=transcripts.TaskProgress(known=True, total=5, completed=3),
     )
 

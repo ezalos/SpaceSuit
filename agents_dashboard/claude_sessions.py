@@ -19,6 +19,9 @@ class ClaudeSession:
     status: str
     status_updated_at: float  # epoch seconds
     name: str
+    # Set by Claude Code only while status is "waiting": what the session is
+    # blocked on ("permission prompt", "input needed", ...). Empty otherwise.
+    waiting_for: str = ""
 
 
 def load_all(sessions_dir: Path = DEFAULT_SESSIONS_DIR) -> dict[int, ClaudeSession]:
@@ -55,6 +58,9 @@ def load_all(sessions_dir: Path = DEFAULT_SESSIONS_DIR) -> dict[int, ClaudeSessi
         raw_status = data.get("status")
         if not isinstance(raw_status, str):
             raw_status = ""
+        raw_waiting_for = data.get("waitingFor")
+        if not isinstance(raw_waiting_for, str):
+            raw_waiting_for = ""
 
         sessions[pid] = ClaudeSession(
             pid=pid,
@@ -64,6 +70,7 @@ def load_all(sessions_dir: Path = DEFAULT_SESSIONS_DIR) -> dict[int, ClaudeSessi
             # Claude Code writes milliseconds; the rest of this package uses seconds.
             status_updated_at=raw_status_updated_at / 1000.0,
             name=data.get("name") or "",
+            waiting_for=raw_waiting_for,
         )
     return sessions
 
