@@ -21,7 +21,7 @@ This skill follows the universal observability baseline.
 | CRITICAL | `deep-research-web launch` fails or preflight refuses on an account flag | `deep-research: preflight refused: <reason>` |
 | CRITICAL | the watcher halts on an account flag | `deep-research: halted on account flags: <types>` |
 | WARNING | concurrency cap hit | `deep-research: cap reached (<ids>); offered force or wait` |
-| WARNING | run landed as a plain chat, went stale, or failed | `deep-research: run <id> <outcome>` |
+| WARNING | run needs a reply, went stale, or failed | `deep-research: run <id> <outcome>` |
 | WARNING | any citation graded MISQUOTED, DEAD or UNVERIFIABLE | `deep-research: collected <id>; <counts>` |
 | WARNING | usage window exhausted | `deep-research: usage window exhausted; resets at <time>` |
 | INFO | run launched | `deep-research: launched <id>; <model>; <n> sub-questions` |
@@ -81,13 +81,13 @@ Exit codes: 0 launched; 2 the browser profile is not logged in (run
 `deep-research-web login` in a normal tmux window, it prompts for the emailed code);
 3 preflight refused (an account flag, an unavailable model, an unknown project, or a run
 already in flight: report which, never `--force` silently); 4 the usage window is
-exhausted (tell Louis to check `/usage`); 5 the conversation landed as a plain chat and
-not a Research run (the URL is printed; look at it with Louis before relaunching).
+exhausted (tell Louis to check `/usage`); 5 no research started and the assistant is
+waiting on an answer (the URL is printed; look at it with Louis before relaunching).
 
 At most 1 claude-web run in flight. The watcher polls every five minutes and pings
-Louis's Telegram once when the run is done, failed, stale (90 minutes without a report)
-or halted (an account flag appeared: stop everything, tell Louis what was asked, never
-touch the dismiss endpoint).
+Louis's Telegram once when the run is done, failed, needs a reply, stale (90 minutes
+without a report) or halted (an account flag appeared: stop everything, tell Louis what
+was asked, never touch the dismiss endpoint).
 
 The local engine of v1 still exists for a run that must write files on this machine:
 `deep-research launch --charter <out>/charter.md --out <out>` with the collect flow
@@ -96,12 +96,23 @@ documented in GroundControl's design doc history. Use it only when Louis asks fo
 ## Phase 3: Collect
 
 ```bash
-deep-research-web status                 # every run; running / done / failed / stale / plain-chat
+deep-research-web status                 # every run; running / done / needs-reply / failed / stale
 deep-research-web collect <run-id>       # report.md, sources.md, run-result.json, grades
+deep-research-web report <run-id>        # the collected report.md on stdout, or --out PATH
 ```
 
 `deep-research-web stop <run-id>` stops a run that is still in flight; `deep-research-web list`
 shows every known run with its state and link.
+
+Any command takes a unique run-id PREFIX; an ambiguous one is refused with its candidates
+rather than guessed. `report` reads only the disk, so it costs nothing and needs no browser:
+`report <id> > file.md` is the whole report, byte for byte.
+
+`needs-reply` means the assistant spoke and never launched research. Nothing in the
+conversation JSON distinguishes a clarifying question from a refusal or a plain answer, so
+this one state covers all three: open the chat, read it, answer or relaunch. `status`
+persists it (such a run would otherwise age into `stale`), but never persists `done` —
+the watcher owns that, and writing it early would steal the auto-collect and the ping.
 
 Exit 2 from any command means the browser profile is logged out or busy; run
 `deep-research-web login` in a normal tmux window, or wait for the other command.
