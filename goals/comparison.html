@@ -1,0 +1,223 @@
+<!doctype html>
+<!-- ABOUTME: The shell of the delegation comparison: slots, both themes, the unknown chip, the two
+     ABOUTME: arm columns, and the viewer-clock staleness script. goals/comparison_view.py fills it.
+     This is a SEPARATE template from the single-goal report on purpose: the two documents share a
+     design language, not a file, so a change to one cannot silently restyle the other.
+     No slot token may appear in a comment - every slot in this file is substituted, comments
+     included, and comparison_view.py enforces exactly one of each. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{TITLE}}</title>
+<style>
+/* One column, one job: let a reader tell the two arms apart WITHOUT letting any colour decide
+   which one won. Direction is written in words; the two arm columns are drawn identically.
+   Status hue never carries meaning alone - every state is spelled out in text beside its marker. */
+:root {
+  color-scheme: light;
+  --gutter: 16px;
+  --surface: #fcfcfb;
+  --panel: #ffffff;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-3: #76746d;
+  --rule: #e4e2dc;
+  --warning: #fab219;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface: #1a1a19;
+    --panel: #222220;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --ink-3: #94938a;
+    --rule: #37372f;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #1a1a19;
+  --panel: #222220;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --ink-3: #94938a;
+  --rule: #37372f;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  overflow-wrap: break-word;
+  background: var(--surface);
+  color: var(--ink);
+  font: 400 16px/1.55 var(--sans);
+  padding: 0 var(--gutter) 64px;
+}
+main { max-width: 720px; margin: 0 auto; }
+h1 { font-size: 1.5rem; line-height: 1.25; margin: 4px 0 8px; letter-spacing: -0.01em; }
+h2 { font-size: 1.05rem; margin: 0 0 2px; letter-spacing: -0.005em; }
+h3 { font-size: 0.95rem; margin: 18px 0 2px; letter-spacing: -0.005em; }
+p { margin: 8px 0; }
+a { color: inherit; text-underline-offset: 3px; overflow-wrap: anywhere; }
+a:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* The eyebrow names the epistemic class of everything under it. */
+.eyebrow {
+  font: 600 11px/1.2 var(--mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0;
+}
+header.page { padding: 28px 0 8px; }
+section { border-top: 1px solid var(--rule); padding: 20px 0 4px; }
+.provenance {
+  font: 400 12px/1.6 var(--mono);
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+  margin: 12px 0 0;
+}
+
+/* An unknown is a CHIP, never a blank and never a zero. */
+.unknown {
+  display: inline-block;
+  font: 600 12px/1.5 var(--mono);
+  letter-spacing: 0.04em;
+  padding: 0 6px;
+  border: 1px dashed var(--ink-3);
+  border-radius: 4px;
+  color: var(--ink-2);
+  background: transparent;
+}
+/* The posture wears NO status colour. A green pill beside the word "candidate" is the one thing
+   this document must never show: it would read as a decision that nobody made. */
+.posture {
+  display: inline-block;
+  font: 600 13px/1.9 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0 10px;
+  border: 1px solid var(--ink-2);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 12px/1.9 var(--mono);
+  letter-spacing: 0.04em;
+  padding: 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+}
+.banner {
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--warning);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin: 12px 0;
+  font: 600 12px/1.5 var(--mono);
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+.banner.plain { font-family: var(--sans); font-weight: 400; letter-spacing: 0; }
+
+.tiles { display: flex; flex-wrap: wrap; gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; margin: 14px 0; }
+.tile { background: var(--panel); padding: 10px 12px; min-width: 0; flex: 1 1 150px; }
+.tile-label { display: block; font: 400 12px/1.4 var(--sans); color: var(--ink-2); }
+.tile-value { display: block; font: 600 20px/1.35 var(--mono); margin-top: 2px; overflow-wrap: anywhere; }
+.tile-note { display: block; font: 400 12px/1.4 var(--sans); color: var(--ink-3); margin-top: 2px; }
+
+dl.facts { display: grid; grid-template-columns: minmax(0, 15em) minmax(0, 1fr); gap: 2px 14px; margin: 12px 0; }
+dl.facts dt { font: 400 13px/1.5 var(--sans); color: var(--ink-2); min-width: 0; }
+dl.facts dd { margin: 0; font: 400 13px/1.5 var(--mono); overflow-wrap: anywhere; min-width: 0; }
+
+ul.plain { list-style: none; padding: 0; margin: 10px 0; }
+ul.plain li { padding: 8px 0; border-bottom: 1px solid var(--rule); }
+ul.plain li:last-child { border-bottom: 0; }
+
+/* A table too wide for the viewport SCROLLS inside its own focusable region and stays a real
+   table. Turning a table into blocks drops the implicit table roles in every major engine, which
+   is how a carefully-hidden header row quietly stops being a header for assistive technology. */
+.scroll { overflow-x: auto; margin: 10px 0; }
+.scroll:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; }
+caption { text-align: left; color: var(--ink-3); font: 400 12px/1.5 var(--sans); padding-bottom: 6px; }
+th, td { text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th:first-child, td:first-child { text-align: left; font-family: var(--sans); }
+th { font: 600 12px/1.4 var(--sans); color: var(--ink-2); }
+/* The signature device: the two arm columns are IDENTICAL. Same width, same weight, same ink.
+   Which arm is ahead is written out in the verdict rows, never encoded in a colour or a bar. */
+table.ledger { table-layout: fixed; }
+table.ledger th:not(:first-child), table.ledger td:not(:first-child) { width: 34%; font-family: var(--mono); }
+/* Six columns cannot be read at 390px however they are styled, so they keep their real width and
+   the region scrolls to them instead of the page losing a column off the edge. */
+table.wide { min-width: 560px; }
+/* One box per cell: the value, the label that names it once the header row is offscreen, and the
+   qualifier that makes it readable are the same answer and are never separated. The label is a
+   real element rather than generated content, so it is read like any other text. */
+.cell { display: block; min-width: 0; }
+.cell-label { display: none; font: 400 11px/1.5 var(--sans); color: var(--ink-2); }
+td .tile-note { text-align: right; }
+td:first-child .cell, td:first-child .tile-note { text-align: left; }
+
+.limits li { display: flex; gap: 10px; align-items: flex-start; }
+.limit-code { font: 600 11px/1.6 var(--mono); color: var(--ink-2); flex: 0 0 auto; overflow-wrap: anywhere; }
+.note { color: var(--ink-2); font-size: 14px; }
+footer { border-top: 1px solid var(--rule); margin-top: 24px; padding-top: 14px; color: var(--ink-3); font-size: 13px; }
+
+@media (max-width: 420px) {
+  dl.facts { grid-template-columns: 1fr; }
+  dl.facts dd { margin-bottom: 6px; }
+  .limits li { display: block; }
+  .limit-code { display: block; margin-bottom: 2px; }
+  /* The three-column ledger fits 390px; what does not fit is a header row of long arm values on
+     top of it. So the header goes OFFSCREEN - still in the accessibility tree, still a real
+     `thead` of a real table - and each cell carries its own visible label instead. Nothing here
+     changes a table element's `display`, which is what would drop the roles the header serves. */
+  .ledger thead { position: absolute; width: 1px; height: 1px; overflow: hidden;
+                  clip-path: inset(50%); white-space: nowrap; }
+  .ledger .cell-label { display: block; }
+  .ledger { font-size: 12px; }
+  /* A three-column ledger at 390px leaves about 130px of content per cell. A qualifier set at
+     12px does not fit an eighteen-character token in that, and breaks it mid-word. */
+  .ledger .tile-note, .ledger .cell-label { font-size: 11px; }
+  td { padding: 8px 4px; }
+}
+</style>
+</head>
+<body data-as-of="{{AS_OF}}">
+<main>
+{{BODY}}
+</main>
+<script>
+// Staleness is the VIEWER's question, so it is answered by the viewer's clock and re-answered as
+// that clock moves. Freezing it into the document would make an old comparison look fresh.
+(function () {
+  var slot = document.getElementById("as-of-age");
+  var at = Date.parse(document.body.getAttribute("data-as-of") || "");
+  if (!slot || isNaN(at)) return;
+  function tick() {
+    var seconds = Math.floor((Date.now() - at) / 1000);
+    if (seconds < 0) { slot.textContent = "(observed in the future)"; return; }
+    var days = Math.floor(seconds / 86400), hours = Math.floor(seconds % 86400 / 3600);
+    var minutes = Math.floor(seconds % 3600 / 60);
+    slot.textContent = "(" + (days ? days + "d " : "") + (days || hours ? hours + "h " : "") +
+      minutes + "m old at your clock)";
+  }
+  tick();
+  setInterval(tick, 30000);
+})();
+</script>
+</body>
+</html>
