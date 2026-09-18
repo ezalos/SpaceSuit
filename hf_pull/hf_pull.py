@@ -2,8 +2,9 @@
 # ABOUTME: Rate-capped, sequential Hugging Face repo downloader that fills the standard
 # ABOUTME: hub cache, so from_pretrained() works afterwards without pulling at line rate.
 """
-hf-pull REPO_ID [--rate 25M] [--revision main] [--include GLOB]... [--exclude GLOB]...
-                [--type model|dataset] [--dry-run]
+hf-pull REPO_ID [--rate 50M] [--revision main] [--include GLOB]... [--exclude GLOB]...
+                [--type model|dataset] [--dry-run] [--now]
+hf-pull --window          # is the line asleep right now?
 
 Why this exists: `hf download` opens eight connections and pulls at whatever the
 line gives. On a shared residential link that starves the gateway for everyone in
@@ -12,23 +13,64 @@ each blob (sha256 for LFS, git-sha1 otherwise), and writes the official cache
 layout (blobs/, snapshots/<commit>/, refs/<revision>) — the result is
 indistinguishable from an `hf download` for huggingface_hub, and resumable.
 
+A pull over NIGHT_GB waits for the line's night window. THE LINE'S CLOCK IS NOT
+THIS MACHINE'S CLOCK -- set $HF_PULL_LINE_TZ to the IANA zone where the line
+physically is, and never reason about the offset yourself. `--window` prints the
+answer; `--now` overrides the gate when the human said now.
+
 Stdlib + curl only. Token: $HF_TOKEN, else ~/.cache/huggingface/token.
 """
 import argparse
+import datetime
 import fnmatch
 import hashlib
+import io
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
 import time
 import urllib.parse
 import urllib.request
+import zoneinfo
 
 API = "https://huggingface.co"
-DEFAULT_RATE = os.environ.get("HF_PULL_RATE", "25M")
+
+# The line belongs to a household. A pull bigger than NIGHT_GB waits until the people
+# who share it are asleep -- measured in the LINE's timezone, which is deliberately not
+# this machine's. No zone is hardcoded: this tool is public, and a zone names a place.
+CONFIG = os.path.expanduser("~/.config/hf-pull/env")
+FALLBACKS = {"HF_PULL_RATE": "50M", "HF_PULL_NIGHT_GB": "40", "HF_PULL_LINE_TZ": ""}
+WINDOW = (1, 7)  # [01:00, 07:00) local to the line
+
+
+def config_file(path=CONFIG):
+    """KEY=VALUE lines. A file, not just $ENV, because the scheduled systemd unit this
+    tool tells you to create never sees your shell profile."""
+    out = {}
+    try:
+        with io.open(path, encoding="utf-8") as fh:
+            for ln in fh:
+                ln = ln.strip()
+                if ln and not ln.startswith("#") and "=" in ln:
+                    k, v = ln.split("=", 1)
+                    out[k.strip()] = v.strip().strip("\"'")
+    except OSError:
+        pass
+    return out
+
+
+def setting(key, cfg=None):
+    cfg = config_file() if cfg is None else cfg
+    return (os.environ.get(key) or cfg.get(key) or FALLBACKS[key]).strip()
+
+
+DEFAULT_RATE = setting("HF_PULL_RATE")
+NIGHT_GB = float(setting("HF_PULL_NIGHT_GB"))
+LINE_TZ = setting("HF_PULL_LINE_TZ")
 
 
 def log(msg):
@@ -103,6 +145,56 @@ def parse_rate(s):
     return int(float(s.rstrip("kKmMgG"))) * mult
 
 
+def line_clock():
+    """(now_at_the_line, zone_name) or (None, None) when no line zone is configured."""
+    if not LINE_TZ:
+        return None, None
+    try:
+        return datetime.datetime.now(zoneinfo.ZoneInfo(LINE_TZ)), LINE_TZ
+    except zoneinfo.ZoneInfoNotFoundError:
+        log(f"hf-pull: $HF_PULL_LINE_TZ={LINE_TZ!r} is not an IANA zone; treating the line as unconfigured")
+        return None, None
+
+
+def window_open(now):
+    return WINDOW[0] <= now.hour < WINDOW[1]
+
+
+def next_open(now):
+    """When the window next opens, computed on the line's calendar (DST-safe)."""
+    day = now.date() if now.hour < WINDOW[0] else now.date() + datetime.timedelta(days=1)
+    return datetime.datetime.combine(day, datetime.time(WINDOW[0]), tzinfo=now.tzinfo)
+
+
+def window_report():
+    """Human-readable state of the line's night window. Returns (text, is_open)."""
+    now, zone = line_clock()
+    if now is None:
+        return ("hf-pull: $HF_PULL_LINE_TZ is not set, so I cannot tell whether the line "
+                "is asleep.\n"
+                "         Set it to the IANA zone where the LINE physically is -- not "
+                "this machine's\n"
+                "         zone, which is deliberately different.", None)
+    here = datetime.datetime.now().astimezone()
+    a, b = f"at the line ({zone}):", "this machine:"
+    w = max(len(a), len(b))
+    lines = [f"  {a:<{w}}  {now:%a %Y-%m-%d %H:%M %Z}",
+             f"  {b:<{w}}  {here:%a %Y-%m-%d %H:%M %Z}"]
+    if window_open(now):
+        shut = datetime.datetime.combine(now.date(), datetime.time(WINDOW[1]), tzinfo=now.tzinfo)
+        lines.append(f"  window {WINDOW[0]:02d}:00-{WINDOW[1]:02d}:00 is OPEN, closes in {fmt_delta(shut - now)}")
+        return ("\n".join(lines), True)
+    nxt = next_open(now)
+    lines.append(f"  window {WINDOW[0]:02d}:00-{WINDOW[1]:02d}:00 is CLOSED, opens in {fmt_delta(nxt - now)} "
+                 f"({nxt:%a %H:%M %Z})")
+    return ("\n".join(lines), False)
+
+
+def fmt_delta(d):
+    m = int(d.total_seconds() // 60)
+    return f"{m // 60} h {m % 60:02d} m"
+
+
 def human(n):
     for u in ("B", "KB", "MB", "GB", "TB"):
         if n < 1024:
@@ -144,14 +236,23 @@ def curl(url, out, rate, tok):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("repo")
+    ap.add_argument("repo", nargs="?")
     ap.add_argument("--rate", default=DEFAULT_RATE, help=f"curl --limit-rate value (default {DEFAULT_RATE})")
+    ap.add_argument("--window", action="store_true",
+                    help="print whether the line's night window is open, and exit")
+    ap.add_argument("--now", action="store_true",
+                    help=f"pull over {NIGHT_GB:g} GB outside the window anyway (the human said now)")
     ap.add_argument("--revision", default="main")
     ap.add_argument("--include", action="append", default=[], help="glob; repeatable")
     ap.add_argument("--exclude", action="append", default=[], help="glob; repeatable")
     ap.add_argument("--type", default="model", choices=["model", "dataset"])
     ap.add_argument("--dry-run", action="store_true", help="list what would be pulled and stop")
     a = ap.parse_args()
+    if a.window:
+        log(window_report()[0])
+        return 0
+    if a.repo is None:
+        ap.error("a repo id is required (or use --window)")
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", a.repo):
         log(f"hf-pull: {a.repo!r} is not a repo id (expected org/name)")
         return 2
@@ -191,10 +292,38 @@ def main():
     bps = parse_rate(a.rate)
     log(f"hf-pull: {a.repo}@{sha[:8]}  {len(files)} files, {human(have)} already cached, "
         f"{human(total)} to pull in {len(todo)} files at {a.rate}/s (~{total / bps / 60:.1f} min)")
+    over = total > NIGHT_GB * 1024**3
     if a.dry_run:
         for p, _, s, _, _ in todo:
             log(f"  {human(s):>10}  {p}")
+        if over:
+            log(f"hf-pull: {human(total)} is over the {NIGHT_GB:g} GB night-window threshold.")
+            log(window_report()[0])
         return 0
+
+    if over and not a.now:
+        report, is_open = window_report()
+        if is_open is None:
+            log(f"hf-pull: {human(total)} is over the {NIGHT_GB:g} GB night-window threshold.")
+            log(report)
+            log("         Pulling anyway, blind. Set $HF_PULL_LINE_TZ so this can be checked.")
+        elif not is_open:
+            log(f"hf-pull: refusing -- {human(total)} is over the {NIGHT_GB:g} GB night-window "
+                "threshold and the line is awake.")
+            log(report)
+            argv = [a.repo]
+            if a.type != "model":
+                argv = ["--type", a.type] + argv
+            if a.revision != "main":
+                argv = ["--revision", a.revision] + argv
+            for g in a.include:
+                argv = ["--include", g] + argv
+            for g in a.exclude:
+                argv = ["--exclude", g] + argv
+            log(f"  schedule it:  systemd-run --user --on-calendar='*-*-* "
+                f"{WINDOW[0]:02d}:00 {LINE_TZ}' hf-pull {shlex.join(argv)}")
+            log("  or pass --now if the human said now.")
+            return 3
 
     os.makedirs(blobs, exist_ok=True)
     os.makedirs(snap, exist_ok=True)

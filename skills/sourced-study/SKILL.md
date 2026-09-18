@@ -59,7 +59,7 @@ study dir that has `taxonomy.yaml` and `items/`.
 - The writer never verifies itself. The verifier gets no edit rights.
 - A fact with no receipt is a red `?` on the page, never a hidden gap.
 - Leads (deep-research reports, a colleague's summary) are never a citation: re-find every number.
-- Downloads go through the rate-capped tools, one at a time, 25 MB/s.
+- Downloads go through the rate-capped tools, one at a time, 50 MB/s.
 - Prose passes the clarity gate: at most 25 words a sentence, one meaning per word, no hedges.
 - No em-dash anywhere. `rip`, never `rm`.
 - Papers belong in the library: `~/42/Research/CLAUDE.md` and the `gdrive-sync` skill.

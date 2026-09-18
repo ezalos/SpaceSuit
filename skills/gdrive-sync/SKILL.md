@@ -49,7 +49,8 @@ the local loser survives as `paper.pdf.conflict1`. The timer syncs every 10 min.
    (copies it to `~/.config/gdrive-sync/filters`), commit, `gdrive-sync markers`, then ask Louis
    before `gdrive-sync resync --yes` (the resync makes Drive win on every differing file).
 6. Downloads from the web into the research folder: save into `~/Drive/backups/Research/...`,
-   then `gdrive-sync run`. Nothing over 2 GB, 25 MB/s cap (household line rule).
+   then `gdrive-sync run`. Nothing over 2 GB, 25 MB/s cap (gdrive-sync runs
+   unattended in the house's daytime, so it stays at 25 while attended pulls go to 50).
 7. **Write atomically.** The timer can list the tree while you write. Download or render to a
    path OUTSIDE `~/Drive` (e.g. `~/Inbox/` or a temp dir on the same filesystem), then `mv`
    the finished file into place — one rename, never a file that grows inside the mirror.
