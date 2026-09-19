@@ -246,6 +246,15 @@ def is_refusal(rc: int, output: str) -> bool:
     return rc == 1 and "too many deletes" in output
 
 
+def is_retryable_abort(rc: int, output: str) -> bool:
+    """bisync under --resilient: a listing or access-test failure (a Drive 403 rate limit, a network
+    blip) aborts with the SAME exit 7 as a real critical error, but bisync keeps its listings and
+    says so; the next run retries on its own, no resync needed. Halting on it locked the mirror
+    behind a Louis-only resync for a transient 403 (2026-09-18). rclone colours the line: strip ANSI."""
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    return rc == EXIT_CRITICAL and "retryable without --resync" in plain
+
+
 @contextlib.contextmanager
 def state_lock(cfg: Config, *, wait: bool):
     """Serialise syncs on <state>/lock. wait=False yields None when another run holds it (the
@@ -282,7 +291,7 @@ def cmd_run(cfg: Config, notify, force: bool) -> int:
         if rc == 0:
             state.update(last_success=now, last_result="ok", consecutive_failures=0, last_error="",
                          refusal_notified=False)
-        elif rc == EXIT_CRITICAL:
+        elif rc == EXIT_CRITICAL and not is_retryable_abort(rc, out):
             reason = halt_reason(out)
             state.update(last_result="halted", halted=True, last_error=reason)
             state["halt_notified"] = notify(halt_message(cfg, reason))

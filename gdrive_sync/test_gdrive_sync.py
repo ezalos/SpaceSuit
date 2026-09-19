@@ -347,6 +347,29 @@ def test_run_critical_halts_notifies_once_and_skips_until_resync(env_file, fake_
     assert len(calls(fake_rclone)) == 1 and len(sent) == 1
 
 
+def test_run_retryable_abort_is_a_transient_failure_not_a_halt(env_file, fake_rclone, monkeypatch):
+    """--resilient: a listing failure exits 7 like a real critical abort but bisync says it retries
+    without a resync. Replays the 2026-09-18 Drive 403 (coloured line included): no halt, no
+    Telegram, the next run invokes bisync again, and a later success clears the failure count."""
+    sent = []
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "7")
+    monkeypatch.setenv("FAKE_RCLONE_OUT",
+                       "ERROR : Bisync critical error: couldn't list directory: googleapi: Error 403: "
+                       "Quota exceeded for quota metric 'Queries'\n"
+                       "ERROR : \x1b[33mBisync aborted. Error is retryable without --resync due to "
+                       "--resilient mode.\x1b[0m")
+    assert gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append) == 7
+    st = _state(env_file)
+    assert st["halted"] is False and st["last_result"] == "failed" and st["consecutive_failures"] == 1
+    assert "403" in st["last_error"] and sent == []
+    assert gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append) == 7
+    assert len(calls(fake_rclone)) == 2 and _state(env_file)["consecutive_failures"] == 2
+    monkeypatch.setenv("FAKE_RCLONE_EXIT", "0")
+    monkeypatch.setenv("FAKE_RCLONE_OUT", "")
+    assert gdrive_sync.main(["--env", str(env_file), "run"], notifier=sent.append) == 0
+    assert _state(env_file)["consecutive_failures"] == 0 and sent == []
+
+
 def test_run_transient_failures_escalate_once_at_three(env_file, fake_rclone, monkeypatch):
     sent = []
     monkeypatch.setenv("FAKE_RCLONE_EXIT", "1")
