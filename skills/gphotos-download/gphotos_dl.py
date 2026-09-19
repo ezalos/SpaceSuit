@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 # ABOUTME: Download full-res photos from a PUBLIC Google Photos share link (no auth).
 # ABOUTME: Scrapes the share page for /pw/ URLs and fetches each at =d (original size).
+# /// script
+# dependencies = ["pillow"]
+# ///
 import argparse
 import re
 import sys
