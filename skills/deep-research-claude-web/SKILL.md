@@ -70,12 +70,14 @@ Louis's own account, visible and continuable in the Claude app. It lives in Grou
 `deep-research-web/` (private) and is on PATH as `deep-research-web`.
 
 ```bash
-deep-research-web launch --charter <path-to-charter.md>
+deep-research-web launch --charter <path-to-charter.md> --name <lowercase-kebab-name>
 ```
 
-`launch` prints the chat URL and the exact `status` and `collect` follow-ups; put the
-URL in the reply. Runs land under the configured runs root (`~/research-runs` by
-default) and inside the configured claude.ai Project.
+**Always pass `--name`**: it names the run's directory in the library (see Phase 3), so pick
+the name a reader would search for (`libero-plus-vs-pro-requirements`, not the question's
+first words). Lowercase kebab-case, at most 60 characters. `launch` prints the chat URL and
+the exact `status` and `collect` follow-ups; put the URL in the reply. Runs land under the
+configured runs root (`~/research-runs` by default) and inside the configured claude.ai Project.
 
 Exit codes: 0 launched; 2 the browser profile is not logged in (run
 `deep-research-web login <name>` (the claude-usage account name) in a normal tmux window,
@@ -131,6 +133,25 @@ or wait for the other command.
 `run-result.json` in the v1 shape, and the raw `conversation.json`. Exit 6 means still
 running; exit 1 means something needs attention. If Louis continued the conversation on
 his phone, a later `collect` picks up the newest report.
+
+### The library
+
+When the host configures `DEEP_RESEARCH_WEB_ARCHIVE_ROOT`, `collect` (yours or the
+watcher's) also copies the finished run into `<root>/<start date>-<name>/` and prints the
+path: charter, report (frozen), graded sources, `archive.json`, a `README.md` written once.
+The engine never commits. **After a collect, commit that directory and the regenerated
+`<root>/README.md` in the repo that hosts the root, and push**, as that repo's own rules say.
+Refer to a report by that path from then on, not by the run id. `deep-research-web archive
+<run-id> [--name X]` copies or renames a run by hand (a watcher-collected run of another
+session, a name typo).
+
+### The claims check, opt-in
+
+`deep-research-web check-claims <run-id>` asks an independent headless reader to check the
+report's load-bearing claims against primary pages and writes `verification.json` /
+`verification.md` into the run and its library copy. It is never automatic: it spends usage
+and takes minutes. Run it when the report feeds a decision, or when Louis asks; report its
+REFUTED and PARTIALLY lines by name, and its `most_consequential` paragraph verbatim.
 
 ### Citation grades
 
