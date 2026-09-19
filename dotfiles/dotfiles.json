@@ -1297,6 +1297,19 @@
             ],
             "variants": null,
             "fanout": false
+        },
+        "claude-session": {
+            "alias": "claude-session",
+            "main": "dotfiles/bin/claude-session",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/claude-session",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
         }
     },
     "devices": {

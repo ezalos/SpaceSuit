@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+# ABOUTME: Resolve a Claude Code session id prefix (the 🆔 on the status line, the 3 chars after
+# ABOUTME: a tmux badge) to the peer name SendMessage/ListAgents use, and the other way round.
+"""
+Usage: claude-session [--json] [PREFIX|NAME ...]
+
+Louis points at a session by the first characters of its UUID ("61b", "af4b0c33"); the
+messaging layer knows it only by its derived peer name ("web-wm-onnx-13"). Claude Code keeps
+the join itself in ~/.claude/sessions/<pid>.json (pid, sessionId, name, status, tmux pane,
+cwd), the same first-party source tls and claude-badge read; the title on the status line
+(the 💬 field) is the last "ai-title" entry of the session's own transcript.
+
+With no argument: every live session. With arguments: each one is a UUID prefix (3+ hex
+chars) or a peer name; a prefix that matches several live sessions lists them all and exits 2,
+one that matches none exits 1. Dead pids are dropped, so a resolved name is one you can
+message right now. --json prints the records instead of the table.
+"""
+import glob
+import json
+import os
+import sys
+import time
+
+# Overridable for the tests, which point both at a temporary tree; the defaults are Claude Code's own.
+SESSIONS = os.environ.get("CLAUDE_SESSION_SESSIONS_DIR") or os.path.expanduser("~/.claude/sessions")
+PROJECTS = os.environ.get("CLAUDE_SESSION_PROJECTS_DIR") or os.path.expanduser("~/.claude/projects")
+TITLE_TAIL = 4 << 20  # a title lives near the end of the transcript; scan the last 4 MiB first
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def title_of(session_id):
+    """The last ai-title / custom-title entry of the transcript, or ''. Read the tail first:
+    transcripts run to hundreds of MB and the title is rewritten near the end."""
+    paths = glob.glob(os.path.join(PROJECTS, "*", session_id + ".jsonl"))
+    if not paths:
+        return ""
+    path = paths[0]
+    size = os.path.getsize(path)
+    for start in ((max(0, size - TITLE_TAIL),) if size > TITLE_TAIL else ()) + (0,):
+        title = ""
+        with open(path, "rb") as fh:
+            fh.seek(start)
+            if start:
+                fh.readline()  # drop the partial line
+            for raw in fh:
+                if b'"ai-title"' not in raw and b'"custom-title"' not in raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except ValueError:
+                    continue
+                if entry.get("type") == "custom-title":
+                    title = entry.get("customTitle") or title
+                elif entry.get("type") == "ai-title":
+                    title = entry.get("aiTitle") or title
+        if title:
+            return " ".join(title.split())
+    return ""
+
+
+def load():
+    rows = []
+    for path in glob.glob(os.path.join(SESSIONS, "*.json")):
+        try:
+            with open(path) as fh:
+                rec = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        pid, sid = rec.get("pid"), rec.get("sessionId") or ""
+        if not (isinstance(pid, int) and sid and alive(pid)):
+            continue
+        rows.append({
+            "id": sid, "name": rec.get("name") or "", "status": rec.get("status") or "?",
+            "cwd": rec.get("cwd") or "", "tmux": rec.get("tmux") or "", "pid": pid,
+            "updated_epoch": (rec.get("updatedAt") or 0) / 1000,
+        })
+    rows.sort(key=lambda r: (r["cwd"], r["name"]))
+    return rows
+
+
+def age(epoch, now):
+    if not epoch:
+        return "?"
+    s = int(now - epoch)
+    return f"{s}s" if s < 60 else f"{s // 60}m" if s < 3600 else f"{s // 3600}h" if s < 86400 else f"{s // 86400}d"
+
+
+def matches(rows, key):
+    key_l = key.lower()
+    hexish = all(c in "0123456789abcdef-" for c in key_l)
+    hits = [r for r in rows if hexish and r["id"].lower().startswith(key_l)]
+    return hits or [r for r in rows if r["name"] == key]
+
+
+def main(argv):
+    as_json = "--json" in argv
+    keys = [a for a in argv if not a.startswith("--")]
+    if any(a.startswith("--") and a != "--json" for a in argv) or "-h" in argv:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    rows = load()
+    now = time.time()
+    rc = 0
+    if keys:
+        picked = []
+        for key in keys:
+            hits = matches(rows, key)
+            if not hits:
+                print(f"{key}: no live session", file=sys.stderr)
+                rc = max(rc, 1)
+            elif len(hits) > 1:
+                print(f"{key}: ambiguous, {len(hits)} live sessions", file=sys.stderr)
+                rc = 2
+            picked.extend(h for h in hits if h not in picked)
+        rows = picked
+    for r in rows:
+        r["title"] = title_of(r["id"])
+        r["age"] = age(r["updated_epoch"], now)
+    if as_json:
+        print(json.dumps(rows, indent=1))
+        return rc
+    home = os.path.expanduser("~")
+    for r in rows:
+        cwd = r["cwd"].replace(home, "~", 1)
+        print(f'{r["id"][:8]}  {r["name"]:<30} {r["status"]:<8} {r["age"]:>4}  {cwd}  💬 {r["title"]}')
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
