@@ -73,10 +73,14 @@ when the intent is to hand over a set — one zip is cleaner.
 share-file <path> [--duration <Nh|Nm|Nd>]
 ```
 
-The script (located at `~/42/SpaceSuit/share_file/share.py`, aliased to `share-file` in `.zshrc`) prints the URL on stdout and the expiry timestamp on stderr.
+`share-file` is a wrapper script, `~/42/SpaceSuit/bin/share-file` (that directory is on PATH), around
+`~/42/SpaceSuit/share_file/share.py`. It works from any cwd and in non-interactive shells, and prints
+the URL on stdout and the expiry timestamp on stderr. Host and base URL come from
+`~/.config/share-file/env`.
 
-**In agent/non-interactive shells the alias does not exist** (`.zshrc` aliases are not
-loaded there — hit 2026-08-13), so skip straight to the direct invocation:
+<!-- 2026-09-20: this section used to claim a `.zshrc` alias. None ever existed in a tracked
+     dotfile, so `share-file` was command-not-found everywhere. If it is missing on a machine
+     (fresh clone, PATH without SpaceSuit/bin), the direct path is the fallback: -->
 
 ```bash
 python3 ~/42/SpaceSuit/share_file/share.py <path> --duration <duration>

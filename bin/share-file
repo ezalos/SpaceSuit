@@ -1,0 +1,4 @@
+#!/bin/sh
+# ABOUTME: Wrapper putting share-file (token-URL file sharing with an expiry) on PATH.
+# ABOUTME: Stdlib-only Python, so it deliberately does not use any repo venv.
+exec /usr/bin/python3 "$(dirname "$(readlink -f "$0")")/../share_file/share.py" "$@"
