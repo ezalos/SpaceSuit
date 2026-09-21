@@ -25,7 +25,7 @@ This skill follows the universal observability baseline (see `docs/plans/2026-04
 | WARNING | User asked to share a directory or multiple files (CLI rejects) | `share-file: directory/multi-file share requested; suggested zip` |
 | WARNING | Duration parse failure (e.g. combined units like '2h30m') | `share-file: bad duration '<input>'; asked Louis for single-unit form` |
 | INFO | URL generated successfully | `share-file: shared <name> for <duration>; URL handed to Louis` |
-| INFO | Fell back to direct python invocation (alias missing) | `share-file: alias missing; used python3 direct path` |
+| INFO | Fell back to direct python invocation (`share-file` not on PATH) | `share-file: CLI not on PATH; used python3 direct path` |
 
 Concrete invocation examples:
 
