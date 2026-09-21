@@ -91,7 +91,9 @@ waiting on an answer (the URL is printed; look at it with Louis before relaunchi
 Each account has its own saved profile, named as in claude-usage. `deep-research-web login <name>`
 logs one in. `deep-research-web switch [<name>]` makes one live. With no name, `switch` picks
 the saved account with the most weekly room by claude-usage's meters. `deep-research-web profiles`
-lists them. A launch refused on usage switches once and retries; an account flag never switches.
+lists them, as a table. A launch refused on usage tries each saved account with room, most room
+first. It never asks a refused account twice, and it names the earliest window that reopens when
+none is left. An account flag never switches.
 Judge which account a profile holds only from `/api/account`, which `login` prints. This engine's
 live account is separate from Claude Code's; `claude-usage switch` only moves Claude Code's.
 
