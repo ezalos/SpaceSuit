@@ -46,7 +46,7 @@ def test_read_tools_only_no_write_tools_ever(tmp_path):
         "mcp__claude_ai_Gmail__search_threads,mcp__claude_ai_Gmail__get_thread,"
         "mcp__claude_ai_Gmail__get_message,mcp__claude_ai_Gmail__list_labels"
     )
-    for write_tool in ["send_message", "send_email", "reply", "forward", "create_draft", "trash_message"]:
+    for write_tool in ["delete_draft", "unmark_message_spam", "reply", "forward", "create_draft", "trash_message"]:
         assert write_tool not in allowed, f"{write_tool} must never be in --allowedTools"
         assert any(write_tool in t for t in disallowed.split(",")), f"{write_tool} must be explicitly disallowed"
     assert all(t in disallowed for t in ["Bash", "Write", "Edit", "Agent"])
