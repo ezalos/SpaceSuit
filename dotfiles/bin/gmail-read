@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+# ABOUTME: One-shot Gmail read via the claude.ai connector, always in a FRESH claude -p
+# ABOUTME: process, so it sees whichever account is live right now regardless of a recent switch.
+"""
+Usage: gmail-read <brief>
+       gmail-read --file <path>
+
+A running interactive session's claude.ai connector roster (Gmail, Calendar, ...) is fetched
+once at that session's own startup and does not follow a later `claude-usage switch` — the
+same reason Remote Control drops on a switch (memory: no-gmail-read-path-in-groundcontrol). A
+FRESH process always fetches the roster for the account that is live right now, so this is the
+reliable way to read mail regardless of recent switches. Only the four read tools are ever
+allowed; every writing tool is explicitly disallowed, never opt-in.
+"""
+import argparse
+import subprocess
+import sys
+
+READ_TOOLS = [
+    "mcp__claude_ai_Gmail__search_threads",
+    "mcp__claude_ai_Gmail__get_thread",
+    "mcp__claude_ai_Gmail__get_message",
+    "mcp__claude_ai_Gmail__list_labels",
+]
+WRITE_TOOLS = [
+    "mcp__claude_ai_Gmail__create_draft", "mcp__claude_ai_Gmail__update_draft",
+    "mcp__claude_ai_Gmail__delete_draft", "mcp__claude_ai_Gmail__get_draft",
+    "mcp__claude_ai_Gmail__list_drafts", "mcp__claude_ai_Gmail__reply",
+    "mcp__claude_ai_Gmail__forward", "mcp__claude_ai_Gmail__create_label",
+    "mcp__claude_ai_Gmail__update_label", "mcp__claude_ai_Gmail__delete_label",
+    "mcp__claude_ai_Gmail__label_message", "mcp__claude_ai_Gmail__unlabel_message",
+    "mcp__claude_ai_Gmail__label_thread", "mcp__claude_ai_Gmail__unlabel_thread",
+    "mcp__claude_ai_Gmail__update_message_labels", "mcp__claude_ai_Gmail__mark_message_spam",
+    "mcp__claude_ai_Gmail__unmark_message_spam", "mcp__claude_ai_Gmail__mark_thread_spam",
+    "mcp__claude_ai_Gmail__unmark_thread_spam", "mcp__claude_ai_Gmail__trash_message",
+    "mcp__claude_ai_Gmail__untrash_message", "mcp__claude_ai_Gmail__trash_thread",
+    "mcp__claude_ai_Gmail__untrash_thread", "mcp__claude_ai_Gmail__apply_sensitive_message_label",
+    "mcp__claude_ai_Gmail__apply_sensitive_thread_label",
+]
+DISALLOWED = WRITE_TOOLS + ["Bash", "Write", "Edit", "Agent"]
+
+
+def main():
+    p = argparse.ArgumentParser(description="One-shot Gmail read via a fresh claude -p process.")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("brief", nargs="?", help="the read request, as free text")
+    g.add_argument("--file", help="path to a file holding the read request")
+    args = p.parse_args()
+
+    brief = open(args.file).read() if args.file else args.brief
+    if not brief or not brief.strip():
+        sys.exit("gmail-read: empty brief")
+
+    cmd = [
+        "claude", "-p", brief,
+        "--model", "sonnet",
+        "--permission-mode", "dontAsk",
+        "--allowedTools", ",".join(READ_TOOLS),
+        "--disallowedTools", ",".join(DISALLOWED),
+    ]
+    result = subprocess.run(cmd)
+    sys.exit(result.returncode)
+
+
+if __name__ == "__main__":
+    main()
