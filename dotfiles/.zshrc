@@ -245,6 +245,11 @@ add-zsh-hook precmd _dotfiles_sync_bg
 # remote box can't reach your laptop). Locally, uses the native clipboard tool.
 # OSC 52 needs: tmux `set-clipboard on` + the `clipboard` terminal-feature (tmux 3.2a
 # has no allow-passthrough), and a terminal that honours OSC 52 writes (WezTerm does).
+# It ALSO needs a tmux built with tiparm_s: that list above was complete-looking and
+# still wrong from 2026-07-08 to 2026-09-17, when a self-built tmux linked plain tiparm
+# and dropped every OSC 52 write in silence (see dotfiles/.tmux.conf for the mechanism).
+# This function fails the same way tmux copy mode does, so check them together:
+# GroundControl `monitoring/tools/tmux-osc52` tests both paths in about 8 seconds.
 # Terminals cap OSC 52 at ~74-100 KB.
 copy() {
 	local data
