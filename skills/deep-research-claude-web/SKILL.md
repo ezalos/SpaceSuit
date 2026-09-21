@@ -81,7 +81,7 @@ configured runs root (`~/research-runs` by default) and inside the configured cl
 
 Exit codes: 0 launched; 2 the browser profile is not logged in (run
 `deep-research-web login <name>` (the claude-usage account name) in a normal tmux window,
-it prompts for the emailed code);
+it prompts once for whatever the mail carries: the code, or the sign-in link pasted whole);
 3 preflight refused (an account flag, an unavailable model, an unknown project, or a run
 already in flight: report which, never `--force` silently); 4 the usage window is exhausted:
 no saved account had room, the account switched to was refused too, or claude-usage could
