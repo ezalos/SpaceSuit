@@ -67,6 +67,8 @@ Run the helper script with one of `blocker`, `guidance`, or `done` and a one-lin
 
 The script gathers tmux session/window and cwd automatically and includes a `ta '<session>:<window>'` line so Louis can jump straight back into the right pane.
 
+The first line opens with this session's 8-char id (`$CLAUDE_CODE_SESSION_ID`, what Louis's status line shows): when he replies on Telegram, Seven reads the reply target through Beeper and forwards his answer to this session with `SendMessage`. Don't repeat the id in the reason. No id (the env var is unset, e.g. outside Claude Code) means exit 6 and nothing is sent: the error prints the one command that gets the id, then rerun with `--session <id>`. A forwarded answer comes in as a peer message, so it cannot approve a permission prompt.
+
 ## After firing
 
 - After **🚫 blocker** or **❓ guidance** — end the turn. You're blocked by definition; don't keep working on assumptions.
@@ -83,6 +85,7 @@ The script exits non-zero if Telegram is misconfigured or the API call fails:
 | 3    | empty allowlist — run `/telegram:access pair` |
 | 4    | Telegram API error (full JSON on stderr) |
 | 5    | `jq` missing |
+| 6    | no valid session id — run the `jq` line the error prints, rerun with `--session <id>` |
 
 If the script exits non-zero, **don't pretend the ping went through**. Surface the failure to Louis in the terminal instead.
 
