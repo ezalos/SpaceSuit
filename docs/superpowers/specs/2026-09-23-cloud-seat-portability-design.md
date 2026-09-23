@@ -102,11 +102,12 @@ through a new registry alias `claude_md_local` with per-device `variants` pointi
 GroundControl and `only_devices` listing those devices. The seat's local file is placed by
 its own runbook from its work tree, outside this registry.
 
-The base is today's private base with four lines moved to the local side or generalized:
-the 2026-08-11 incident sentence under the email guardrail (the rule stays, the incident
-moves), the household-line measurement and its incident path, the note naming a machine
-whose pulls depend on pushes landing, and the machine named in the headless-Chrome CDP
-example (the rule stays, the example is generalized). The `claude_md` entry becomes global
+The base is today's private base with three lines moved to the local side or generalized:
+the household-line measurement and its incident path, the note naming a machine whose
+pulls depend on pushes landing, and the machine named in the headless-Chrome CDP example
+(the rule stays, the example is generalized). The 2026-08-11 incident line under the email
+guardrail stays in the base: its recipient detail was removed from the live file on
+2026-09-23, and what remains is the rule's evidence, not personal information. The `claude_md` entry becomes global
 (`only_devices: null`, no variants), so any new device gets the base by deploying.
 
 Gate: Louis reads the base once before its first public commit. It carries his working
