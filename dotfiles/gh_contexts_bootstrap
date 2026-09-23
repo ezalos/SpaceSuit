@@ -7,7 +7,21 @@ umask 077
 
 CONF="$HOME/.config/git-identity/contexts.conf"
 CTX_ROOT="$HOME/.config/gh-contexts"
-GH=/usr/bin/gh
+
+# Resolve the REAL gh binary (Linux apt vs macOS brew). The identity-router
+# shim at ~/.local/bin/gh must never be used here - it would recurse into us.
+if [ -x /usr/bin/gh ]; then
+    GH=/usr/bin/gh
+elif [ -x /opt/homebrew/bin/gh ]; then
+    GH=/opt/homebrew/bin/gh
+else
+    GH=$(command -v gh || true)
+    case "$GH" in
+        ''|"$HOME/.local/bin/gh")
+            printf 'no real gh binary found (shim at ~/.local/bin/gh does not count)\n' >&2
+            exit 1 ;;
+    esac
+fi
 
 [ -f "$CONF" ] || { printf 'missing %s\n' "$CONF" >&2; exit 1; }
 
