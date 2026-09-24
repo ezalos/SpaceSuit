@@ -1499,7 +1499,7 @@
         },
         "claude_md_local": {
             "alias": "claude_md_local",
-            "main": "~/42/GroundControl/dotfiles/claude_md.thebeast",
+            "main": "~/42/GroundControl/dotfiles/claude_md.local",
             "deploy": {
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.claude/CLAUDE.local.md",
@@ -1508,14 +1508,25 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.claude/CLAUDE.local.md",
                     "backups": []
+                },
+                "TinyButMighty.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/CLAUDE.local.md",
+                    "backups": []
+                },
+                "MacBook.Pro.de.Louis.local.louis": {
+                    "deploy_path": "/Users/louis/.claude/CLAUDE.local.md",
+                    "backups": []
                 }
             },
             "only_devices": [
                 "TheBeast.ezalos",
-                "Louiss.MacBook.Pro.3.local.ezalos"
+                "Louiss.MacBook.Pro.3.local.ezalos",
+                "TinyButMighty.ezalos",
+                "MacBook.Pro.de.Louis.local.louis"
             ],
             "variants": {
-                "Louiss.MacBook.Pro.3.local.ezalos": "~/42/GroundControl/dotfiles/claude_md.mac"
+                "Louiss.MacBook.Pro.3.local.ezalos": "~/42/GroundControl/dotfiles/claude_md.mac",
+                "TheBeast.ezalos": "~/42/GroundControl/dotfiles/claude_md.thebeast"
             },
             "fanout": false
         }
