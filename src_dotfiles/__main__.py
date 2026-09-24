@@ -474,6 +474,48 @@ class ManageDotfiles:
         logger.info(f"unset_variant: {alias} no longer has a variant for {device}")
         return alias
 
+    def set_deploy_path(self, alias: str, device: str, path: str) -> Optional[str]:
+        """Change where an existing alias deploys on one device.
+
+        Registry only: the link already at the old path is left in place. On the
+        device itself, `unlink` the old link, then `deploy --alias=<alias>`.
+        Backups recorded for that device are kept (they stay true history).
+
+        Args:
+            alias (str): existing alias.
+            device (str): device that already has a deploy entry for this alias
+                (use `extend_to` to add one).
+            path (str): new absolute deploy path on that device.
+
+        Returns:
+            Optional[str]: the alias on success, None on refusal.
+        """
+        model = self.db.metadata.dotfiles.get(alias)
+        if model is None:
+            logger.error(f"set_deploy_path: no dotfile with alias {alias!r} in registry")
+            return None
+        if device not in model.deploy:
+            logger.error(
+                f"set_deploy_path: {alias} has no deploy entry for {device!r}; "
+                f"use `extend_to {alias} {device} --deploy-path=...` (known: {sorted(model.deploy)})"
+            )
+            return None
+        if not os.path.isabs(path):
+            logger.error(f"set_deploy_path: path {path!r} must be absolute (it is that device's path)")
+            return None
+        old = model.deploy[device].deploy_path
+        if old == path:
+            logger.info(f"set_deploy_path: {alias} already deploys to {path} on {device}; no change")
+            return alias
+        model.deploy[device].deploy_path = path
+        self.db.metadata.dotfiles[alias] = model
+        self.db.save_all()
+        logger.info(
+            f"set_deploy_path: {alias} on {device}: {old} -> {path}. On {device}: "
+            f"`unlink {old}` if it is still the old link, then `deploy --alias={alias}`."
+        )
+        return alias
+
     def set_global(self, alias: str) -> None:
         """Mark a dotfile as eligible for deployment on every device.
 

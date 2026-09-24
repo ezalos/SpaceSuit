@@ -1565,3 +1565,16 @@ def test_deploy_retargets_symlink_when_main_changes(setup_test_environment, tmp_
     assert manager.set_main("retarget_entry", str(new_src)) == "retarget_entry"
     ManageDotfiles().deploy(alias="retarget_entry")
     assert os.readlink(deploy_target) == str(new_src)
+
+
+@pytest.mark.run(order=67)
+def test_set_deploy_path_moves_one_device_entry(setup_test_environment):
+    manager = ManageDotfiles()
+    assert manager.set_deploy_path("extend_entry", "seat.someone", "/home/someone/.moved_target") == "extend_entry"
+    model = ManageDotfiles().db.metadata.dotfiles["extend_entry"]
+    assert model.deploy["seat.someone"].deploy_path == "/home/someone/.moved_target"
+    assert model.deploy[config.identifier].deploy_path != "/home/someone/.moved_target"  # other devices untouched
+    assert manager.set_deploy_path("extend_entry", "seat.someone", "relative/path") is None
+    assert manager.set_deploy_path("extend_entry", "ghost.nobody", "/home/nobody/.x") is None
+    assert manager.set_deploy_path("no_such_alias", "seat.someone", "/home/someone/.x") is None
+    assert ManageDotfiles().db.metadata.dotfiles["extend_entry"].deploy["seat.someone"].deploy_path == "/home/someone/.moved_target"

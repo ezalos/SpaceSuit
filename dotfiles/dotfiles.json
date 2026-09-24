@@ -1442,11 +1442,11 @@
             "main": "service_registry/bin/service",
             "deploy": {
                 "TheBeast.ezalos": {
-                    "deploy_path": "/home/ezalos/.local/bin/service",
+                    "deploy_path": "/home/ezalos/.local/bin/service-registry",
                     "backups": []
                 },
                 "lighthouse.ezalos": {
-                    "deploy_path": "/home/ezalos/.local/bin/service",
+                    "deploy_path": "/home/ezalos/.local/bin/service-registry",
                     "backups": []
                 }
             },
@@ -1454,7 +1454,9 @@
                 "TheBeast.ezalos",
                 "lighthouse.ezalos"
             ],
-            "variants": null,
+            "variants": {
+                "TheBeast.ezalos": "~/42/GroundControl/monitoring/bin/service"
+            },
             "fanout": false
         },
         "service_checks_bin": {
@@ -1474,7 +1476,9 @@
                 "TheBeast.ezalos",
                 "lighthouse.ezalos"
             ],
-            "variants": null,
+            "variants": {
+                "TheBeast.ezalos": "~/42/GroundControl/monitoring/tools/service-checks"
+            },
             "fanout": false
         },
         "deep_research_web_bin": {
