@@ -748,7 +748,20 @@ if [[ -n "${ZSHRC_LOCAL_NVM_EXTRA_PATH:-}" || $WHICH_COMPUTER == "MacBook" ]]; t
 fi
 
 # Claude Code
-claude() { command claude --enable-auto-mode --rc "$@"; }
+# A tree can carry its own settings in <root>/.claude/tree-settings.json, found by walking up from
+# $PWD and passed with --settings. Claude Code reads no settings from parent directories, and reads
+# autoMode only from user, managed or --settings scope, so this is how a tree's rules travel with it.
+claude() {
+    local dir=$PWD
+    local -a tree=()
+    while [[ $dir != / ]]; do
+        if [[ -f $dir/.claude/tree-settings.json ]]; then
+            tree=(--settings "$dir/.claude/tree-settings.json"); break
+        fi
+        dir=${dir:h}
+    done
+    command claude --enable-auto-mode --rc "${tree[@]}" "$@"
+}
 # claudetg disabled 2026-05-28: telegram channel leaked 100%-CPU `bun server.ts` orphans on session crash. Plugin also off in claude_settings; notify-louis (outbound) unaffected.
 # claudetg() { command claude --enable-auto-mode --channels plugin:telegram@claude-plugins-official --rc "$@"; }
 
