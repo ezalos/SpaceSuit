@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-# ABOUTME: tusd post-finish hook — moves a completed upload into /srv/upload/inbox/ under a
-# ABOUTME: datetime-prefixed name so same-name uploads can never collide, shadow, or get lost.
+# ABOUTME: tusd post-finish hook — moves a completed upload into /srv/upload/inbox/ (or a route folder
+# ABOUTME: under /srv/upload/to/) under a datetime-prefixed name, so same-name uploads never collide.
 import sys, json, os, shutil, re, datetime
-INBOX = "/srv/upload/inbox"
+INBOX = os.environ.get("UPLOAD_INBOX", "/srv/upload/inbox")
+# Route folders: an upload whose "destination" metadata names an EXISTING folder here lands
+# in it instead of the inbox, for a relay to carry elsewhere. The folders are the allowlist,
+# so this public hook never names a machine. They sit outside the inbox on purpose: the
+# inbox is pulled recursively, and a route inside it would be raced by that pull.
+ROUTES = os.environ.get("UPLOAD_ROUTES", "/srv/upload/to")
+DEST_NAME = re.compile(r'[a-z0-9-]{1,32}')
 
 # A name the browser UI already stamped. Preserving it is what lets the UI print the
 # real landing path in its "pull uploads then read ..." prompt: the name it showed is
@@ -18,17 +24,28 @@ def final_name(raw, now):
     return f"{now.strftime('%Y-%m-%d_%H%M%S')}_{name}"
 
 
+def landing_dir(dest, routes, inbox):
+    """The folder an upload lands in: its route folder when `dest` names one, else the inbox."""
+    if not isinstance(dest, str) or not DEST_NAME.fullmatch(dest):
+        return inbox
+    folder = os.path.join(routes, dest)
+    if not os.path.isdir(folder) or os.path.dirname(os.path.realpath(folder)) != os.path.realpath(routes):
+        return inbox
+    return folder
+
+
 def main():
     up = json.load(sys.stdin)["Event"]["Upload"]
     src = up["Storage"]["Path"]
     if not src or not os.path.isfile(src):
         sys.stderr.write(f"[post-finish] refuse: not a regular file: {src!r}\n"); sys.exit(1)
-    name = final_name((up.get("MetaData") or {}).get("filename") or os.path.basename(src),
-                      datetime.datetime.now())
+    meta = up.get("MetaData") or {}
+    name = final_name(meta.get("filename") or os.path.basename(src), datetime.datetime.now())
+    folder = landing_dir(meta.get("destination"), ROUTES, INBOX)
     base, ext = os.path.splitext(name)
-    dst = os.path.join(INBOX, name); i = 2
+    dst = os.path.join(folder, name); i = 2
     while os.path.exists(dst):  # same name in the same second — vanishingly rare
-        dst = os.path.join(INBOX, f"{base}_{i}{ext}"); i += 1
+        dst = os.path.join(folder, f"{base}_{i}{ext}"); i += 1
     shutil.move(src, dst)
     if os.path.exists(src + ".info"): os.remove(src + ".info")
     sys.stderr.write(f"[post-finish] moved -> {dst}\n")

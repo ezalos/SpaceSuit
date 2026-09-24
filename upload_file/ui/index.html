@@ -33,13 +33,23 @@
   }
   .log .path:hover { background: rgba(80, 200, 120, 0.20); }
   .log .path .label { color: #888; font-size: 0.75rem; flex-shrink: 0; }
-  .log .path .p { flex: 1; word-break: break-all; }
+  .log .path .p { flex: 1; overflow-wrap: anywhere; }
   .log .path .copied { color: #2a6; font-size: 0.75rem; font-weight: 600; flex-shrink: 0; }
+  .dest { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+  .dest[hidden] { display: none; }
+  .dest label {
+    flex: 1; text-align: center; padding: 0.7rem 0.5rem; border: 2px solid #888; border-radius: 6px;
+    cursor: pointer; font-weight: 600;
+  }
+  .dest input { display: none; }
+  .dest label:has(input:checked) { border-color: #2a6; background: rgba(80, 200, 120, 0.18); }
 </style>
 </head>
 <body>
 <h1>Upload to inbox</h1>
 <div class="sub">Files land on TinyButMighty. Pull on the laptop with <code>pull-uploads</code>. Resumable &amp; chunked — large files are fine.</div>
+
+<div class="dest" id="dest" hidden></div>
 
 <label class="drop" id="drop">
   <input type="file" id="files" multiple accept="*/*">
@@ -59,6 +69,43 @@ const drop = $("drop"), input = $("files"), go = $("go"), prog = $("prog"), log 
 // Each PATCH chunk stays under Cloudflare's 100MB proxy cap, so any file size works
 // through the tunnel. Resumable: an interrupted upload continues instead of restarting.
 const CHUNK = 48 * 1024 * 1024;
+
+// Where an upload goes. The server may publish destinations.json next to this page:
+// [{"id": "", "label": "...", "prompt": "... {name} ..."}, ...]. id "" is the inbox; any
+// other id names a route folder the post-finish hook knows. Without the file there is one
+// destination, the inbox, and the page looks as it always did.
+const INBOX_PROMPT = 'pull uploads then read "~/Inbox/{name}"';
+let destinations = [{ id: "", label: "inbox", prompt: INBOX_PROMPT }];
+const DEST_KEY = "upload.destination";
+
+function chosenDest() {
+  const c = document.querySelector('input[name="dest"]:checked');
+  return (c && c.value) || "";
+}
+
+async function loadDestinations() {
+  try {
+    const res = await fetch("destinations.json", { cache: "no-store" });
+    if (!res.ok) return;
+    const list = await res.json();
+    if (Array.isArray(list) && list.length) destinations = list;
+  } catch (e) { return; }
+  if (destinations.length < 2) return;
+  let saved = "";
+  try { saved = localStorage.getItem(DEST_KEY) || ""; } catch (e) { /* private mode */ }
+  if (!destinations.some(d => d.id === saved)) saved = destinations[0].id;
+  const box = $("dest");
+  for (const d of destinations) {
+    const label = document.createElement("label");
+    const radio = document.createElement("input");
+    radio.type = "radio"; radio.name = "dest"; radio.value = d.id; radio.checked = d.id === saved;
+    radio.addEventListener("change", () => { try { localStorage.setItem(DEST_KEY, d.id); } catch (e) {} });
+    label.append(radio, d.label);
+    box.append(label);
+  }
+  box.hidden = false;
+}
+loadDestinations();
 
 function append(msg, cls = "info") {
   const d = document.createElement("div");
@@ -97,8 +144,9 @@ function finalName(file) {
   return `${stamp}_${base}`;
 }
 
-function appendPath(filename) {
-  const prompt = `pull uploads then read "~/Inbox/${filename}"`;
+function appendPath(filename, dest) {
+  const d0 = destinations.find(d => d.id === dest);
+  const prompt = ((d0 && d0.prompt) || INBOX_PROMPT).replace("{name}", filename);
   const d = document.createElement("div");
   d.className = "path";
   const label = document.createElement("span"); label.className = "label"; label.textContent = "prompt:";
@@ -133,14 +181,15 @@ drop.addEventListener("drop", ev => { input.files = ev.dataTransfer.files; updat
 function uploadFile(file) {
   return new Promise((resolve, reject) => {
     let name = finalName(file); // reassigned below if this resumes an earlier attempt
+    let dest = chosenDest();
     const upload = new tus.Upload(file, {
       endpoint: "/files/",
       chunkSize: CHUNK,
       retryDelays: [0, 1000, 3000, 5000, 10000],
       removeFingerprintOnSuccess: true,
-      metadata: { filename: name, filetype: file.type || "application/octet-stream" },
+      metadata: { filename: name, filetype: file.type || "application/octet-stream", destination: dest },
       onProgress: (sent, total) => { prog.max = total; prog.value = sent; },
-      onSuccess: () => { append(`ok  ${file.name}`, "ok"); appendPath(name); resolve(); },
+      onSuccess: () => { append(`ok  ${file.name}`, "ok"); appendPath(name, dest); resolve(); },
       onError: err => { append(`err ${file.name}: ${err}`, "err"); reject(err); },
     });
     // Resume if this exact file was interrupted before; otherwise start fresh.
@@ -149,6 +198,7 @@ function uploadFile(file) {
         // A resumed upload keeps the filename it was CREATED with server-side, so the
         // prompt must name that one rather than a fresh stamp.
         name = (prev[0].metadata && prev[0].metadata.filename) || name;
+        dest = (prev[0].metadata && prev[0].metadata.destination) || "";
         upload.resumeFromPreviousUpload(prev[0]);
       }
       upload.start();

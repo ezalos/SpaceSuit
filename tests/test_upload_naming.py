@@ -70,3 +70,48 @@ def test_ui_names_survive_the_hook_unchanged():
     for raw, name in zip(raws, json.loads(out)):
         assert post_finish.PREFIXED.match(name), f"{raw!r} -> {name!r} lacks the prefix the hook looks for"
         assert post_finish.final_name(name, NOW) == name, f"{raw!r} -> hook rewrote {name!r}"
+
+
+def test_existing_route_folder_is_the_destination(tmp_path):
+    (tmp_path / "seat").mkdir()
+    assert post_finish.landing_dir("seat", str(tmp_path), "/inbox") == str(tmp_path / "seat")
+
+
+@pytest.mark.parametrize("dest", [None, "", "unknown", "..", "../seat", "seat/..", "SEAT", ".", "a" * 33, "seat\n"])
+def test_unknown_or_hostile_destination_falls_back_to_the_inbox(tmp_path, dest):
+    """Only a plain name whose folder exists routes; everything else lands where it always did."""
+    (tmp_path / "seat").mkdir()
+    assert post_finish.landing_dir(dest, str(tmp_path), "/inbox") == "/inbox"
+
+
+def test_symlinked_route_escaping_the_root_is_refused(tmp_path):
+    (tmp_path / "routes").mkdir()
+    (tmp_path / "elsewhere").mkdir()
+    (tmp_path / "routes" / "seat").symlink_to(tmp_path / "elsewhere")
+    assert post_finish.landing_dir("seat", str(tmp_path / "routes"), "/inbox") == "/inbox"
+
+
+def _run_hook(tmp_path, meta):
+    inbox, routes, tus = tmp_path / "inbox", tmp_path / "to", tmp_path / "tus"
+    for d in (inbox, routes / "seat", tus):
+        d.mkdir(parents=True, exist_ok=True)
+    src = tus / "abc123"
+    src.write_text("payload")
+    (tus / "abc123.info").write_text("{}")
+    event = {"Event": {"Upload": {"Storage": {"Path": str(src)}, "MetaData": meta}}}
+    env = {"PATH": "/usr/bin:/bin", "UPLOAD_INBOX": str(inbox), "UPLOAD_ROUTES": str(routes)}
+    subprocess.run([sys.executable, str(_HOOK_PATH)], input=json.dumps(event),
+                   text=True, env=env, check=True, capture_output=True)
+    return inbox, routes, tus
+
+
+def test_hook_moves_a_routed_upload_into_its_folder(tmp_path):
+    inbox, routes, tus = _run_hook(tmp_path, {"filename": "2026-08-18_161500_x.pdf", "destination": "seat"})
+    assert [p.name for p in (routes / "seat").iterdir()] == ["2026-08-18_161500_x.pdf"]
+    assert list(inbox.iterdir()) == [] and list(tus.iterdir()) == []
+
+
+def test_hook_without_destination_lands_in_the_inbox(tmp_path):
+    inbox, routes, _ = _run_hook(tmp_path, {"filename": "2026-08-18_161500_x.pdf"})
+    assert [p.name for p in inbox.iterdir()] == ["2026-08-18_161500_x.pdf"]
+    assert list((routes / "seat").iterdir()) == []
