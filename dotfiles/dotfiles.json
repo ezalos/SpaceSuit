@@ -627,7 +627,7 @@
         },
         "claude_md": {
             "alias": "claude_md",
-            "main": "~/42/GroundControl/dotfiles/claude_md",
+            "main": "dotfiles/claude_md",
             "deploy": {
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.claude/CLAUDE.md",
@@ -649,18 +649,14 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.claude/CLAUDE.md",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/CLAUDE.md",
+                    "backups": []
                 }
             },
-            "only_devices": [
-                "TheBeast.ezalos",
-                "TinyButMighty.ezalos",
-                "MacBook.Pro.de.Louis.local.louis",
-                "Louiss.MacBook.Pro.3.local.ezalos"
-            ],
-            "variants": {
-                "TheBeast.ezalos": "~/42/GroundControl/dotfiles/claude_md.thebeast",
-                "Louiss.MacBook.Pro.3.local.ezalos": "~/42/GroundControl/dotfiles/claude_md.mac"
-            },
+            "only_devices": null,
+            "variants": null,
             "fanout": false
         },
         "claude_settings": {
@@ -1499,6 +1495,28 @@
                 "lighthouse.ezalos"
             ],
             "variants": null,
+            "fanout": false
+        },
+        "claude_md_local": {
+            "alias": "claude_md_local",
+            "main": "~/42/GroundControl/dotfiles/claude_md.thebeast",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/CLAUDE.local.md",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.claude/CLAUDE.local.md",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos",
+                "Louiss.MacBook.Pro.3.local.ezalos"
+            ],
+            "variants": {
+                "Louiss.MacBook.Pro.3.local.ezalos": "~/42/GroundControl/dotfiles/claude_md.mac"
+            },
             "fanout": false
         }
     },
