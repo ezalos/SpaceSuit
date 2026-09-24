@@ -3,7 +3,6 @@
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -72,6 +71,16 @@ def test_service_cli_enforces_host_allowlist_when_set(tmp_path):
             env_extra={"SERVICE_REGISTRY": str(reg), "SERVICE_HOSTS": "host1,host2"})
     assert r.returncode == 2
     assert "SERVICE_HOSTS" in r.stderr
+    assert not reg.exists()
+
+
+def test_service_cli_rejects_non_slug_host(tmp_path):
+    reg = tmp_path / "services.yaml"
+    r = run([str(SERVICE), "--registry", str(reg), "register", "demo", "--host", "My_Host",
+             "--kind", "systemd-user", "--intended", "running",
+             "--start", "true", "--stop", "true", "--check", "true"])
+    assert r.returncode == 2
+    assert "My_Host" in r.stderr
     assert not reg.exists()
 
 
