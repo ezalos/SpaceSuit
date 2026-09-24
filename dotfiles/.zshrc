@@ -114,7 +114,9 @@ fi
 # Machine-local overrides: identity + capability flags for THIS box only.
 # Untracked, one per machine -- a box's own hostname/identity and any
 # machine-specific tweaks (SSH key, conda, extra PATH entries, ...) live here
-# instead of in this public file. See the flags this file reads further down
+# instead of in this public file. A machine with no hostname branch below
+# pins its identity here: export WHICH_COMPUTER=<name>. See the flags this
+# file reads further down
 # (ZSHRC_LOCAL_*) for the supported hooks.
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local
 

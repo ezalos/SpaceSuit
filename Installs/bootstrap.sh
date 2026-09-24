@@ -191,6 +191,25 @@ else
     echo "[bootstrap] tmux needs 'sudo apt install tmux' (or equivalent) -- bootstrap.sh cannot do this without root" >&2
 fi
 
+# --- pass-cli: Proton Pass CLI, from the vendor index, sha256-verified ------
+# Never upgrades an existing install -- an upgrade is an explicit, by-hand run
+# of install-pass-cli.sh. This step only ever fills in a genuinely missing binary.
+if command -v pass-cli >/dev/null 2>&1; then
+    status "pass-cli" "skipped(present)"
+elif "$(dirname "$0")/install-pass-cli.sh"; then
+    status "pass-cli" "ok"
+else
+    status "pass-cli" "FAILED"
+fi
+
+# --- apt-only tools: report the one line root has to run ---------------------
+missing=""
+for t in zsh tmux jq socat; do command -v "$t" >/dev/null 2>&1 || missing="$missing $t"; done
+if [ -n "$missing" ]; then
+    echo "[bootstrap] root needed once, paste in a normal window:" >&2
+    echo "sudo apt install -y$missing" >&2
+fi
+
 if [[ $FAILED -eq 0 ]]; then
     echo "[bootstrap] done: all-ok"
 else

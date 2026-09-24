@@ -5,7 +5,7 @@
 CACHE_FILE="${HOME}/.cache/dotfiles_sync_status"
 FETCH_MARKER="${HOME}/.cache/dotfiles_sync.last_fetch"
 LOCK_DIR="${HOME}/.cache/dotfiles_sync.lock.d"
-SETUP_DIR="${HOME}/Setup"
+SETUP_DIR="${HOME}/42/SpaceSuit"
 MAX_AGE=1800  # 30 minutes in seconds
 
 mkdir -p "${HOME}/.cache"

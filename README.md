@@ -13,7 +13,7 @@ minutes. Public on purpose: clone it, take what fits, leave what doesn't.
 | `dotfiles/` | shell, editor, terminal, git config — deployed as symlinks by the registry below |
 | `src_dotfiles/` | the deployer: a per-device registry (`dotfiles/dotfiles.json`) that fans files out as symlinks, tracks variants per machine, and never needs hand-editing (`python -m src_dotfiles --help`) |
 | `skills/` | Claude Code skills — self-contained agent workflows (`SKILL.md` + tooling per dir) |
-| `Installs/` | install helpers (mostly vestigial; see Installs/) |
+| `Installs/` | install helpers (mostly vestigial; see Installs/) — `bootstrap.sh` is the user-space toolchain install for a fresh box, and its one apt-dependent step (`zsh`/`tmux`/`jq`/`socat`) prints the single `sudo apt install` line to paste rather than running it; `install-pass-cli.sh` installs the Proton Pass CLI from the vendor index, sha256-verified |
 | `bin/` | small CLI wrappers added to PATH |
 | `netwatch/` | a home-network black-box recorder: link/gateway/WAN probes, outage forensics, publishable dashboard |
 | `claude_usage/` | family Claude accounts: usage meters, machine-wide account switch, failover watcher (`/claude-usage`) |
