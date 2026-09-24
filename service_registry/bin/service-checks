@@ -1,0 +1,111 @@
+#!/usr/bin/env -S uv run --script -q
+# ABOUTME: Runs the check: command of every registry entry for this host and reports failures as JSON.
+# ABOUTME: Registry from $SERVICE_REGISTRY (or $SERVICES_FILE), host from $HOST_ID, timeout from $SERVICE_CHECK_TIMEOUT.
+# /// script
+# requires-python = ">=3.13"
+# dependencies = ["pyyaml>=6.0"]
+# ///
+import concurrent.futures
+import json
+import os
+import platform
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT.parent))
+
+from service_registry import registry  # noqa: E402
+
+# A check string asserts "this service is UP". For `intended: stopped` that
+# assertion is expected to FAIL while the service is correctly off — running it
+# would turn every deliberately-disabled service into a permanent finding.
+# services-drift already reports a stopped service that came back, so the
+# stopped case is covered and belongs out of this tool's scope.
+CHECKED_INTENTS = ("running", "on-demand")
+
+# Checks are independent shell commands and normally return in well under a
+# second; the cap exists for the pathological one (a curl against a hung
+# socket). Run them concurrently so the whole tool stays inside bin/sweep's
+# 120s per-tool timeout no matter how many services get registered later.
+CHECK_TIMEOUT = int(os.environ.get("SERVICE_CHECK_TIMEOUT", "15"))
+
+
+def run_check(entry: dict) -> dict:
+    sid = entry["id"]
+    cmd = entry["check"]
+    try:
+        proc = subprocess.run(
+            ["/bin/bash", "-c", cmd],
+            capture_output=True,
+            text=True,
+            timeout=CHECK_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return {"id": sid, "ok": False, "exit_code": None,
+                "detail": f"check timed out after {CHECK_TIMEOUT}s"}
+    except OSError as exc:
+        return {"id": sid, "ok": False, "exit_code": None,
+                "detail": f"could not run check: {exc}"}
+
+    detail = (proc.stderr.strip() or proc.stdout.strip())[:200]
+    return {"id": sid, "ok": proc.returncode == 0,
+            "exit_code": proc.returncode, "detail": detail}
+
+
+def main() -> int:
+    raw = os.environ.get("SERVICE_REGISTRY") or os.environ.get("SERVICES_FILE")
+    if not raw:
+        sys.stderr.write("service-checks: no registry: set SERVICE_REGISTRY\n")
+        sys.exit(2)
+    services_file = Path(raw).expanduser()
+    host = os.environ.get("HOST_ID", platform.node()).lower()
+
+    try:
+        declared = registry.load(services_file)
+    except (OSError, ValueError) as exc:
+        print(f"cannot read {services_file}: {exc}", file=sys.stderr)
+        return 2
+    if not declared:
+        print(f"no services declared in {services_file}", file=sys.stderr)
+        return 2
+
+    mine = [s for s in declared
+            if s.get("host") == host
+            and s.get("intended") in CHECKED_INTENTS
+            and s.get("check")]
+
+    # Every entry this tool did not execute is named, not silently dropped: a
+    # service whose check never runs is a blind spot, and an unexplained gap
+    # between "18 registered" and "11 checked" is exactly how one goes unnoticed.
+    skipped = {
+        "other_host": sorted(s["id"] for s in declared if s.get("host") != host),
+        "intended_stopped": sorted(
+            s["id"] for s in declared
+            if s.get("host") == host and s.get("intended") == "stopped"),
+        "no_check": sorted(
+            s["id"] for s in declared
+            if s.get("host") == host and not s.get("check")),
+    }
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(run_check, mine))
+
+    failures = [r for r in results if not r["ok"]]
+    data = {
+        "host": host,
+        "checked": len(results),
+        "passed": len(results) - len(failures),
+        "failures": failures,
+        "skipped": skipped,
+    }
+    print(json.dumps(data))
+
+    for f in failures:
+        print(f"FAIL {f['id']}: exit={f['exit_code']} {f['detail']}", file=sys.stderr)
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

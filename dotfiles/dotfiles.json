@@ -1314,6 +1314,36 @@
             "only_devices": null,
             "variants": null,
             "fanout": false
+        },
+        "service_bin": {
+            "alias": "service_bin",
+            "main": "service_registry/bin/service",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/service",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
+        },
+        "service_checks_bin": {
+            "alias": "service_checks_bin",
+            "main": "service_registry/bin/service-checks",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/service-checks",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
         }
     },
     "devices": {

@@ -1,0 +1,178 @@
+#!/usr/bin/env -S uv run --script -q
+# ABOUTME: The service registry CLI. A services.yaml is NEVER hand-edited; this owns it.
+# ABOUTME: Subcommands: register, set, rename, list, validate. The registry path comes from --registry or $SERVICE_REGISTRY.
+# /// script
+# requires-python = ">=3.13"
+# dependencies = ["pyyaml>=6.0"]
+# ///
+import argparse
+import os
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent  # service_registry/
+sys.path.insert(0, str(ROOT.parent))           # the repo root, so `service_registry` imports
+
+from service_registry import registry  # noqa: E402
+
+HOST_SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+def resolve_registry(arg: str | None) -> Path:
+    raw = arg or os.environ.get("SERVICE_REGISTRY")
+    if not raw:
+        sys.stderr.write("service: no registry: pass --registry <path> or set SERVICE_REGISTRY\n")
+        sys.exit(2)
+    return Path(raw).expanduser()
+
+
+def check_host(host: str) -> None:
+    if not HOST_SLUG.match(host):
+        sys.stderr.write(f"service: host {host!r} must be a lowercase slug ([a-z0-9-])\n")
+        sys.exit(2)
+    allowed = os.environ.get("SERVICE_HOSTS")
+    if allowed and host not in [h.strip() for h in allowed.split(",") if h.strip()]:
+        sys.stderr.write(f"service: host {host!r} is not in SERVICE_HOSTS={allowed}\n")
+        sys.exit(2)
+
+
+def cmd_register(args) -> int:
+    check_host(args.host)
+    services = registry.load(args.registry)
+    fields = {"id": args.id, "host": args.host, "kind": args.kind,
+              "intended": args.intended, "start": args.start, "stop": args.stop,
+              "check": args.check}
+    if args.why:
+        fields["why"] = args.why
+    if args.since:
+        fields["since"] = args.since
+    try:
+        services = registry.register(services, **fields)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    problems = registry.validate(services)
+    if problems:
+        print("\n".join(problems), file=sys.stderr)
+        return 1
+    registry.save(services, args.registry)
+    print(f"registered {args.id}")
+    return 0
+
+
+def cmd_set(args) -> int:
+    if args.host is not None:
+        check_host(args.host)
+    services = registry.load(args.registry)
+    match = [s for s in services if s["id"] == args.id]
+    if not match:
+        print(f"unknown service {args.id!r}", file=sys.stderr)
+        return 1
+    if args.intended:
+        match[0]["intended"] = args.intended
+    if args.why:
+        match[0]["why"] = args.why
+    if args.since:
+        match[0]["since"] = args.since
+    # `rename` only changes the id; without these a renamed service keeps
+    # start/stop/check pointing at units that no longer exist, and the weekly
+    # reconciliation checks a dead unit name.
+    for field in ("start", "stop", "check", "host", "kind"):
+        value = getattr(args, field, None)
+        if value:
+            match[0][field] = value
+    problems = registry.validate(services)
+    if problems:
+        print("\n".join(problems), file=sys.stderr)
+        return 1
+    registry.save(services, args.registry)
+    print(f"updated {args.id}")
+    return 0
+
+
+def cmd_rename(args) -> int:
+    # Renames a service id in place. Exists because ids must match unit names
+    # for reconciliation (the alfred-daemon/alfred false-drift of 2026-08-08).
+    services = registry.load(args.registry)
+    match = [s for s in services if s["id"] == args.id]
+    if not match:
+        print(f"unknown service {args.id!r}", file=sys.stderr)
+        return 1
+    if any(s["id"] == args.new_id for s in services):
+        print(f"target id {args.new_id!r} already exists", file=sys.stderr)
+        return 1
+    match[0]["id"] = args.new_id
+    problems = registry.validate(services)
+    if problems:
+        print("\n".join(problems), file=sys.stderr)
+        return 1
+    registry.save(services, args.registry)
+    print(f"renamed {args.id} -> {args.new_id}")
+    return 0
+
+
+def cmd_list(args) -> int:
+    services = registry.load(args.registry)
+    for s in services:
+        why = f"  ({s['why']})" if s.get("why") else ""
+        print(f"{s['id']:<24} {s['host']:<16} {s['intended']:<10}{why}")
+    return 0
+
+
+def cmd_validate(args) -> int:
+    problems = registry.validate(registry.load(args.registry))
+    if problems:
+        print("\n".join(problems), file=sys.stderr)
+        return 1
+    print("services.yaml is valid")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Own services.yaml. Never hand-edit that file.")
+    ap.add_argument("--registry", default=None, help="registry file; default $SERVICE_REGISTRY")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    r = sub.add_parser("register")
+    r.add_argument("id")
+    r.add_argument("--host", required=True)
+    r.add_argument("--kind", required=True)
+    r.add_argument("--intended", required=True, choices=list(registry.VALID_INTENDED))
+    r.add_argument("--start", required=True)
+    r.add_argument("--stop", required=True)
+    r.add_argument("--check", required=True)
+    r.add_argument("--why")
+    r.add_argument("--since")
+    r.set_defaults(func=cmd_register)
+
+    s = sub.add_parser("set")
+    s.add_argument("id")
+    s.add_argument("--intended", choices=list(registry.VALID_INTENDED))
+    s.add_argument("--why")
+    s.add_argument("--since")
+    s.add_argument("--start")
+    s.add_argument("--stop")
+    s.add_argument("--check")
+    s.add_argument("--host")
+    s.add_argument("--kind")
+    s.set_defaults(func=cmd_set)
+
+    rn = sub.add_parser("rename")
+    rn.add_argument("id")
+    rn.add_argument("new_id")
+    rn.set_defaults(func=cmd_rename)
+
+    ls = sub.add_parser("list")
+    ls.set_defaults(func=cmd_list)
+
+    v = sub.add_parser("validate")
+    v.set_defaults(func=cmd_validate)
+
+    args = ap.parse_args()
+    args.registry = resolve_registry(args.registry)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
