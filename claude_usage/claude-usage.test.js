@@ -463,6 +463,18 @@ test('decide: fableCeiling fires independently of the other windows, and bypasse
   assert.match(d.reason, /Fable 91% ≥ 90% floor/);
 });
 
+test('decide: fableCeiling null is the gate off — a spent Fable window is no reason to move', () => {
+  const t = fresh();
+  const off = { ...T, fableCeiling: null };
+  const live = { name: 'live', checkedOut: true, usage: { session: { percent: 0 }, weekly: { percent: 20, resetsAt: iso(3600e3) }, scoped: [{ label: 'Fable', percent: 100, resetsAt: iso(1800e3) }] } };
+  const rows = [live, row('spare', 10, 5)];
+  assert.equal(t.m.unusable(live, off, T.sessionHot), null, 'usable under the hard-rule bound');
+  assert.equal(t.m.decide({ rows, live: 'live', thresholds: off, exhaustedSince: null }).action, 'none');
+  assert.match(t.m.unusable(live, T, T.sessionHot), /Fable 100% ≥ 90% floor/, 'the same row with the gate on');
+  assert.doesNotMatch(t.m.resetsLine([live], off), /resets in/, 'gate off: nothing is spent under a bound, so the worst percentage');
+  assert.match(t.m.resetsLine([live], T), /live resets in/, 'gate on: the Fable reset is the clause');
+});
+
 test('decide: the hold window suppresses a rotation, never the hard rule', () => {
   const t = fresh();
   const cand = { name: 'cand', usage: { session: { percent: 5 }, weekly: { percent: 10, resetsAt: iso(3600e3) }, scoped: [] } };
@@ -608,6 +620,18 @@ test('cmdAuto on: the EDF thresholds are settable by flag, persist, and the reti
   assert.equal(th.sessionHot, 80); assert.equal(th.sessionWarm, 60); assert.equal(th.edfLeadMs, 3 * 3_600_000);
   assert.equal(th.minHoldMs, 5 * 60_000); assert.equal(th.fableCeiling, 88);
   for (const dead of ['gapThreshold', 'sessionWeight', 'tieBandPoints', 'homeBelow']) assert.equal(th[dead], undefined, `${dead} is retired`);
+});
+
+test('cmdAuto on: --fable-ceiling off stores null and says so; a number restores the gate', async () => {
+  const t = fresh();
+  const lines = []; console.log = (m = '') => lines.push(String(m));
+  await t.m.cmdAuto('on', { 'fable-ceiling': 'off' });
+  assert.equal(t.m.thresholds().fableCeiling, null);
+  assert.match(lines.at(-1), /hard rule: .*Fable gate off/); assert.doesNotMatch(lines.at(-1), /Fable ≥/);
+  await t.m.cmdAuto('on', { 'fable-ceiling': 90 });
+  assert.equal(t.m.thresholds().fableCeiling, 90);
+  assert.match(lines.at(-1), /Fable ≥90%/);
+  console.log = () => {};
 });
 
 test('parseArgv: every flag `auto on` reads takes a space-separated value', () => {

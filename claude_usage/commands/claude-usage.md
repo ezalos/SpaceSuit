@@ -122,7 +122,8 @@ Switching (Louis asks "switch to work", "use the perso account", "which account 
 - `claude-usage auto status` — live/home, the four gates, the EDF pick and why, the last decision. `auto on|off`
   controls the watcher (systemd user timer here, launchd on a Mac), every 60 s:
   - **Hard rule** — the live account cannot serve: a locked window, 5-hour ≥ 85 % (`sessionHot`), weekly ≥ 95 %
-    (`switchAt`), or Fable ≥ 90 % (`fableCeiling`). It moves now, to the usable account whose weekly reset is
+    (`switchAt`), or Fable ≥ 90 % (`fableCeiling`; `auto on --fable-ceiling off` drops that gate while Fable is not
+    the model in use, `--fable-ceiling 90` restores it). It moves now, to the usable account whose weekly reset is
     soonest (EDF) — perso only when nothing preferred is usable, and the log says so. Never held back. The 5-hour
     bound sits under 100 because a switch lands at the next request: at 98 % there is no headroom to absorb that.
   - **Rotation** — otherwise, the EDF pick among usable accounts in the live account's tier or better (perso is
