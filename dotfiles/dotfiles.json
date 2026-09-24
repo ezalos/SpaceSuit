@@ -1191,11 +1191,16 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.local/bin/tls",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/tls",
+                    "backups": []
                 }
             },
             "only_devices": [
                 "TheBeast.ezalos",
-                "Louiss.MacBook.Pro.3.local.ezalos"
+                "Louiss.MacBook.Pro.3.local.ezalos",
+                "lighthouse.ezalos"
             ],
             "variants": null,
             "fanout": false
