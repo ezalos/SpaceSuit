@@ -81,7 +81,14 @@ describe it:
 5. **`ABOUTME:` headers / docstrings** for files whose behavior changed.
 
 Auto-apply the edits (the commit step stages them). Touch only docs clearly
-stale relative to *this session's* changes; leave the rest. If you spot a doc
+stale relative to *this session's* changes; leave the rest.
+
+**Run the repo's tests after these edits and BEFORE the commit in 1b, in a
+separate command.** Docs are not exempt: repos guard their own docs (a test that
+forbids a phrase, a link checker, a lint on headings), so a "safe" doc edit can
+break the suite. Chaining `pytest && git commit && git push` in one command
+pushes the breakage before the result is readable — seen in this skill's own
+2026-09-24 run, which needed a second commit to repair the first. If you spot a doc
 that is stale but out of scope to fix here, note it in the summary. Log:
 
 ```
@@ -164,7 +171,10 @@ claude-log wrap-up INFO "wrap-up: no deploy marker in <repo>; skipped"
 
 ### 1e. Task cleanup
 
-1. Run TaskList. Read all tasks.
+1. Run TaskList. Read all tasks. **If the harness exposes no task tool, skip
+   this sub-phase** and say "no task tool in this harness" in the summary — the
+   todo sweep in 1f and the loose-end sweep in Phase 5 already cover what would
+   have been caught here.
 2. For tasks completed during this session but still `pending` or `in_progress`: TaskUpdate to `completed`.
 3. For tasks `pending` for ≥2 sessions without progress: mark them as orphaned in the summary. Do NOT auto-delete. Log:
 
