@@ -45,6 +45,10 @@
                 "smic": {
                     "deploy_path": "/home/labuser/.config/neofetch/config.conf",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/neofetch/config.conf",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -95,6 +99,10 @@
                 "smic": {
                     "deploy_path": "/home/labuser/.zshrc",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.zshrc",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -139,6 +147,10 @@
                 },
                 "smic": {
                     "deploy_path": "/home/labuser/.vimrc",
+                    "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.vimrc",
                     "backups": []
                 }
             },
@@ -216,6 +228,10 @@
                             "datetime": "2026-02-06_17:23:58.318363"
                         }
                     ]
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/nvim",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -265,6 +281,10 @@
                 },
                 "smic": {
                     "deploy_path": "/home/labuser/.bashrc",
+                    "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.bashrc",
                     "backups": []
                 }
             },
@@ -316,6 +336,10 @@
                 "smic": {
                     "deploy_path": "/home/labuser/.config/terminator/config",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/terminator/config",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -360,6 +384,10 @@
                 },
                 "smic": {
                     "deploy_path": "/home/labuser/.p10k.zsh",
+                    "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.p10k.zsh",
                     "backups": []
                 }
             },
@@ -406,6 +434,10 @@
                 "smic": {
                     "deploy_path": "/home/labuser/.gdbinit",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.gdbinit",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -450,6 +482,10 @@
                 },
                 "smic": {
                     "deploy_path": "/home/labuser/.jupyter/jupyter_notebook_config.py",
+                    "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.jupyter/jupyter_notebook_config.py",
                     "backups": []
                 }
             },
@@ -496,6 +532,10 @@
                 "smic": {
                     "deploy_path": "/home/labuser/.warp/launch_configurations/launch_config.yaml",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.warp/launch_configurations/launch_config.yaml",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -541,6 +581,10 @@
                 "smic": {
                     "deploy_path": "/home/labuser/.tmux.conf",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.tmux.conf",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -570,6 +614,10 @@
                 },
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.config/wezterm/wezterm.lua",
+                    "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/wezterm/wezterm.lua",
                     "backups": []
                 }
             },
@@ -629,6 +677,10 @@
                         {
                             "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/claude_settings_TheBeast.ezalos_2026-08-12_14:22:04.325811",
                             "datetime": "2026-08-12_14:22:04.325811"
+                        },
+                        {
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/claude_settings_TheBeast.ezalos_2026-09-23_18:51:41.718259",
+                            "datetime": "2026-09-23_18:51:41.718259"
                         }
                     ]
                 },
@@ -686,6 +738,10 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.claude/statusline.py",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/statusline.py",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -726,6 +782,10 @@
                 "MacBook.Pro.de.Louis.local.louis": {
                     "deploy_path": "/Users/louis/.local/bin/claude-log",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/claude-log",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -747,13 +807,18 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.config/git/template/hooks/pre-commit",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/git/template/hooks/pre-commit",
+                    "backups": []
                 }
             },
             "only_devices": [
                 "TheBeast.ezalos",
                 "TinyButMighty.ezalos",
                 "MacBook.Pro.de.Louis.local.louis",
-                "Louiss.MacBook.Pro.3.local.ezalos"
+                "Louiss.MacBook.Pro.3.local.ezalos",
+                "lighthouse.ezalos"
             ],
             "variants": null,
             "fanout": false
@@ -778,13 +843,18 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.config/git-identity/scrub.py",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/git-identity/scrub.py",
+                    "backups": []
                 }
             },
             "only_devices": [
                 "TheBeast.ezalos",
                 "TinyButMighty.ezalos",
                 "MacBook.Pro.de.Louis.local.louis",
-                "Louiss.MacBook.Pro.3.local.ezalos"
+                "Louiss.MacBook.Pro.3.local.ezalos",
+                "lighthouse.ezalos"
             ],
             "variants": null,
             "fanout": false
@@ -835,13 +905,18 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.claude/skills",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/skills",
+                    "backups": []
                 }
             },
             "only_devices": [
                 "TheBeast.ezalos",
                 "TinyButMighty.ezalos",
                 "MacBook.Pro.de.Louis.local.louis",
-                "Louiss.MacBook.Pro.3.local.ezalos"
+                "Louiss.MacBook.Pro.3.local.ezalos",
+                "lighthouse.ezalos"
             ],
             "variants": null,
             "fanout": true
@@ -860,6 +935,10 @@
                 },
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.config/glow",
+                    "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/glow",
                     "backups": []
                 }
             },
@@ -902,6 +981,10 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.config/direnv/direnvrc",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/direnv/direnvrc",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -928,13 +1011,18 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.local/bin/gh",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/gh",
+                    "backups": []
                 }
             },
             "only_devices": [
                 "TheBeast.ezalos",
                 "TinyButMighty.ezalos",
                 "MacBook.Pro.de.Louis.local.louis",
-                "Louiss.MacBook.Pro.3.local.ezalos"
+                "Louiss.MacBook.Pro.3.local.ezalos",
+                "lighthouse.ezalos"
             ],
             "variants": null,
             "fanout": false
@@ -959,13 +1047,18 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.config/git-identity/gh-contexts-bootstrap.sh",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/git-identity/gh-contexts-bootstrap.sh",
+                    "backups": []
                 }
             },
             "only_devices": [
                 "TheBeast.ezalos",
                 "TinyButMighty.ezalos",
                 "MacBook.Pro.de.Louis.local.louis",
-                "Louiss.MacBook.Pro.3.local.ezalos"
+                "Louiss.MacBook.Pro.3.local.ezalos",
+                "lighthouse.ezalos"
             ],
             "variants": null,
             "fanout": false
@@ -1125,6 +1218,10 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.claude/hooks/block-outbound-comms.sh",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/hooks/block-outbound-comms.sh",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -1182,6 +1279,10 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.local/bin/deep-research",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/deep-research",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -1218,12 +1319,17 @@
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.claude/claude-usage/claude-usage.js",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/claude-usage/claude-usage.js",
+                    "backups": []
                 }
             },
             "only_devices": [
                 "TheBeast.ezalos",
                 "Louiss.MacBook.Pro.3.local.ezalos",
-                "TinyButMighty.ezalos"
+                "TinyButMighty.ezalos",
+                "lighthouse.ezalos"
             ],
             "variants": null,
             "fanout": false
@@ -1243,12 +1349,17 @@
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.claude/commands/claude-usage.md",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/commands/claude-usage.md",
+                    "backups": []
                 }
             },
             "only_devices": [
                 "TheBeast.ezalos",
                 "Louiss.MacBook.Pro.3.local.ezalos",
-                "TinyButMighty.ezalos"
+                "TinyButMighty.ezalos",
+                "lighthouse.ezalos"
             ],
             "variants": null,
             "fanout": false
@@ -1268,12 +1379,17 @@
                 "TinyButMighty.ezalos": {
                     "deploy_path": "/home/ezalos/.local/bin/claude-usage",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/claude-usage",
+                    "backups": []
                 }
             },
             "only_devices": [
                 "TheBeast.ezalos",
                 "Louiss.MacBook.Pro.3.local.ezalos",
-                "TinyButMighty.ezalos"
+                "TinyButMighty.ezalos",
+                "lighthouse.ezalos"
             ],
             "variants": null,
             "fanout": false
@@ -1289,11 +1405,16 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.local/bin/claude-badge",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/claude-badge",
+                    "backups": []
                 }
             },
             "only_devices": [
                 "TheBeast.ezalos",
-                "Louiss.MacBook.Pro.3.local.ezalos"
+                "Louiss.MacBook.Pro.3.local.ezalos",
+                "lighthouse.ezalos"
             ],
             "variants": null,
             "fanout": false
@@ -1309,6 +1430,10 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.local/bin/claude-session",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/claude-session",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -1322,10 +1447,15 @@
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.local/bin/service",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/service",
+                    "backups": []
                 }
             },
             "only_devices": [
-                "TheBeast.ezalos"
+                "TheBeast.ezalos",
+                "lighthouse.ezalos"
             ],
             "variants": null,
             "fanout": false
@@ -1337,10 +1467,15 @@
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.local/bin/service-checks",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/service-checks",
+                    "backups": []
                 }
             },
             "only_devices": [
-                "TheBeast.ezalos"
+                "TheBeast.ezalos",
+                "lighthouse.ezalos"
             ],
             "variants": null,
             "fanout": false
@@ -1352,10 +1487,15 @@
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.local/bin/deep-research-web",
                     "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/deep-research-web",
+                    "backups": []
                 }
             },
             "only_devices": [
-                "TheBeast.ezalos"
+                "TheBeast.ezalos",
+                "lighthouse.ezalos"
             ],
             "variants": null,
             "fanout": false
@@ -1405,6 +1545,11 @@
         "smic": {
             "identifier": "smic",
             "home_path": "/home/labuser",
+            "dotfiles_dir_path": "dotfiles"
+        },
+        "lighthouse.ezalos": {
+            "identifier": "lighthouse.ezalos",
+            "home_path": "/home/ezalos",
             "dotfiles_dir_path": "dotfiles"
         }
     }
