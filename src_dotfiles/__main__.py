@@ -2,10 +2,11 @@
 
 import fire
 import os
+import re
 from pathlib import Path
 from src_dotfiles.database import Dependencies
 from src_dotfiles.config import config, resolve_main_path
-from src_dotfiles.models import DeployedDotFile, DotFileModel
+from src_dotfiles.models import DeployedDotFile, DotFileModel, DevicesData
 from src_dotfiles.DotFile import DotFile
 from ezpy_logs.LoggerFactory import LoggerFactory
 from typing import List, Optional
@@ -359,6 +360,13 @@ class ManageDotfiles:
             logger.error(f"No dotfile with alias {alias!r} in registry")
             return
 
+        if device not in self.db.metadata.devices:
+            logger.error(
+                f"extend_to: unknown device {device!r}; run `add_device {device} <home_path>` first "
+                f"(known: {sorted(self.db.metadata.devices)})"
+            )
+            return
+
         if deploy_path is None:
             if not model.deploy:
                 logger.error(f"{alias} has no existing deploy entries; --deploy-path is required")
@@ -390,6 +398,81 @@ class ManageDotfiles:
         self.db.metadata.dotfiles[alias] = model
         self.db.save_all()
         logger.info(f"Saved. Now run `python -m src_dotfiles deploy --alias {alias}` on {device}.")
+
+    def add_device(self, identifier: str, home_path: str, dotfiles_dir: str = "dotfiles") -> Optional[str]:
+        """Pre-register a device that is NOT this machine.
+
+        Lets `extend_to` target it before it exists, and makes a later `deploy` run
+        on that device find itself already known, so `save_all()` there leaves the
+        registry byte-identical and the device never has to commit to this repo.
+
+        Args:
+            identifier (str): `<hostname>.<user>` as `config.identifier` computes it
+                on that device (non-alphanumerics become dots).
+            home_path (str): absolute home directory on that device.
+            dotfiles_dir (str): registry dir name; the real data all uses "dotfiles".
+
+        Returns:
+            Optional[str]: the identifier on success, None on refusal.
+        """
+        if not re.fullmatch(r"[A-Za-z0-9.]+", identifier):
+            logger.error(f"add_device: identifier {identifier!r} must match [A-Za-z0-9.]+ (hostname.user)")
+            return None
+        if not os.path.isabs(home_path):
+            logger.error(f"add_device: home_path {home_path!r} must be absolute")
+            return None
+        if identifier in self.db.metadata.devices:
+            logger.warning(f"add_device: {identifier} is already registered; no change")
+            return None
+        new_device = DevicesData(
+            identifier=identifier, home_path=home_path, dotfiles_dir_path=dotfiles_dir
+        )
+        self.db.metadata.devices[identifier] = new_device
+
+        # Materialize translated deploy entries now, mirroring what
+        # Dependencies.load_all() would compute the first time this device runs
+        # the tool -- otherwise that first run mutates the registry in memory
+        # (translating every eligible global dotfile to itself) and its
+        # save_all() would differ from what's on disk here. Reuses
+        # DotFile.translate_to_device (the same translation load_all() uses);
+        # this loop only picks the source device, same selection load_all() does.
+        for model in self.db.metadata.dotfiles.values():
+            if model.only_devices is not None and identifier not in model.only_devices:
+                continue
+            if identifier in model.deploy:
+                continue
+            known_devices_in_model = [d for d in model.deploy if d in self.db.metadata.devices]
+            if not known_devices_in_model:
+                continue
+            original_device = self.db.metadata.devices[known_devices_in_model[0]]
+            translated = DotFile(model).translate_to_device(original_device, new_device)
+            model.deploy[identifier] = translated.data.deploy[identifier]
+
+        self.db.save_all()
+        logger.info(f"add_device: {identifier} home={home_path} dotfiles_dir={dotfiles_dir}")
+        return identifier
+
+    def unset_variant(self, alias: str, device: str) -> Optional[str]:
+        """Remove one device's entry from an alias's `variants`, so that device
+        falls back to the alias-wide `main`. `variants` becomes None when empty.
+
+        Returns:
+            Optional[str]: the alias on success, None when there was nothing to remove.
+        """
+        model = self.db.metadata.dotfiles.get(alias)
+        if model is None:
+            logger.error(f"unset_variant: no dotfile with alias {alias!r} in registry")
+            return None
+        if not model.variants or device not in model.variants:
+            logger.warning(f"unset_variant: {alias} has no variant for {device!r}; no change")
+            return None
+        del model.variants[device]
+        if not model.variants:
+            model.variants = None
+        self.db.metadata.dotfiles[alias] = model
+        self.db.save_all()
+        logger.info(f"unset_variant: {alias} no longer has a variant for {device}")
+        return alias
 
     def set_global(self, alias: str) -> None:
         """Mark a dotfile as eligible for deployment on every device.

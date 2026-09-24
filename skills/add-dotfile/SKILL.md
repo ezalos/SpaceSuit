@@ -197,6 +197,9 @@ When intent classified as DEPLOY-HERE:
    cd ~/42/SpaceSuit && .venv/bin/python -m src_dotfiles extend_to <alias> <current_device> --deploy-path=<provided>
    ```
 
+   - Pre-register a device that is not this machine (so `extend_to` can target it and its later `deploy` leaves the registry unchanged): `cd ~/42/SpaceSuit && .venv/bin/python -m src_dotfiles add_device <hostname.user> /home/<user>`
+   - Drop one device's variant so it falls back to `main`: `cd ~/42/SpaceSuit && .venv/bin/python -m src_dotfiles unset_variant <alias> <device>`
+
 4. Deploy: `.venv/bin/python -m src_dotfiles deploy --alias=<alias>`. Same error handling as Phase 3b.
 5. Verify: symlink at `<provided>` → `~/42/SpaceSuit/<main>`.
 6. Commit: `dotfiles: deploy <alias> on <current_device>`.

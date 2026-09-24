@@ -1486,3 +1486,66 @@ def test_copy_as_main_resolves_tilde_main(setup_test_environment, monkeypatch, t
 
     assert (tmp_path / "copied_main").exists()
     assert (tmp_path / "copied_main").read_text() == "live content"
+
+
+@pytest.mark.run(order=60)
+def test_add_device_registers_a_foreign_device(setup_test_environment):
+    manager = ManageDotfiles()
+    assert manager.add_device("seat.someone", "/home/someone") == "seat.someone"
+    reloaded = ManageDotfiles().db.metadata.devices["seat.someone"]
+    assert reloaded.home_path == "/home/someone"
+    assert reloaded.dotfiles_dir_path == "dotfiles"
+
+
+@pytest.mark.run(order=61)
+def test_add_device_refuses_relative_home_and_duplicates(setup_test_environment):
+    manager = ManageDotfiles()
+    assert manager.add_device("seat2.someone", "relative/home") is None
+    assert "seat2.someone" not in ManageDotfiles().db.metadata.devices
+    assert manager.add_device("seat.someone", "/home/someone") is None  # already added above
+
+
+@pytest.mark.run(order=62)
+def test_extend_to_targets_a_pre_registered_device(setup_test_environment, tmp_path):
+    src = tmp_path / "extend_src"
+    src.write_text("content")
+    deploy_target = Path(config.project_path) / "test_dotfiles" / "extend_local_target"
+    remove_file_if_exists(deploy_target)
+    manager = ManageDotfiles()
+    assert manager.register(alias="extend_entry", deploy_path=str(deploy_target),
+                            main=str(src), only_device=config.identifier) == "extend_entry"
+    manager.extend_to("extend_entry", "seat.someone", deploy_path="/home/someone/.extend_target")
+    model = ManageDotfiles().db.metadata.dotfiles["extend_entry"]
+    assert model.deploy["seat.someone"].deploy_path == "/home/someone/.extend_target"
+    assert "seat.someone" in model.only_devices
+
+
+@pytest.mark.run(order=63)
+def test_extend_to_refuses_unknown_device(setup_test_environment):
+    manager = ManageDotfiles()
+    manager.extend_to("extend_entry", "ghost.nobody", deploy_path="/home/nobody/.x")
+    model = ManageDotfiles().db.metadata.dotfiles["extend_entry"]
+    assert "ghost.nobody" not in model.deploy
+    assert "ghost.nobody" not in model.only_devices
+
+
+@pytest.mark.run(order=64)
+def test_unset_variant_removes_one_device_variant(setup_test_environment, tmp_path):
+    variant_src = tmp_path / "variant_src"
+    variant_src.write_text("variant")
+    manager = ManageDotfiles()
+    assert manager.set_main("extend_entry", str(variant_src), device="seat.someone") == "extend_entry"
+    assert ManageDotfiles().db.metadata.dotfiles["extend_entry"].variants == {"seat.someone": str(variant_src)}
+    assert manager.unset_variant("extend_entry", "seat.someone") == "extend_entry"
+    assert ManageDotfiles().db.metadata.dotfiles["extend_entry"].variants is None
+    assert manager.unset_variant("extend_entry", "seat.someone") is None  # nothing left to unset
+
+
+@pytest.mark.run(order=65)
+def test_save_all_leaves_registry_unchanged_for_pre_registered_device(setup_test_environment, monkeypatch):
+    db_path = ManageDotfiles().db.get_db_path()
+    before = db_path.read_bytes()
+    monkeypatch.setattr(config, "identifier", "seat.someone")
+    manager = ManageDotfiles()  # loads as the pre-registered device
+    manager.db.save_all()
+    assert db_path.read_bytes() == before
