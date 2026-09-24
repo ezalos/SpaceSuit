@@ -199,7 +199,7 @@ a non-empty result is a registry bug to fix here, never a commit from the seat.
   the tool refuses without a registry path and accepts a new host slug.
 - On the workstation after everything: `deploy` reports every entry "already correct",
   `claude -p` in a throwaway project sees both the base rule and the local file's rule,
-  `claude-usage doctor` passes, `deep-research-web status` runs, `service list` works
+  `claude-usage doctor` passes, `deep-research-web status` runs, `service-registry list` works
   through the GroundControl wrapper, `git status` clean in both repos.
 
 ## 6. Out of scope

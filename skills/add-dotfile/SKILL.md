@@ -199,8 +199,10 @@ When intent classified as DEPLOY-HERE:
 
    - Pre-register a device that is not this machine (so `extend_to` can target it and its later `deploy` leaves the registry unchanged): `cd ~/42/SpaceSuit && .venv/bin/python -m src_dotfiles add_device <hostname.user> /home/<user>`
    - Drop one device's variant so it falls back to `main`: `cd ~/42/SpaceSuit && .venv/bin/python -m src_dotfiles unset_variant <alias> <device>`
+   - Move where an alias lands on one device (registry only; on that device `unlink` the old link, then deploy the alias): `cd ~/42/SpaceSuit && .venv/bin/python -m src_dotfiles set_deploy_path <alias> <device> <absolute path>`
 
 4. Deploy: `.venv/bin/python -m src_dotfiles deploy --alias=<alias>`. Same error handling as Phase 3b.
+   - **On a machine in use, deploy with `--alias` only, never a bare `deploy`.** A bare deploy backs up and re-links EVERY alias whose target drifted into a real file, so live files a program rewrote in place (a settings file, say) are silently replaced by the registry's copy. Recovery: the newest `dotfiles/old/<alias>_<device>_<ts>` is the pre-deploy file; copy it back to the source the alias points at for this device.
 5. Verify: symlink at `<provided>` → `~/42/SpaceSuit/<main>`.
 6. Commit: `dotfiles: deploy <alias> on <current_device>`.
 7. Log INFO `add-dotfile: first deploy for <alias> on <current_device>`.
@@ -232,5 +234,5 @@ After completing any path (ADD / DEPLOY-HERE / REDEPLOY / NO-OP / abort), review
 - **Never use `git add -A`** — stage explicit paths.
 - **Never use `--no-verify`** — if a hook fails, report and stop.
 - **Never delete original target_path** before the deployer succeeds — the deployer itself does the swap (file → symlink) atomically.
-- **Never hand-edit `dotfiles/dotfiles.json`.** All registry mutations go through `.venv/bin/python -m src_dotfiles <subcommand>` (`add`, `register`, `extend_to`, `deploy`). If no subcommand fits the case, add one to `src_dotfiles/__main__.py` first — write/Edit on the JSON is a violation even "just to bridge the gap." The registry persists model invariants that drift silently when bypassed.
+- **Never hand-edit `dotfiles/dotfiles.json`.** All registry mutations go through `.venv/bin/python -m src_dotfiles <subcommand>` (`add`, `register`, `extend_to`, `add_device`, `set_main`, `unset_variant`, `set_deploy_path`, `deploy`). If no subcommand fits the case, add one to `src_dotfiles/__main__.py` first — write/Edit on the JSON is a violation even "just to bridge the gap." The registry persists model invariants that drift silently when bypassed.
 - **Cross-platform paths**: use `python -c "import os; print(os.path.expanduser('<path>'))"` for `~`-resolution rather than relying on shell tilde expansion in passed-through Bash strings.

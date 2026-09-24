@@ -28,7 +28,7 @@ set -uo pipefail
 FAILED=0
 
 status() {
-    # status <tool> <ok|skipped(present)|FAILED>
+    # status <tool> <ok|skipped(present)|skipped(<reason>)|FAILED>; only FAILED fails the run
     echo "[bootstrap] $1 $2"
     [[ "$2" == "FAILED" ]] && FAILED=1
 }
@@ -196,6 +196,10 @@ fi
 # of install-pass-cli.sh. This step only ever fills in a genuinely missing binary.
 if command -v pass-cli >/dev/null 2>&1; then
     status "pass-cli" "skipped(present)"
+elif ! command -v jq >/dev/null 2>&1; then
+    # The installer parses the vendor index with jq; jq is in the apt line below.
+    # Not a failure: rerun bootstrap once root has installed it.
+    status "pass-cli" "skipped(needs jq)"
 elif "$(dirname "$0")/install-pass-cli.sh"; then
     status "pass-cli" "ok"
 else

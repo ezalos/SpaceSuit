@@ -521,6 +521,8 @@ cd ~/42/SpaceSuit && .venv/bin/python -m src_dotfiles register service_checks_bi
 readlink ~/.local/bin/service ~/.local/bin/service-checks
 ```
 
+> Superseded 2026-09-24: `~/.local/bin/service` shadowed the system `service` command, so `service_bin` now deploys to `~/.local/bin/service-registry` (changed with `set_deploy_path`), and on the workstation both entries point at the private repo's wrappers (`set_main --device`), since the raw tool needs `SERVICE_REGISTRY` there.
+
 Expected: both symlinks point into `~/42/SpaceSuit/service_registry/bin/`. (On the workstation the GroundControl wrapper is what agents call for the private registry; the bare `service` on PATH is for other registries and needs `SERVICE_REGISTRY`.)
 
 - [ ] **Step 9: Commit both repos and push**
@@ -782,9 +784,9 @@ Then edit `~/42/SpaceSuit/dotfiles/claude_md`:
   the local file names a cap or a window, obey it; never two transfers at once
 ```
 
-2. In `## Git`, the first bullet: replace `push right after —\n  TinyButMighty pulls depend on pushes landing.` with `push right after —\n  other machines pull from the remote, never from this one.`
+2. In `## Git`, the first bullet: replace the clause that names the machine which pulls (and why it depends on pushes landing) with `push right after —\n  other machines pull from the remote, never from this one.`
 
-3. In `## Code`, the headless-Chrome bullet: replace `on TheBeast that hands \`guest\` my SSH\n  keys <!-- proven in the 2026-09-10 guest audit; a leaked shot.py chrome on :9222 -->.` with `on a shared machine that hands another local user my SSH\n  keys.`
+3. In `## Code`, the headless-Chrome bullet: replace the example that names the workstation and its second local account, together with the HTML comment carrying the audit evidence, with `on a shared machine that hands another local user my SSH\n  keys.` (the evidence moves to the workstation's private local file).
 
 4. Append as the last line of the file:
 
@@ -1129,7 +1131,7 @@ cd ~/42/SpaceSuit && for pair in \
   "claude_usage_command:.claude/commands/claude-usage.md" \
   "claude_usage_bin:.local/bin/claude-usage" \
   "deep_research_web_bin:.local/bin/deep-research-web" \
-  "service_bin:.local/bin/service" \
+  "service_bin:.local/bin/service-registry" \
   "service_checks_bin:.local/bin/service-checks" \
   "claude-badge:.local/bin/claude-badge" \
   "gh_identity_router:.local/bin/gh" \
@@ -1178,9 +1180,9 @@ printf 'registry: pre-register the cloud seat and extend its entries\n\nThe seat
 
 ```bash
 cd ~/42/SpaceSuit && git status -sb | head -1 && cd ~/42/GroundControl && git status -sb | head -1
-readlink ~/.claude/CLAUDE.md ~/.claude/CLAUDE.local.md ~/.claude/settings.json ~/.claude/claude-usage/claude-usage.js ~/.local/bin/deep-research-web ~/.local/bin/service
+readlink ~/.claude/CLAUDE.md ~/.claude/CLAUDE.local.md ~/.claude/settings.json ~/.claude/claude-usage/claude-usage.js ~/.local/bin/deep-research-web ~/.local/bin/service-registry
 claude-usage doctor && systemctl --user is-active claude-usage.timer deep-research-web-watch.timer
 cd ~/42/GroundControl && monitoring/bin/service validate
 ```
 
-Expected: both repos in sync with their remotes; every readlink points into `~/42/SpaceSuit` except the two GroundControl-sourced local files; doctor passes; both timers `active`; the private registry validates. Report these outputs verbatim to Louis with the note that the seat spec's plan can now start, and with the one thing this plan cannot do from the workstation: on his Mac, after `git pull` in both repos, he runs `cd ~/42/SpaceSuit && .venv/bin/python -m src_dotfiles deploy` so `claude_md`, `claude_md_local` and the three `claude_usage*` entries take effect there (the registry already lists the Mac for all of them).
+Expected: both repos in sync with their remotes; every readlink points into `~/42/SpaceSuit` except the two GroundControl-sourced local files; doctor passes; both timers `active`; the private registry validates. Report these outputs verbatim to Louis with the note that the seat spec's plan can now start, and with the one thing this plan cannot do from the workstation: on his Mac, after `git pull` in both repos, he runs `cd ~/42/SpaceSuit && .venv/bin/python -m src_dotfiles deploy --alias=<x>` once per entry, for `claude_md`, `claude_md_local` and the three `claude_usage*` entries, so they take effect there (never a bare `deploy`: it backs up and re-links every drifted real file) (the registry already lists the Mac for all of them).
