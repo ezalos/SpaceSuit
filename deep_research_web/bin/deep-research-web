@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# ABOUTME: Thin wrapper putting the deep_research_web CLI on PATH with its config loaded.
+# ABOUTME: Sources ~/.config/deep-research-web/env itself because direnv does not run under systemd.
+set -euo pipefail
+HERE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+ENV_FILE="${DEEP_RESEARCH_WEB_ENV:-$HOME/.config/deep-research-web/env}"
+if [ -f "$ENV_FILE" ]; then set -a; . "$ENV_FILE"; set +a; fi
+# Both roots on sys.path: this project, and the repo root one level up for deep_research.charter
+# and deep_research.verify, which are not installable. DEEP_RESEARCH_WEB_SPACESUIT still overrides
+# for a checkout that lives elsewhere. The caller's cwd is preserved.
+SPACESUIT="${DEEP_RESEARCH_WEB_SPACESUIT:-$(cd "$HERE/.." && pwd)}"
+PYTHONPATH="$HERE:$SPACESUIT${PYTHONPATH:+:$PYTHONPATH}" exec uv run --project "$HERE" python -m deep_research_web "$@"

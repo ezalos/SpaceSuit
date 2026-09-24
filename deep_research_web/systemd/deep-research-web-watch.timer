@@ -1,0 +1,12 @@
+# ABOUTME: Five-minute tick for the claude.ai research watcher on this host.
+# ABOUTME: Cheap when idle: the service exits at once when no run is in flight.
+[Unit]
+Description=Poll in-flight claude.ai research runs
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

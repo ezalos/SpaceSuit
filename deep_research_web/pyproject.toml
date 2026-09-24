@@ -1,0 +1,14 @@
+[project]
+name = "deep-research-web"
+version = "0.1.0"
+description = "Run deep research as a Research conversation on claude.ai and collect the report"
+requires-python = ">=3.13"
+dependencies = ["playwright>=1.50"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = [".", "tests", ".."]

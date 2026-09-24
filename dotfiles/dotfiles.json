@@ -1344,6 +1344,21 @@
             ],
             "variants": null,
             "fanout": false
+        },
+        "deep_research_web_bin": {
+            "alias": "deep_research_web_bin",
+            "main": "deep_research_web/bin/deep-research-web",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/deep-research-web",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
         }
     },
     "devices": {

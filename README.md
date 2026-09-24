@@ -17,6 +17,7 @@ minutes. Public on purpose: clone it, take what fits, leave what doesn't.
 | `bin/` | small CLI wrappers added to PATH |
 | `netwatch/` | a home-network black-box recorder: link/gateway/WAN probes, outage forensics, publishable dashboard |
 | `claude_usage/` | family Claude accounts: usage meters, machine-wide account switch, failover watcher (`/claude-usage`) |
+| `deep_research_web/` | the claude.ai research engine (`deep-research-web`), a nested uv project on Python 3.13; tests: `cd deep_research_web && uv run pytest -q` |
 | `scripts/`, `tests/` | shared helpers and the test suite (`uv run pytest`) |
 
 ## Quickstart on a fresh machine

@@ -66,8 +66,7 @@ A charter with a made-up purpose produces a report answering nobody's question.
 ## Phase 2: Launch
 
 The default engine is `claude-web`: the run is a Research conversation on claude.ai in
-Louis's own account, visible and continuable in the Claude app. It lives in GroundControl
-`deep-research-web/` (private) and is on PATH as `deep-research-web`.
+Louis's own account, visible and continuable in the Claude app. It lives in this repo under `deep_research_web/` and is on PATH as `deep-research-web`.
 
 ```bash
 deep-research-web launch --charter <path-to-charter.md> --name <lowercase-kebab-name>
@@ -104,7 +103,7 @@ was asked, never touch the dismiss endpoint).
 
 The local engine of v1 still exists for a run that must write files on this machine:
 `deep-research launch --charter <out>/charter.md --out <out>` with the collect flow
-documented in GroundControl's design doc history. Use it only when Louis asks for it.
+documented in `docs/superpowers/specs/2026-08-31-deep-research-claude-web-design.md`. Use it only when Louis asks for it.
 
 ## Phase 3: Collect
 

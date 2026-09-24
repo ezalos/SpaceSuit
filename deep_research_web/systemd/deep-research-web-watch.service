@@ -1,0 +1,18 @@
+# ABOUTME: One watcher pass: classify running claude-web runs, collect finished ones, ping Telegram once.
+# ABOUTME: Triggered by deep-research-web-watch.timer; config from ~/.config/deep-research-web/env.
+[Unit]
+Description=claude.ai research watcher pass
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# The user manager's own PATH puts ~/.cargo/bin (uv 0.4.0, no --project) ahead of ~/.local/bin (uv 0.5.4); pin the working one.
+Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=-%h/.config/deep-research-web/env
+ExecStart=%h/42/SpaceSuit/deep_research_web/bin/deep-research-web watch
+# The browser half of a pass is short (one org read plus one conversation read per run),
+# so a pass that hangs is a hung browser and five minutes is long enough to say so. The
+# timeout still covers the whole pass: grading fetches cited pages serially at 20 s each,
+# so a report full of slow hosts can be killed here and retried on the next tick.
+TimeoutStartSec=25min

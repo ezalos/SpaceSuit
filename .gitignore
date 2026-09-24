@@ -49,3 +49,7 @@ upload_file/Caddyfile.snippet
 # 34MB of binaries would bloat it permanently. URLs to re-fetch are in the README.
 docs/hardware/*.pdf
 docs/hardware/photos/
+
+# Old sibling symlink from before deep_research_web moved into this repo, in case it
+# gets recreated.
+deep_research_web/SpaceSuit
