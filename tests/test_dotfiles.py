@@ -1549,3 +1549,19 @@ def test_save_all_leaves_registry_unchanged_for_pre_registered_device(setup_test
     manager = ManageDotfiles()  # loads as the pre-registered device
     manager.db.save_all()
     assert db_path.read_bytes() == before
+
+
+@pytest.mark.run(order=66)
+def test_deploy_retargets_symlink_when_main_changes(setup_test_environment, tmp_path):
+    old_src = tmp_path / "old_src"
+    new_src = tmp_path / "new_src"
+    old_src.write_text("old")
+    new_src.write_text("new")
+    deploy_target = Path(config.project_path) / "test_dotfiles" / "retarget_target"
+    remove_file_if_exists(deploy_target)
+    manager = ManageDotfiles()
+    manager.register(alias="retarget_entry", deploy_path=str(deploy_target), main=str(old_src), only_device=config.identifier)
+    assert os.readlink(deploy_target) == str(old_src)
+    assert manager.set_main("retarget_entry", str(new_src)) == "retarget_entry"
+    ManageDotfiles().deploy(alias="retarget_entry")
+    assert os.readlink(deploy_target) == str(new_src)

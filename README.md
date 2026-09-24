@@ -16,6 +16,7 @@ minutes. Public on purpose: clone it, take what fits, leave what doesn't.
 | `Installs/` | install helpers (mostly vestigial; see Installs/) |
 | `bin/` | small CLI wrappers added to PATH |
 | `netwatch/` | a home-network black-box recorder: link/gateway/WAN probes, outage forensics, publishable dashboard |
+| `claude_usage/` | family Claude accounts: usage meters, machine-wide account switch, failover watcher (`/claude-usage`) |
 | `scripts/`, `tests/` | shared helpers and the test suite (`uv run pytest`) |
 
 ## Quickstart on a fresh machine
