@@ -1,6 +1,6 @@
 ---
 name: local-preview
-description: Use when a choice needs Louis's EYES while he is remote — mockups, frames, visual comparisons, "which layout looks better". Publishes a throwaway page at https://local.develle.fr/<slug>/ (OAuth-gated at the Cloudflare edge) and hands him the URL. Do NOT rely on panel attachments for visual decisions; he works over SSH and may only have a terminal.
+description: Use when a choice needs Louis's EYES while he is remote — mockups, frames, visual comparisons, "which layout looks better". Publishes a throwaway page at https://local.develle.fr/<slug>/ (OAuth-gated at the Cloudflare edge) and hands him the URL. On a machine with ~/Publish/.relay, publishes by writing into ~/Publish/ instead (pages and dev servers). Do NOT rely on panel attachments for visual decisions; he works over SSH and may only have a terminal.
 ---
 
 # local-preview
@@ -10,6 +10,24 @@ comparisons), publish a throwaway page and give him the URL. The subdomain is
 Access-gated (Google SSO, ezalos@gmail.com only) and serves `/srv/local/` on
 TinyButMighty via Caddy (`file_server browse`; drop-in
 `/etc/caddy/local-develle.caddy`).
+
+## First: does a relay carry this machine's pages?
+
+`test -e ~/Publish/.relay`. If it exists, this machine cannot reach the web
+host itself (by design: never try ssh, a tailnet name or an ACL change). A
+broker elsewhere publishes whatever lands in `~/Publish/` within seconds:
+
+1. Write the self-contained page into `~/Publish/<slug>/` (same slug rule as
+   below).
+2. Wait for `~/Publish/.status/<slug>` (a few seconds) and give Louis the URL
+   it holds, never a guessed one. A line starting `error:` is the reason it
+   was refused.
+3. Tear down by deleting `~/Publish/<slug>/`; the broker moves it to the trash.
+
+A dev server is published the same way: `echo <port> > ~/Publish/.links/<name>`,
+URL in `~/Publish/.status/<name>`, delete the file to unpublish.
+
+Otherwise, follow the steps below.
 
 ## Per use
 
