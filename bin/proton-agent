@@ -30,7 +30,22 @@ if [ ! -r "$PAT_FILE" ]; then
   exit 1
 fi
 mkdir -p "$PROTON_PASS_SESSION_DIR" && chmod 700 "$PROTON_PASS_SESSION_DIR"
-if ! pass-cli info >/dev/null 2>&1; then
+
+# --- login: ONE process logs in, the others wait and reuse its session --------------------------------
+# Without the lock, every caller that found the session expired logged in at once: a login storm that got
+# the token throttled (2026-09-24). mkdir is the lock (atomic, and portable to macOS, which has no flock).
+LOCK="$PROTON_PASS_SESSION_DIR/.login.lock"
+login_locked() {
+  local waited=0
+  until mkdir "$LOCK" 2>/dev/null; do
+    # a lock older than 2 min belongs to a dead process: reclaim it
+    if [ -n "$(find "$LOCK" -maxdepth 0 -mmin +2 2>/dev/null)" ]; then rmdir "$LOCK" 2>/dev/null || true; continue; fi
+    sleep 1; waited=$((waited + 1))
+    [ "$waited" -lt 120 ] || { echo "proton-agent: waited 120 s for another login (context '$CTX')" >&2; return 1; }
+  done
+  trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
+  # someone else may have logged in while we waited
+  if pass-cli info >/dev/null 2>&1; then rmdir "$LOCK"; trap - EXIT; return 0; fi
   if ! PROTON_PASS_PERSONAL_ACCESS_TOKEN="$(cat "$PAT_FILE")" pass-cli login >/dev/null 2>&1; then
     # A stale/corrupt session store poisons even fresh PAT logins -- seen at
     # ~09:00 on 2026-08-16 AND -17; both times moving .session aside fixed it
@@ -48,8 +63,57 @@ if ! pass-cli info >/dev/null 2>&1; then
       else
         echo "proton-agent: login failed for context '$CTX' (token expired or revoked?)" >&2
       fi
-      exit 1
+      rmdir "$LOCK" 2>/dev/null || true; trap - EXIT
+      return 1
     fi
   fi
+  rmdir "$LOCK" 2>/dev/null || true; trap - EXIT
+}
+ensure_session() { pass-cli info >/dev/null 2>&1 || login_locked; }
+
+# --- item view: straight to the vault (no health check first), a short RAM-only cache ----------------
+# Louis, 2026-09-24: resolved values may be cached, in RAM only, briefly. The cache lives in
+# $XDG_RUNTIME_DIR (a per-user tmpfs under /run/user, 0700, gone at reboot), files 0600, TTL
+# PROTON_AGENT_CACHE_TTL seconds (default 900; 0 disables). No runtime dir under /run/user -> no cache
+# (never on disk). Any process running as this user could fetch the same values from the vault anyway.
+if [ "${1:-}" = item ] && [ "${2:-}" = view ]; then
+  TTL="${PROTON_AGENT_CACHE_TTL:-900}"
+  CACHE=""
+  # agent shells often lack XDG_RUNTIME_DIR: fall back to /run/user/<uid> when it is ours and 0700
+  if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "/run/user/$(id -u)" ] && [ -O "/run/user/$(id -u)" ] \
+     && [ "$(stat -c %a "/run/user/$(id -u)" 2>/dev/null)" = 700 ]; then
+    XDG_RUNTIME_DIR="/run/user/$(id -u)"
+  fi
+  case "${XDG_RUNTIME_DIR:-}" in /run/user/*)
+    if [ "$TTL" -gt 0 ] 2>/dev/null && [ -d "$XDG_RUNTIME_DIR" ]; then
+      CACHE="$XDG_RUNTIME_DIR/proton-agent-cache/$CTX"
+      key="$(printf '%s\0' "$@" | sha256sum 2>/dev/null | cut -c1-32)"
+      [ -n "$key" ] || CACHE=""
+    fi ;;
+  esac
+  if [ -n "$CACHE" ] && [ -f "$CACHE/$key" ] \
+     && [ $(( $(date +%s) - $(stat -c %Y "$CACHE/$key") )) -lt "$TTL" ]; then
+    cat "$CACHE/$key"; echo; exit 0
+  fi
+  ERRF="$PROTON_PASS_SESSION_DIR/.err.$$"   # inside the 0700 session dir, never shared /tmp
+  out="$(pass-cli "$@" 2>"$ERRF")" && rc=0 || rc=$?
+  if [ $rc -ne 0 ]; then
+    # only a missing/expired session earns a login and one retry; a bad ref fails as it is
+    if ! pass-cli info >/dev/null 2>&1; then
+      rm -f "$ERRF"
+      login_locked || exit 1
+      out="$(pass-cli "$@" 2>"$ERRF")" && rc=0 || rc=$?
+    fi
+  fi
+  if [ $rc -ne 0 ]; then cat "$ERRF" >&2; rm -f "$ERRF"; exit $rc; fi
+  rm -f "$ERRF"
+  if [ -n "$CACHE" ] && [ -n "$out" ] && [ "$out" != "<concealed by Proton Pass>" ]; then
+    ( umask 077; mkdir -p "$CACHE" && chmod 700 "$XDG_RUNTIME_DIR/proton-agent-cache" "$CACHE" \
+      && printf '%s' "$out" > "$CACHE/$key.tmp.$$" && mv -f "$CACHE/$key.tmp.$$" "$CACHE/$key" ) 2>/dev/null || true
+  fi
+  printf '%s\n' "$out"
+  exit 0
 fi
+
+ensure_session || exit 1
 exec pass-cli "$@"

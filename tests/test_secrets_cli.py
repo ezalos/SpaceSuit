@@ -196,3 +196,13 @@ def test_no_value_leaks_into_any_output(request, project):
         r = run_secrets(*args)
         outputs += [r.stdout, r.stderr]
     assert not any(SENTINEL in o for o in outputs)
+
+
+def test_run_only_resolves_just_the_named_refs(proj):
+    """--only: a caller that needs one secret neither pays for, nor fails on, the other refs
+    (this project also holds a missing and a denied ref)."""
+    child = ('import os,sys; ok = os.environ.get("HF_TOKEN")=="%s" and "HF_TOKEN2" not in os.environ; '
+             'sys.exit(0 if ok else 1)' % SENTINEL)
+    r = run_secrets("run", "--only", "HF_TOKEN", "--", "python3", "-c", child)
+    assert r.returncode == 0, r.stderr
+    assert SENTINEL not in r.stdout + r.stderr
