@@ -44,14 +44,31 @@ SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
 SERVICE_FILE="tmux-save-on-shutdown.service"
 SERVICE_SRC="$SCRIPT_DIR/$SERVICE_FILE"
 
+# A daemon-reload re-bases every relative-time (--on-active) transient timer on the reload moment, so a
+# deadline guard armed that way would fire hours late (seen 2026-09-24). Reload only when it is safe.
+relative_transient_timers() {
+  local d="/run/user/$(id -u)/systemd/transient"
+  [[ -d "$d" ]] || return 0
+  grep -lE '^On(Active|Boot|Startup|UnitActive|UnitInactive)Sec' "$d"/*.timer 2>/dev/null || true
+}
+
 deploy_systemd_service() {
   if [[ ! -f "$SERVICE_SRC" ]]; then
     echo "Warning: $SERVICE_SRC not found, skipping systemd service."
     return
   fi
   mkdir -p "$SYSTEMD_USER_DIR"
-  ln -sf "$SERVICE_SRC" "$SYSTEMD_USER_DIR/$SERVICE_FILE"
-  systemctl --user daemon-reload
+  if [[ "$(readlink "$SYSTEMD_USER_DIR/$SERVICE_FILE" 2>/dev/null)" != "$SERVICE_SRC" ]]; then
+    ln -sf "$SERVICE_SRC" "$SYSTEMD_USER_DIR/$SERVICE_FILE"
+    local bad; bad="$(relative_transient_timers)"
+    if [[ -n "$bad" ]]; then
+      echo "Warning: NOT reloading systemd: relative-time transient timers would be re-based:" >&2
+      echo "$bad" >&2
+      echo "  re-arm them --on-calendar, then run: systemctl --user daemon-reload && systemctl --user enable --now $SERVICE_FILE" >&2
+      return 1
+    fi
+    systemctl --user daemon-reload
+  fi
   systemctl --user enable --now "$SERVICE_FILE"
   echo "Deployed systemd service: $SERVICE_FILE (enabled + started)"
 }

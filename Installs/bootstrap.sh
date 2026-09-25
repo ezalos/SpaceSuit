@@ -191,6 +191,23 @@ else
     echo "[bootstrap] tmux needs 'sudo apt install tmux' (or equivalent) -- bootstrap.sh cannot do this without root" >&2
 fi
 
+# --- tmux persistence: save every 15 min and at shutdown, on every machine -------------------------
+# Without it a reboot loses every tmux layout (it did, on a cloud seat, 2026-09-24). cron-deploy.sh installs
+# the crontab block (scripts/crontabs) and the save-on-shutdown user unit; `trestore` brings them back.
+if command -v crontab >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1 \
+   && systemctl --user show-environment >/dev/null 2>&1; then
+    if crontab -l 2>/dev/null | grep -q 'tmux-save.sh' \
+       && systemctl --user is-enabled tmux-save-on-shutdown.service >/dev/null 2>&1; then
+        status "tmux-persistence" "skipped(present)"
+    elif "$(dirname "$0")/../scripts/cron-deploy.sh" >/dev/null; then
+        status "tmux-persistence" "ok"
+    else
+        status "tmux-persistence" "FAILED"
+    fi
+else
+    status "tmux-persistence" "skipped(no cron or user systemd)"
+fi
+
 # --- pass-cli: Proton Pass CLI, from the vendor index, sha256-verified ------
 # Never upgrades an existing install -- an upgrade is an explicit, by-hand run
 # of install-pass-cli.sh. This step only ever fills in a genuinely missing binary.
