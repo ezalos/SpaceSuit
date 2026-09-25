@@ -13,6 +13,12 @@ usage() {
 }
 
 load_token() {
+  # A token already in the environment wins: `secrets run --only TELEGRAM_BOT_TOKEN -- notify.sh ...` supplies it
+  # from the vault, so no plaintext .env is needed (the Lighthouse seat has none).
+  if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
+    printf '%s' "$TELEGRAM_BOT_TOKEN"
+    return 0
+  fi
   if [ ! -f "$ENV_FILE" ]; then
     printf 'telegram not configured — run /telegram:configure\n' >&2
     return 2
@@ -140,11 +146,13 @@ main() {
     *GroundControl*) agent_emoji="🖥️" ;;
   esac
   local response http_code body
-  response="$(curl --silent --show-error \
+  # The URL carries the token, so it goes to curl on STDIN (--config -), written by printf, a shell builtin that starts
+  # no process: an argument would be readable by every local user through `ps` / /proc/<pid>/cmdline.
+  response="$(printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$token" | curl --silent --show-error \
+    --config - \
     --write-out '\n%{http_code}' \
     --data-urlencode "chat_id=${chat_id}" \
-    --data-urlencode "text=${agent_emoji} [claude] ${message}" \
-    "https://api.telegram.org/bot${token}/sendMessage")" || {
+    --data-urlencode "text=${agent_emoji} [claude] ${message}")" || {
     printf 'curl failed\n' >&2
     return 4
   }
