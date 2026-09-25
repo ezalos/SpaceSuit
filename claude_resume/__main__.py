@@ -63,7 +63,7 @@ def pane_is_busy(pane, socket: str) -> bool:
     as a chat message. The tool is normally run right after a restore when every
     pane sits at a shell, but `cresume` can be run at any time, so guard it.
     """
-    r = _tmux(["list-panes", "-t", f"{pane.session}:{pane.window}",
+    r = _tmux(["list-panes", "-t", f"={pane.session}:{pane.window}",
                "-F", "#{pane_index} #{pane_tty}"], socket)
     tty = ""
     for line in r.stdout.splitlines():
@@ -79,7 +79,7 @@ def pane_is_busy(pane, socket: str) -> bool:
 
 
 def send(pane, command: str, socket: str, launch: bool) -> None:
-    target = f"{pane.session}:{pane.window}.{pane.pane}"
+    target = f"={pane.session}:{pane.window}.{pane.pane}"
     argv = ["tmux"]
     if socket:
         argv += ["-L", socket]

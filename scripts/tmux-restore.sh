@@ -160,7 +160,7 @@ while IFS=$'\t' read -r session win_idx win_name win_layout pane_idx pane_dir is
       prev_session="$session"
       continue
     fi
-    if tmux has-session -t "$session" 2>/dev/null; then
+    if tmux has-session -t "=$session" 2>/dev/null; then
       echo "  SKIP: session '$session' already exists"
       skip_session="$session"
       prev_session="$session"
@@ -180,11 +180,11 @@ while IFS=$'\t' read -r session win_idx win_name win_layout pane_idx pane_dir is
     fi
 
     # Move the auto-created window to the correct index if it differs
-    auto_win_idx=$(tmux list-windows -t "$session" -F '#{window_index}' | head -1)
+    auto_win_idx=$(tmux list-windows -t "=$session" -F '#{window_index}' | head -1)
     if [[ "$auto_win_idx" != "$win_idx" ]]; then
-      tmux move-window -s "$session:$auto_win_idx" -t "$session:$win_idx"
+      tmux move-window -s "=$session:$auto_win_idx" -t "=$session:$win_idx"
     fi
-    tmux rename-window -t "$session:$win_idx" "$win_name"
+    tmux rename-window -t "=$session:$win_idx" "$win_name"
 
     first_win_of_session="$win_idx"
     prev_session="$session"
@@ -192,37 +192,37 @@ while IFS=$'\t' read -r session win_idx win_name win_layout pane_idx pane_dir is
     pane_created_count=1
 
     # First pane was created with the session — position it
-    tmux send-keys -t "$session:$win_idx.$pane_idx" "cd '${pane_dir}' && clear" Enter
-    show_pane_context "$session:$win_idx.$pane_idx" "$session" "$win_idx" "$pane_idx"
+    tmux send-keys -t "=$session:$win_idx.$pane_idx" "cd '${pane_dir}' && clear" Enter
+    show_pane_context "=$session:$win_idx.$pane_idx" "$session" "$win_idx" "$pane_idx"
 
-    [[ "$win_active" == "1" ]] && active_windows+=("$session:$win_idx")
+    [[ "$win_active" == "1" ]] && active_windows+=("=$session:$win_idx")
 
-    tmux select-layout -t "$session:$win_idx" "$win_layout" 2>/dev/null
+    tmux select-layout -t "=$session:$win_idx" "$win_layout" 2>/dev/null
     continue
   fi
 
   # --- New window within existing session ---
   if [[ "$win_idx" != "$prev_win" ]]; then
-    tmux new-window -t "$session:$win_idx" -n "$win_name" -c "$pane_dir"
+    tmux new-window -t "=$session:$win_idx" -n "$win_name" -c "$pane_dir"
     prev_win="$win_idx"
     pane_created_count=1
 
-    [[ "$win_active" == "1" ]] && active_windows+=("$session:$win_idx")
+    [[ "$win_active" == "1" ]] && active_windows+=("=$session:$win_idx")
   else
     # --- Additional pane (split) within current window ---
-    tmux split-window -t "$session:$win_idx" -c "$pane_dir"
+    tmux split-window -t "=$session:$win_idx" -c "$pane_dir"
     pane_created_count=$((pane_created_count + 1))
   fi
 
   # Position the pane
-  tmux send-keys -t "$session:$win_idx.$pane_idx" "cd '${pane_dir}' && clear" Enter
-  show_pane_context "$session:$win_idx.$pane_idx" "$session" "$win_idx" "$pane_idx"
+  tmux send-keys -t "=$session:$win_idx.$pane_idx" "cd '${pane_dir}' && clear" Enter
+  show_pane_context "=$session:$win_idx.$pane_idx" "$session" "$win_idx" "$pane_idx"
 
 
   # Reapply layout after each pane so geometry stays correct
-  tmux select-layout -t "$session:$win_idx" "$win_layout" 2>/dev/null
+  tmux select-layout -t "=$session:$win_idx" "$win_layout" 2>/dev/null
 
-done < "$STATE"
+done < <(sort -s -t$'\t' -k1,1 -k2,2n -k5,5n "$STATE")
 
 # Select the window that was active in each session
 if [[ ${#active_windows[@]} -gt 0 ]]; then
