@@ -849,7 +849,7 @@ def test_collect_archives_the_run_when_an_archive_root_is_configured(runs_root, 
     lib = tmp_path / "lib"
     code, _ = collect_record(Client(api), rec, fetcher=fetcher_stub({}), archive_root=lib)
     assert code == EXIT_OK
-    dest = lib / f"{rec.started_at[:10]}-vector-db-choice"
+    dest = lib / f"{rec.run_id[:10]}-vector-db-choice"
     assert (dest / "report.md").read_text() == "Alpha is cheap."
     assert (dest / "archive.json").exists() and (lib / "README.md").exists()
     out = capsys.readouterr().out
@@ -883,7 +883,7 @@ def test_the_watcher_collect_uses_the_configured_archive_root(runs_root, tmp_pat
     [rec] = find_runs(runs_root)
     lib = tmp_path / "lib"
     code, _ = cli.watcher_collect(_archiving_cfg(runs_root, lib))(rec, research_done("Alpha is cheap.", []))
-    assert code == EXIT_OK and (lib / f"{rec.started_at[:10]}-watched" / "report.md").exists()
+    assert code == EXIT_OK and (lib / f"{rec.run_id[:10]}-watched" / "report.md").exists()
 
 
 def test_launch_records_the_explicit_name(runs_root, tmp_path):
@@ -915,7 +915,7 @@ def test_archive_command_archives_and_renames_a_collected_run(runs_root, tmp_pat
     lib = tmp_path / "lib"
     code = cli.cmd_archive(Namespace(run_id=rec.run_id[:17], name="vector-db-choice"), _archiving_cfg(runs_root, lib))
     assert code == EXIT_OK
-    dest = lib / f"{rec.started_at[:10]}-vector-db-choice"
+    dest = lib / f"{rec.run_id[:10]}-vector-db-choice"
     assert (dest / "report.md").exists() and read_run(Path(rec.out_dir)).name == "vector-db-choice"
     assert str(dest) in capsys.readouterr().out
 
