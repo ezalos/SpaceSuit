@@ -12,7 +12,7 @@ from .config import Config
 from .notify import done_line, outcome_line
 from .profiles import group_by_profile
 from .report import REPORT_NAME
-from .runs import RunRecord, RunStatus, collect_lock, running_runs, update_run
+from .runs import RunRecord, RunStatus, collect_lock, find_runs, running_runs, update_run
 from .session import SessionError
 from .thread import ThreadState, classify, failure_reason
 
@@ -22,6 +22,9 @@ MAX_POLL_FAILURES = 5
 # research runs in flight (2026-09-25) several can finish in one pass, and graded one after another
 # they could outlast the unit's 25 min. Threads suffice: the work is I/O, and no browser is open.
 COLLECT_WORKERS = 4
+# A run that finished without its ping (the notifier failed) is pinged by a later pass, if it finished this recently.
+# Older ones are history: 61 runs on the seat predate its notifier, and turning it on must not replay them.
+RETRY_PING_WINDOW = timedelta(hours=6)
 
 
 def _log(level: str, message: str) -> None:
@@ -43,6 +46,7 @@ def watch(
     collect: Callable[[RunRecord, dict], tuple[int, dict]],
     now: Callable[[], datetime],
 ) -> int:
+    _retry_pings(cfg, sender, now)
     running = running_runs(cfg.runs_root)
     if not running:
         return 0
@@ -85,13 +89,45 @@ def _poll_locked(rec: RunRecord, conversation: dict | None, exc: Exception | Non
             _poll(rec, conversation, exc, sender, collect, now)
 
 
+def _ping(sender, text: str) -> bool:
+    """Send one ping; a notifier that fails is logged, never raised: the collector's work is already on disk, the
+    run stays un-notified, and _retry_pings sends it on a later pass (the unit stays green)."""
+    try:
+        sender(text)
+        return True
+    except Exception as exc:  # noqa: BLE001 - any notifier failure; the pass must go on
+        _log("WARNING", f"deep-research: ping not sent ({type(exc).__name__}: {str(exc)[:160]}); retried next pass")
+        return False
+
+
+def _retry_pings(cfg: Config, sender, now: Callable[[], datetime]) -> None:
+    from time import time as _now
+
+    for rec in find_runs(cfg.runs_root):
+        if rec.status == RunStatus.RUNNING.value or rec.notified_at:
+            continue
+        out = Path(rec.out_dir)
+        try:
+            finished = max(f.stat().st_mtime for f in (out / "run.json", out / REPORT_NAME) if f.exists())
+        except ValueError:
+            continue
+        if _now() - finished > RETRY_PING_WINDOW.total_seconds():
+            continue
+        if rec.status == RunStatus.DONE.value:
+            text = f'research done: "{rec.question}" {rec.chat_url} report: {out / REPORT_NAME} (ping delayed)'
+        else:
+            text = outcome_line(rec, rec.status, f"{rec.reason or rec.status} (ping delayed)")
+        if _ping(sender, text):
+            update_run(out, notified_at=now().isoformat(timespec="seconds"))
+
+
 def _halt(running: list[RunRecord], flags: list[dict], sender, now) -> int:
     names = ", ".join(f"{f.get('type')} (expires {f.get('expires_at')})" for f in flags)
     _log("CRITICAL", f"deep-research: halted on account flags: {names}")
     # Ping first: a run marked halted-and-notified that was never pinged is a silent stop.
-    sender(f"HALTED all research runs: account flags {names}. Nothing dismissed; look at what was asked, not at the polling.")
-    stamp = now().isoformat(timespec="seconds")
-    for rec in running:
+    sent = _ping(sender, f"HALTED all research runs: account flags {names}. Nothing dismissed; look at what was asked, not at the polling.")
+    stamp = now().isoformat(timespec="seconds") if sent else None
+    for rec in running:   # halted whether or not the ping went out: the halt is the safety, the ping the courtesy
         update_run(Path(rec.out_dir), status=RunStatus.HALTED.value, reason=f"account flags: {names}", notified_at=stamp)
     return 1
 
@@ -101,9 +137,9 @@ def _count_failure(rec: RunRecord, out: Path, exc: Exception, sender, now) -> No
     if failures >= MAX_POLL_FAILURES:
         reason = f"{failures} consecutive poll failures: {exc}"
         _log("WARNING", f"deep-research: run {rec.run_id} failed: {reason}")
-        sender(outcome_line(rec, "failed", reason))
+        sent = _ping(sender, outcome_line(rec, "failed", reason))
         update_run(out, status=RunStatus.FAILED.value, reason=reason, poll_failures=failures,
-                   notified_at=now().isoformat(timespec="seconds"))
+                   notified_at=now().isoformat(timespec="seconds") if sent else None)
     else:
         update_run(out, poll_failures=failures)
 
@@ -131,8 +167,8 @@ def _poll(rec: RunRecord, conversation: dict | None, exc: Exception | None, send
             update_run(out, poll_failures=0)
             return
         # collect already wrote status: done, so a retried send cannot re-collect.
-        sender(done_line(rec, counts, out / REPORT_NAME))
-        update_run(out, notified_at=stamp)
+        if _ping(sender, done_line(rec, counts, out / REPORT_NAME)):
+            update_run(out, notified_at=stamp)
         return
     if state in (ThreadState.NEEDS_REPLY, ThreadState.EMPTY):
         reason = failure_reason(state)
@@ -140,14 +176,14 @@ def _poll(rec: RunRecord, conversation: dict | None, exc: Exception | None, send
         # here so it stops aging toward stale, and the ping tells him there is something to answer.
         settled = (RunStatus.NEEDS_REPLY if state is ThreadState.NEEDS_REPLY else RunStatus.FAILED).value
         _log("WARNING", f"deep-research: run {rec.run_id} {settled}: {reason}")
-        sender(outcome_line(rec, settled, reason))
-        update_run(out, status=settled, reason=reason, notified_at=stamp)
+        sent = _ping(sender, outcome_line(rec, settled, reason))
+        update_run(out, status=settled, reason=reason, notified_at=stamp if sent else None)
         return
     started = datetime.fromisoformat(rec.started_at)
     if now() - started > STALE_AFTER:
         reason = f"no report after {int(STALE_AFTER.total_seconds() // 60)} min"
         _log("WARNING", f"deep-research: run {rec.run_id} stale")
-        sender(outcome_line(rec, "stale", reason))
-        update_run(out, status=RunStatus.STALE.value, reason=reason, notified_at=stamp)
+        sent = _ping(sender, outcome_line(rec, "stale", reason))
+        update_run(out, status=RunStatus.STALE.value, reason=reason, notified_at=stamp if sent else None)
         return
     update_run(out, poll_failures=0)

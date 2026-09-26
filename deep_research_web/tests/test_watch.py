@@ -56,7 +56,7 @@ def _api(conversation, flags=()):
 
 
 def test_idle_pass_opens_no_browser(runs_root):
-    _run(runs_root, status="done")
+    _run(runs_root, status="done", notified_at="2026-09-16T12:05:00+00:00")   # finished AND pinged: nothing to do
     sent, session = [], FakeSession(_api(None))
     assert watch(_cfg(runs_root), lambda p: session, sent.append, lambda r, c: (0, {}), lambda: T0) == 0
     assert session.opened == 0 and sent == []
@@ -159,9 +159,10 @@ def test_a_failed_send_leaves_the_run_unnotified(runs_root):
     def sender(message):
         raise NotifyError("telegram API error")
 
-    with pytest.raises(NotifyError):
-        watch(_cfg(runs_root), lambda p: FakeSession(_api(research_done())), sender,
-              lambda r, c: (0, {}), lambda: T0)
+    # Was: the pass raised, and the systemd unit failed on every pass that finished a run (2026-09-25). Now the pass
+    # stays green and the run stays un-notified, so a later pass retries the ping.
+    assert watch(_cfg(runs_root), lambda p: FakeSession(_api(research_done())), sender,
+                 lambda r, c: (0, {}), lambda: T0) == 0
     assert read_run(d).notified_at is None
 
 
@@ -252,3 +253,54 @@ def test_a_run_another_process_is_collecting_is_left_to_it(runs_root):
         watch(_cfg(runs_root), lambda p: FakeSession(_api(research_done())), [].append,
               lambda r, c: collected.append(r.run_id) or (0, {}), lambda: T0)
     assert collected == [] and read_run(d).status == "running", "a manual collect owns it; this pass never grades it twice"
+
+
+# --------------------------------------------------- a ping that fails never fails the pass (2026-09-26)
+def _done_collect(rec, conversation):
+    """What collect does to a run: marks it done and writes its report."""
+    from deep_research_web.runs import update_run
+    out = __import__("pathlib").Path(rec.out_dir)
+    (out / "report.md").write_text("r")
+    update_run(out, status="done")
+    return 0, {"quoted": 1, "live": 0, "misquoted": 0, "dead": 0, "unverifiable": 0, "unchecked": 0}
+
+
+def _refusing(sent):
+    def send(text):
+        sent.append(text)
+        raise NotifyError("telegram not configured")
+    return send
+
+
+def test_a_failed_ping_leaves_the_pass_green_and_a_later_pass_sends_it(runs_root):
+    # The seat's watcher exited 1 on every pass that finished a run ("telegram not configured", 20:13-23:19 PDT
+    # 2026-09-25), and the run, already done, was never polled again: the ping was lost, not retried.
+    d = _run(runs_root)
+    tried = []
+    assert watch(_cfg(runs_root), lambda p: FakeSession(_api(research_done())), _refusing(tried), _done_collect,
+                 lambda: T0) == 0, "a notifier that fails does not fail the collector"
+    assert len(tried) == 1 and read_run(d).status == "done" and read_run(d).notified_at is None
+    sent = []
+    assert watch(_cfg(runs_root), lambda p: FakeSession(_api(None)), sent.append, _done_collect, lambda: T0) == 0
+    assert len(sent) == 1 and "research done" in sent[0] and read_run(d).notified_at
+    watch(_cfg(runs_root), lambda p: FakeSession(_api(None)), sent.append, _done_collect, lambda: T0)
+    assert len(sent) == 1, "sent once, never again"
+
+
+def test_an_old_unnotified_run_is_history_not_a_ping(runs_root):
+    import os, time as _t
+    d = _run(runs_root, status="done")
+    (d / "report.md").write_text("r")
+    old = _t.time() - 7 * 3600
+    os.utime(d / "report.md", (old, old))
+    os.utime(d / "run.json", (old, old))
+    sent = []
+    watch(_cfg(runs_root), lambda p: FakeSession(_api(None)), sent.append, _done_collect, lambda: T0)
+    assert sent == [], "61 runs predate the notifier on this seat; turning it on must not replay them"
+
+
+def test_flags_still_halt_every_run_when_the_ping_fails(runs_root):
+    d = _run(runs_root)
+    session = FakeSession(_api(research_started(), flags=[{"type": "consumer_first_warning", "expires_at": "x"}]))
+    assert watch(_cfg(runs_root), lambda p: session, _refusing([]), lambda r, c: (0, {}), lambda: T0) == 1
+    assert read_run(d).status == "halted" and read_run(d).notified_at is None, "halted now, the ping retried later"

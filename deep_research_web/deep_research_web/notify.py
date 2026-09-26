@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
+import shlex
 import socket
+import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -15,6 +18,9 @@ from .runs import RunRecord
 TAG = "[deep-research]"
 EMOJI = "\U0001f5a5️"  # the console emoji of the private infra repo's naming rules
 CHANNEL_DIR = Path.home() / ".claude/channels/telegram"
+# A machine whose Telegram is not this channel (no .env there) names its own sender here, in the engine's env file:
+# a command that takes the message as its LAST argument and exits 0 only when it was delivered.
+NOTIFY_CMD_ENV = "DEEP_RESEARCH_WEB_NOTIFY_CMD"
 
 
 class NotifyError(RuntimeError):
@@ -59,8 +65,19 @@ def send(
     body: str, poster: Callable[[str, str, str], None] = post_telegram,
     chan_dir: Path = CHANNEL_DIR, host: str | None = None,
 ) -> None:
+    text = format_message(body, host)
+    command = os.environ.get(NOTIFY_CMD_ENV, "").strip()
+    if command:
+        try:
+            done = subprocess.run([*shlex.split(command), text], capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise NotifyError(f"the notify command could not run: {type(exc).__name__}") from exc
+        if done.returncode != 0:
+            # Its own output only, never the command line: it may carry arguments nobody should read in a log.
+            raise NotifyError(f"the notify command exited {done.returncode}: {(done.stderr or done.stdout).strip()[-200:]}")
+        return
     token, chat_id = load_channel(chan_dir)
-    poster(token, chat_id, format_message(body, host))
+    poster(token, chat_id, text)
 
 
 def _counts_text(counts: dict[str, int]) -> str:

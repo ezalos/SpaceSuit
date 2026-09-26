@@ -52,3 +52,24 @@ def test_post_telegram_wraps_transport_failures_in_notify_error(monkeypatch):
     monkeypatch.setattr(notify.urllib.request, "urlopen", boom)
     with pytest.raises(NotifyError, match="down"):
         post_telegram("t", "c", "x")
+
+
+def test_a_notify_command_gets_the_message_as_its_last_argument(tmp_path, monkeypatch):
+    # The seat notifies through its own sender (DEEP_RESEARCH_WEB_NOTIFY_CMD), not a channel .env it does not have.
+    log = tmp_path / "sent"
+    cmd = tmp_path / "sender"
+    cmd.write_text(f'#!/bin/sh\nprintf "%s|%s" "$1" "$2" > {log}\n')
+    cmd.chmod(0o755)
+    monkeypatch.setenv("DEEP_RESEARCH_WEB_NOTIFY_CMD", f"{cmd} send")
+    notify.send("hello", host="seat")
+    assert log.read_text() == "send|" + notify.format_message("hello", "seat")
+
+
+def test_a_failing_notify_command_raises_without_echoing_itself(tmp_path, monkeypatch):
+    cmd = tmp_path / "sender"
+    cmd.write_text("#!/bin/sh\necho 'no paired chat' >&2\nexit 3\n")
+    cmd.chmod(0o755)
+    monkeypatch.setenv("DEEP_RESEARCH_WEB_NOTIFY_CMD", f"{cmd} --secret-looking-arg")
+    with pytest.raises(notify.NotifyError) as err:
+        notify.send("hello")
+    assert "no paired chat" in str(err.value) and "secret-looking" not in str(err.value)
