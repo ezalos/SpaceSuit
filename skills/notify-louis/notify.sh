@@ -14,7 +14,7 @@ usage() {
 
 load_token() {
   # A token already in the environment wins: `secrets run --only TELEGRAM_BOT_TOKEN -- notify.sh ...` supplies it
-  # from the vault, so no plaintext .env is needed (the Lighthouse seat has none).
+  # from the vault, so no plaintext .env is needed (a cloud machine has none).
   if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
     printf '%s' "$TELEGRAM_BOT_TOKEN"
     return 0
