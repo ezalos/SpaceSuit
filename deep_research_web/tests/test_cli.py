@@ -1093,3 +1093,37 @@ def test_spread_never_takes_a_priority_account_or_a_full_one(runs_root, tmp_path
     monkeypatch.setattr(cli, "read_usage", lambda: usage)
     assert cli.cmd_launch(_LaunchArgs(_charter(tmp_path)), cfg) == EXIT_PREFLIGHT
     assert opened == []
+
+
+
+def test_a_launch_arriving_in_a_waiters_gap_queues_behind_it_and_cannot_take_the_slot(runs_root, tmp_path, monkeypatch):
+    # main-dojo, 2026-09-25: main-xp's research-slot waited from 17:42 past 18:13 PDT. The slot flock itself serves
+    # blocked waiters in arrival order (measured on this kernel, 10/10 threads and 10/10 processes); what starved it
+    # is research-slot's own comment: "other sessions launch outside our lock, and a 5-min poll lost every gap to them".
+    # Every launch enters the engine's launch queue, --wait or not, so a later launch can never take a freed slot
+    # from a waiter ahead of it.
+    import threading
+    cfg, opened, _apis = _two_accounts(runs_root, monkeypatch, _OK, _OK)
+    _full(runs_root, "a")
+    results = {}
+    clock = [0.0]
+
+    def direct():
+        results["direct"] = cli.cmd_launch(_LaunchArgs(_charter(tmp_path)), cfg)
+
+    def sleep(s):
+        clock[0] += s
+        update_run(runs_root / "a-slot-1", status=RunStatus.DONE.value)   # a slot frees...
+        late = threading.Thread(target=direct)                              # ...and a direct launch arrives in the gap
+        late.start()
+        late.join(0.5)                                                      # a launch outside the queue lands here
+        results["late_blocked"] = late.is_alive()
+        results["late"] = late
+
+    monkeypatch.setattr(cli, "_sleep", sleep)
+    monkeypatch.setattr(cli, "_clock", lambda: clock[0])
+    results["waiter"] = cli.cmd_launch(_wait_args(tmp_path, 5), cfg)
+    results["late"].join(5)
+    assert results["late_blocked"], "the direct launch waited in the queue behind the waiter"
+    assert results["waiter"] == EXIT_OK, "the waiter took the slot it waited for"
+    assert results["direct"] == EXIT_PREFLIGHT, "the later launch found the account full again, and never jumped"

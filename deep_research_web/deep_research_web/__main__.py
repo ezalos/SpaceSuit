@@ -473,7 +473,10 @@ _sleep, _clock = time.sleep, time.monotonic   # module hooks: tests drive --wait
 @contextmanager
 def _launch_queue(cfg: Config):
     """Serialises launch DECISIONS: the room check and the launch that uses it happen under one lock,
-    so two waiters never both take an account's last slot. Blocking, so waiters queue in arrival order."""
+    so two waiters never both take an account's last slot. EVERY launch enters it, --wait or not: the lanes'
+    own slot lock starved main-xp (2026-09-25 17:42 to past 18:13 PDT) because other sessions launched outside
+    it and took each gap. Blocked flock waiters are served in arrival order on this kernel (measured 10/10 with
+    threads and 10/10 with processes); POSIX does not promise it, and nothing here polls outside the lock."""
     cfg.runs_root.mkdir(parents=True, exist_ok=True)
     fd = os.open(cfg.runs_root / LAUNCH_LOCK, os.O_CREAT | os.O_RDWR, 0o600)
     try:
