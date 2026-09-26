@@ -26,6 +26,11 @@ fi
 # `rip: command not found` and nothing was ever saved.
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
 
+# rip buries into $RIP_GRAVEYARD, else $XDG_DATA_HOME/graveyard, else /tmp/graveyard-$USER.
+# Cron sets none of the three, so every cron save buried its previous snapshot into
+# /tmp/graveyard-unknown: on a machine whose /tmp is a small root disk, 1 GB in a day.
+export RIP_GRAVEYARD="${RIP_GRAVEYARD:-${XDG_DATA_HOME:-$HOME/.local/share}/graveyard}"
+
 # Optional: target an explicit tmux socket (-L NAME) so an isolated test save can
 # never read the default server. Routed through a wrapper so every tmux call below
 # picks up the flag by construction (no per-call leak like a bare TMUX_TMPDIR).

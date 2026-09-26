@@ -90,6 +90,27 @@ def test_fixture_isolates_the_real_rolling_history(tmux_env, tmp_path):
         "the save should have written to the isolated history instead"
 
 
+def test_a_cron_save_buries_into_the_home_graveyard(tmux_env, tmp_path):
+    """Regression: cron sets neither RIP_GRAVEYARD, XDG_DATA_HOME nor USER, so rip fell back to
+    /tmp/graveyard-unknown and every 15-min cron save buried its previous snapshot on the root
+    disk (1 GB in a day on a 19 GB disk). The script now defaults the graveyard under $HOME."""
+    assert tmux(tmux_env, "new-session", "-d", "-s", "alpha", "-c", str(tmp_path)).returncode == 0
+    home = tmp_path / "home"
+    home.mkdir()
+    cron = {k: v for k, v in tmux_env.items() if k not in ("RIP_GRAVEYARD", "XDG_DATA_HOME", "USER", "LOGNAME")}
+    cron["HOME"] = str(home)
+    for _ in range(2):  # the second save buries the first one's directory
+        result = subprocess.run([str(SAVE)], env=cron, capture_output=True, text=True,
+                                stdin=subprocess.DEVNULL, timeout=60)
+        assert result.returncode == 0, result.stderr
+    record = home / ".local" / "share" / "graveyard" / ".record"
+    assert record.is_file(), "the old save should rest in $HOME/.local/share/graveyard"
+    assert tmux_env["TMUX_SAVE_DIR"] in record.read_text()
+    stray = Path("/tmp/graveyard-unknown/.record")
+    assert not (stray.is_file() and tmux_env["TMUX_SAVE_DIR"] in stray.read_text()), \
+        "the save was buried into /tmp/graveyard-unknown"
+
+
 def test_save_with_no_server_preserves_existing_save(tmux_env):
     """Regression: a save run while no tmux server is up must NOT destroy the
     previous good snapshot. (Old code wiped the save dir before checking.)"""
