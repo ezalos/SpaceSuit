@@ -25,6 +25,8 @@ LOGIN_TIMEOUT_MS = 120_000
 CODE_FIELD_TIMEOUT_MS = 20_000
 LOGIN_CHALLENGE_S = 600.0
 LOCK_FILE = ".lock"
+LOCK_WAIT_S = 300   # how long a command waits for a busy profile before refusing
+LOCK_POLL_S = 2
 # claude.ai lands every route this engine visits on one of these. A polling SPA never lets
 # the network go quiet, so arrival is tested by the URL, never by waiting for idle traffic.
 SETTLED_URL = re.compile(r"claude\.ai/(login|logout|new|chat)")
@@ -172,8 +174,11 @@ def check_profile_permissions(profile: Path) -> None:
 
 
 class Session:
-    def __init__(self, profile: Path, headless: bool = False, create: bool = False):
+    def __init__(self, profile: Path, headless: bool = False, create: bool = False,
+                 lock_wait_s: float = LOCK_WAIT_S, sleep=time.sleep, clock=time.monotonic):
         self.profile = Path(profile)
+        self.lock_wait_s = lock_wait_s
+        self._sleep, self._clock = sleep, clock
         self.headless = headless
         self.create = create
         self._pw = None
@@ -182,14 +187,23 @@ class Session:
         self._lock_fd: int | None = None
 
     def _take_lock(self) -> None:
-        """One browser at a time on this profile: two Chromes on one profile corrupt it."""
+        """One browser at a time on this profile: two Chromes on one profile corrupt it.
+
+        A busy profile is WAITED for, up to lock_wait_s: every holder is short (a launch's engagement
+        poll, a conversation fetch), so concurrent commands queue here instead of failing "busy"."""
         path = self.profile / LOCK_FILE
         fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            os.close(fd)
-            raise SessionError("browser profile busy: another deep-research-web command is running") from exc
+        deadline = self._clock() + self.lock_wait_s
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as exc:
+                if self._clock() >= deadline:
+                    os.close(fd)
+                    raise SessionError(f"browser profile busy: another deep-research-web command held it "
+                                       f"for over {self.lock_wait_s:g} s") from exc
+                self._sleep(LOCK_POLL_S)
         self._lock_fd = fd
 
     def _release_lock(self) -> None:

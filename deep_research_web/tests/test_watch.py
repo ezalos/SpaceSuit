@@ -222,3 +222,33 @@ def test_a_run_whose_account_profile_is_gone_counts_a_poll_failure(runs_root):
 
     assert watch(_cfg(runs_root), factory, [].append, lambda r, c: (0, {}), lambda: T0) == 0
     assert read_run(d).poll_failures == 1
+
+
+def test_finished_runs_are_graded_at_the_same_time(runs_root):
+    # Several runs finish in one pass now that several run at once; grading is serial HTTP per citation,
+    # so graded one after another they could outlast the unit's 25 min. The barrier opens only if both
+    # collects are running together.
+    import threading
+    _run(runs_root, "r1")
+    _run(runs_root, "r2")
+    both = threading.Barrier(2, timeout=5)
+    sent, collected = [], []
+
+    def collect(rec, conversation):
+        both.wait()
+        collected.append(rec.run_id)
+        return 0, {"quoted": 1, "live": 0, "misquoted": 0, "dead": 0, "unverifiable": 0, "unchecked": 0}
+
+    assert watch(_cfg(runs_root), lambda p: FakeSession(_api(research_done())), sent.append, collect, lambda: T0) == 0
+    assert sorted(collected) == ["r1", "r2"] and len(sent) == 2
+
+
+def test_a_run_another_process_is_collecting_is_left_to_it(runs_root):
+    from deep_research_web.runs import collect_lock
+    d = _run(runs_root)
+    collected = []
+    with collect_lock(d) as mine:
+        assert mine
+        watch(_cfg(runs_root), lambda p: FakeSession(_api(research_done())), [].append,
+              lambda r, c: collected.append(r.run_id) or (0, {}), lambda: T0)
+    assert collected == [] and read_run(d).status == "running", "a manual collect owns it; this pass never grades it twice"

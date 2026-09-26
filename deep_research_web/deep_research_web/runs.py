@@ -2,9 +2,11 @@
 # ABOUTME: Writes are atomic so the watcher never reads a half-written record.
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from enum import Enum
@@ -140,6 +142,37 @@ def list_all(root: Path) -> list[dict]:
 
 def running_runs(root: Path) -> list[RunRecord]:
     return [r for r in find_runs(root) if r.status == RunStatus.RUNNING.value]
+
+
+def running_on(root: Path, account: str | None, live: str | None) -> list[RunRecord]:
+    """The running runs that occupy `account`. A run recorded without an account ran on the live
+    profile (the pre-account records), so it counts against the live account."""
+    target = account or live
+    return [r for r in running_runs(root) if (r.account or live) == target]
+
+
+COLLECT_LOCK = ".collect-locks"
+
+
+@contextmanager
+def collect_lock(out_dir: Path):
+    """Held while ONE process collects and grades a run: the watcher (now several runs at once)
+    and a manual `collect` must never grade the same run twice. Yields False when another holds it."""
+    locks = Path(out_dir).parent / COLLECT_LOCK          # beside the runs, so an archive never copies a lock
+    locks.mkdir(exist_ok=True)
+    fd = os.open(locks / Path(out_dir).name, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 def update_run(out_dir: Path, **changes) -> RunRecord:

@@ -77,7 +77,48 @@ def test_a_locked_profile_is_refused_before_playwright_is_touched(tmp_path):
     fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
     try:
         with pytest.raises(SessionError, match="busy"):
-            Session(profile).__enter__()
+            Session(profile, lock_wait_s=0).__enter__()
+    finally:
+        fcntl.flock(holder, fcntl.LOCK_UN)
+        os.close(holder)
+
+
+def _held(profile):
+    holder = os.open(profile / ".lock", os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    return holder
+
+
+def test_a_busy_profile_is_waited_for_until_its_holder_lets_go(tmp_path):
+    # Concurrent commands on one account queue here instead of failing "busy" (2026-09-25).
+    profile = tmp_path / "profile"
+    profile.mkdir(mode=0o700)
+    holder = _held(profile)
+    naps = []
+
+    def nap(s):
+        naps.append(s)
+        fcntl.flock(holder, fcntl.LOCK_UN)       # the other command finishes while we wait
+
+    s = Session(profile, lock_wait_s=300, sleep=nap)
+    try:
+        s._take_lock()
+        assert naps == [2] and s._lock_fd is not None
+    finally:
+        s._release_lock()
+        os.close(holder)
+
+
+def test_a_profile_held_past_the_wait_is_refused(tmp_path):
+    profile = tmp_path / "profile"
+    profile.mkdir(mode=0o700)
+    holder = _held(profile)
+    clock = [0.0]
+    s = Session(profile, lock_wait_s=10, sleep=lambda x: clock.__setitem__(0, clock[0] + x), clock=lambda: clock[0])
+    try:
+        with pytest.raises(SessionError, match="busy"):
+            s._take_lock()
+        assert clock[0] >= 10
     finally:
         fcntl.flock(holder, fcntl.LOCK_UN)
         os.close(holder)

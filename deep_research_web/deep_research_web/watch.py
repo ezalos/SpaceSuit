@@ -2,6 +2,7 @@
 # ABOUTME: Opens no browser when nothing is running; one session per account; halts everything on an account flag and never dismisses one.
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
@@ -11,12 +12,16 @@ from .config import Config
 from .notify import done_line, outcome_line
 from .profiles import group_by_profile
 from .report import REPORT_NAME
-from .runs import RunRecord, RunStatus, running_runs, update_run
+from .runs import RunRecord, RunStatus, collect_lock, running_runs, update_run
 from .session import SessionError
 from .thread import ThreadState, classify, failure_reason
 
 STALE_AFTER = timedelta(minutes=90)
 MAX_POLL_FAILURES = 5
+# Runs graded at once. Grading fetches every cited page serially over plain HTTP; with several
+# research runs in flight (2026-09-25) several can finish in one pass, and graded one after another
+# they could outlast the unit's 25 min. Threads suffice: the work is I/O, and no browser is open.
+COLLECT_WORKERS = 4
 
 
 def _log(level: str, message: str) -> None:
@@ -67,9 +72,17 @@ def watch(
     # The browser is closed from here on. Grading fetches third-party pages and Telegram
     # can hang; neither is a reason to hold a claude.ai session open, and a pass that
     # hangs past the unit's TimeoutStartSec now leaves no browser behind when it is killed.
-    for rec, conversation, exc in fetched:
-        _poll(rec, conversation, exc, sender, collect, now)
+    with ThreadPoolExecutor(max_workers=COLLECT_WORKERS) as pool:
+        list(pool.map(lambda item: _poll_locked(*item, sender, collect, now), fetched))
     return 0
+
+
+def _poll_locked(rec: RunRecord, conversation: dict | None, exc: Exception | None, sender, collect, now) -> None:
+    """_poll under the run's collect lock: a manual `collect` holding it owns the run, and this pass
+    leaves it alone rather than grade it twice (the next pass sees whatever that collect wrote)."""
+    with collect_lock(Path(rec.out_dir)) as mine:
+        if mine:
+            _poll(rec, conversation, exc, sender, collect, now)
 
 
 def _halt(running: list[RunRecord], flags: list[dict], sender, now) -> int:

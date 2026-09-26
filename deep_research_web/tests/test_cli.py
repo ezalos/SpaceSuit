@@ -118,12 +118,34 @@ def test_launch_refuses_on_account_flags(runs_root, tmp_path, capsys):
     assert "consumer_first_warning" in capsys.readouterr().out
 
 
-def test_launch_refuses_when_a_run_is_in_flight(runs_root, tmp_path):
-    d = runs_root / "old"; d.mkdir()
-    write_run(d, RunRecord("old", "q", "running", "o", "c", "u", "m", "c.md", str(d), "2026-09-16T00:00:00+00:00"))
+def _running(runs_root, run_id, account=None):
+    d = runs_root / run_id; d.mkdir()
+    write_run(d, RunRecord(run_id, "q", "running", "o", "c", "u", "m", "c.md", str(d), "2026-09-16T00:00:00+00:00",
+                           account=account))
+
+
+def test_the_cap_is_per_account_and_counts_max_per_account_runs(runs_root, tmp_path, capsys):
+    # Was one run on the whole seat. Measured 2026-09-25: one account runs two Research tasks at once.
     api = RoutingApi(_routes(research_started()))
-    assert launch_run(Client(api), _cfg(runs_root), _charter(tmp_path), "claude-fable-5-1", None, False, sleep=lambda s: None) == EXIT_PREFLIGHT
-    assert launch_run(Client(api), _cfg(runs_root), _charter(tmp_path), "claude-fable-5-1", None, True, sleep=lambda s: None) == EXIT_OK
+    cfg = _cfg(runs_root)
+    launch = lambda force=False, account="a": launch_run(Client(api), cfg, _charter(tmp_path), "claude-fable-5-1",
+                                                         None, force, sleep=lambda s: None, account=account)
+    _running(runs_root, "one-on-a", "a")
+    _running(runs_root, "one-on-b", "b")
+    _running(runs_root, "two-on-b", "b")
+    assert launch() == EXIT_OK, "a holds one of its two slots: a second run starts"
+    assert launch() == EXIT_PREFLIGHT, "a now holds two"
+    assert "a run is already in flight: account a holds 2 of its 2" in capsys.readouterr().out
+    assert launch(force=True) == EXIT_OK, "--force still passes"
+    assert launch(account="c") == EXIT_OK, "b's runs never fill c"
+
+
+def test_a_run_recorded_without_an_account_counts_against_the_live_one(runs_root, tmp_path):
+    _running(runs_root, "legacy-1")
+    _running(runs_root, "legacy-2")
+    api = RoutingApi(_routes(research_started()))
+    assert launch_run(Client(api), _cfg(runs_root), _charter(tmp_path), "claude-fable-5-1", None, False,
+                      sleep=lambda s: None, account=None) == EXIT_PREFLIGHT
 
 
 _REFUSED_EXHAUSTED = ('{"type":"error","error":{"type":"exceeded_limit",'
@@ -996,3 +1018,78 @@ def test_login_reports_an_unusable_session_instead_of_a_raw_api_error(runs_root,
     out = capsys.readouterr().out
     assert "session is not usable" in out and "fresh sign-in link" in out
     assert "deep-research-web login acct" in out
+
+
+# ------------------------------------------------ concurrent research (2026-09-25): per-account cap, --wait, spread
+_OK = ApiResponse(200, "event: message_stop\r\n\r\n")
+
+
+def _full(runs_root, account):
+    _running(runs_root, f"{account}-slot-1", account)
+    _running(runs_root, f"{account}-slot-2", account)
+
+
+def _wait_args(tmp_path, minutes):
+    args = _LaunchArgs(_charter(tmp_path))
+    args.wait = minutes
+    return args
+
+
+def test_launch_wait_takes_the_slot_that_frees_up(runs_root, tmp_path, monkeypatch):
+    cfg, opened, _apis = _two_accounts(runs_root, monkeypatch, _OK, _OK)
+    _full(runs_root, "a")
+    clock, slept = [0.0], []
+
+    def sleep(s):
+        slept.append(s)
+        clock[0] += s
+        update_run(runs_root / "a-slot-1", status=RunStatus.DONE.value)   # one of a's runs finishes
+
+    monkeypatch.setattr(cli, "_sleep", sleep)
+    monkeypatch.setattr(cli, "_clock", lambda: clock[0])
+    assert cli.cmd_launch(_wait_args(tmp_path, 5), cfg) == EXIT_OK
+    assert slept == [cli.WAIT_POLL_S] and opened == ["a"]
+
+
+def test_launch_wait_gives_up_after_its_minutes_and_never_opens_a_browser(runs_root, tmp_path, monkeypatch, capsys):
+    cfg, opened, _apis = _two_accounts(runs_root, monkeypatch, _OK, _OK)
+    _full(runs_root, "a")
+    clock = [0.0]
+    monkeypatch.setattr(cli, "_sleep", lambda s: clock.__setitem__(0, clock[0] + s))
+    monkeypatch.setattr(cli, "_clock", lambda: clock[0])
+    assert cli.cmd_launch(_wait_args(tmp_path, 2), cfg) == EXIT_PREFLIGHT
+    assert opened == [] and "holds 2 of its 2" in capsys.readouterr().out
+
+
+def test_spread_is_off_by_default_so_a_full_account_refuses(runs_root, tmp_path, monkeypatch):
+    cfg, opened, _apis = _two_accounts(runs_root, monkeypatch, _OK, _OK)
+    _full(runs_root, "a")
+    monkeypatch.setattr(cli, "read_usage", lambda: _usage(a=10, b=10))
+    assert cli.cmd_launch(_LaunchArgs(_charter(tmp_path)), cfg) == EXIT_PREFLIGHT
+    assert opened == []
+
+
+def test_spread_launches_on_another_account_and_never_moves_the_live_one(runs_root, tmp_path, monkeypatch, capsys):
+    from dataclasses import replace
+    cfg, opened, _apis = _two_accounts(runs_root, monkeypatch, _OK, _OK)
+    cfg = replace(cfg, spread=True)
+    _full(runs_root, "a")
+    monkeypatch.setattr(cli, "read_usage", lambda: _usage(a=10, b=20))
+    assert cli.cmd_launch(_LaunchArgs(_charter(tmp_path)), cfg) == EXIT_OK
+    assert opened == ["b"] and live_name(cfg.profile, cfg.profiles) == "a"
+    [rec] = [r for r in find_runs(runs_root) if not r.run_id.startswith("a-slot")]
+    assert rec.account == "b" and "launching on b" in capsys.readouterr().out
+
+
+def test_spread_never_takes_a_priority_account_or_a_full_one(runs_root, tmp_path, monkeypatch):
+    from dataclasses import replace
+    cfg, opened, _apis = _two_accounts(runs_root, monkeypatch, _OK, _OK)
+    cfg = replace(cfg, spread=True)
+    _saved(runs_root, "c")
+    _full(runs_root, "a")
+    _full(runs_root, "c")
+    usage = _usage(a=10, b=5, c=5)
+    usage[1]["priority"] = 1                      # b: one of Louis's own accounts, never used automatically
+    monkeypatch.setattr(cli, "read_usage", lambda: usage)
+    assert cli.cmd_launch(_LaunchArgs(_charter(tmp_path)), cfg) == EXIT_PREFLIGHT
+    assert opened == []

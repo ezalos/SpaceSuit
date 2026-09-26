@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -33,8 +36,8 @@ from .report import (
     write_report_files,
 )
 from .runs import (
-    AmbiguousRunId, RunRecord, RunStatus, chat_url, find_run, find_runs, list_all, make_run_id,
-    running_runs, update_run, write_run,
+    AmbiguousRunId, RunRecord, RunStatus, chat_url, collect_lock, find_run, find_runs, list_all, make_run_id,
+    running_on, running_runs, update_run, write_run,
 )
 from .session import LOGIN_CHALLENGE_S, BrowserError, Session, SessionError
 from .thread import (
@@ -110,11 +113,16 @@ def launch_run(
     if name is not None and not valid_name(name):
         print(f"--name {name!r}: lowercase kebab-case, at most {ARCHIVE_NAME_MAX} characters (it names the archive directory)")
         return EXIT_PROBLEM
-    running = running_runs(cfg.runs_root)
-    if running and not force:
-        ids = ", ".join(r.run_id for r in running)
-        print(f"a run is already in flight ({ids}); wait for it or pass --force")
-        log("WARNING", f"deep-research: cap reached ({ids}); offered force or wait")
+    live = live_name(cfg.profile, cfg.profiles)
+    resolved_account = live if isinstance(account, _Unset) else account
+    # The cap is per ACCOUNT (was: one run on the whole seat). claude.ai ran two Research tasks
+    # concurrently on one account when measured (2026-09-25); several accounts are separate browsers.
+    busy = running_on(cfg.runs_root, resolved_account, live)
+    if len(busy) >= cfg.max_per_account and not force:
+        ids = ", ".join(r.run_id for r in busy)
+        print(f"a run is already in flight: account {resolved_account or 'live'} holds {len(busy)} of its "
+              f"{cfg.max_per_account} ({ids}); wait (launch --wait) or pass --force")
+        log("WARNING", f"deep-research: cap reached on {resolved_account} ({ids}); offered force or wait")
         return EXIT_PREFLIGHT
 
     charter_text = charter_path.read_text(encoding="utf-8")
@@ -177,7 +185,6 @@ def launch_run(
         out_dir = cfg.runs_root / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "charter.md").write_text(charter_text, encoding="utf-8")
-    resolved_account = live_name(cfg.profile, cfg.profiles) if isinstance(account, _Unset) else account
     rec = RunRecord(
         run_id=run_id, question=charter.question, status=RunStatus.RUNNING.value,
         org_uuid=org["uuid"], conversation_uuid=conv, chat_url=url, model=model,
@@ -458,22 +465,89 @@ def cmd_profiles(args, cfg: Config) -> int:
     return EXIT_OK
 
 
+LAUNCH_LOCK = ".launch.lock"
+WAIT_POLL_S = 60
+_sleep, _clock = time.sleep, time.monotonic   # module hooks: tests drive --wait without real time
+
+
+@contextmanager
+def _launch_queue(cfg: Config):
+    """Serialises launch DECISIONS: the room check and the launch that uses it happen under one lock,
+    so two waiters never both take an account's last slot. Blocking, so waiters queue in arrival order."""
+    cfg.runs_root.mkdir(parents=True, exist_ok=True)
+    fd = os.open(cfg.runs_root / LAUNCH_LOCK, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def _spread_pick(cfg: Config, live: str | None) -> str | None:
+    """Another saved account with room by claude-usage's rule and a free research slot. Never one that
+    claude-usage marks priority >= 1 (Louis's own accounts are kept out of automatic use)."""
+    try:
+        accounts = read_usage()
+        order, _ = pick_all(accounts, saved_profiles(cfg.profiles), live, cfg.model)
+    except (UsageUnavailable, AttributeError, TypeError, KeyError):
+        return None
+    reserved = {a.get("name") for a in accounts if (a.get("priority") or 0) >= 1}
+    for name in order:
+        if name not in reserved and len(running_on(cfg.runs_root, name, live)) < cfg.max_per_account:
+            return name
+    return None
+
+
+def _choose_account(cfg: Config, force: bool) -> tuple[str | None, list[RunRecord]]:
+    """(the account to launch on, the runs filling it when it has NO room). The live account when it has
+    a free slot; with cfg.spread, another work account that does; otherwise the live one, full."""
+    live = live_name(cfg.profile, cfg.profiles)
+    busy = running_on(cfg.runs_root, live, live)
+    if force or len(busy) < cfg.max_per_account:
+        return live, []
+    if cfg.spread:
+        other = _spread_pick(cfg, live)
+        if other:
+            return other, []
+    return live, busy
+
+
 def cmd_launch(args, cfg: Config) -> int:
     model = args.model or cfg.model
     project = None if args.no_project else (args.project or cfg.project)
+    with _launch_queue(cfg):
+        deadline = _clock() + 60 * max(0, int(getattr(args, "wait", 0) or 0))
+        while True:
+            chosen, busy = _choose_account(cfg, args.force)
+            if not busy or _clock() >= deadline:
+                break
+            _sleep(WAIT_POLL_S)
+        if busy:
+            ids = ", ".join(r.run_id for r in busy)
+            print(f"a run is already in flight: account {chosen or 'live'} holds {len(busy)} of its "
+                  f"{cfg.max_per_account} ({ids}); wait (launch --wait) or pass --force")
+            log("WARNING", f"deep-research: cap reached on {chosen} ({ids}); offered force or wait")
+            return EXIT_PREFLIGHT
+        if chosen != live_name(cfg.profile, cfg.profiles):
+            print(f"the live account is full; launching on {chosen} (DEEP_RESEARCH_WEB_SPREAD=1)")
+            log("INFO", f"deep-research: spread a launch onto {chosen}")
+        return _launch_on(args, cfg, model, project, chosen)
 
-    def attempt() -> tuple[int, str | None]:
+
+def _launch_on(args, cfg: Config, model: str, project: str | None, chosen: str | None) -> int:
+    def attempt(account: str | None = None) -> tuple[int, str | None]:
         # The account is read once here and passed into launch_run, never re-read: a
         # concurrent switch between opening the profile and writing the run record must
         # not attribute the run to an account it never ran on.
-        account = live_name(cfg.profile, cfg.profiles)
+        account = account or live_name(cfg.profile, cfg.profiles)
         profile = (cfg.profiles / account) if account else cfg.profile
         with _open_session(profile) as s:
             s.require_login()
             code = launch_run(Client(s.api), cfg, Path(args.charter), model, project, args.force, account=account, name=args.name)
         return code, account
 
-    code, refused = attempt()
+    code, refused = attempt(chosen)
     if code != EXIT_USAGE:
         return code
     # The live account's window refused the launch (either usage-block path of launch_run).
@@ -540,11 +614,15 @@ def cmd_collect(args, cfg: Config) -> int:
     if rec is None:
         print(f"no run named {args.run_id}")
         return EXIT_PROBLEM
-    with _open_session(run_profile(cfg.profile, cfg.profiles, rec.account)) as s:
-        s.require_login()
-        conversation = fetch_conversation(Client(s.api), rec)
-    # Grading fetches third-party pages; the browser is already closed by here.
-    code, _ = collect_conversation(rec, conversation, verify=not args.no_verify, archive_root=cfg.archive_root)
+    with collect_lock(Path(rec.out_dir)) as mine:
+        if not mine:
+            print(f"run {rec.run_id} is being collected by another process (the watcher); it will land on its own")
+            return EXIT_RUNNING
+        with _open_session(run_profile(cfg.profile, cfg.profiles, rec.account)) as s:
+            s.require_login()
+            conversation = fetch_conversation(Client(s.api), rec)
+        # Grading fetches third-party pages; the browser is already closed by here.
+        code, _ = collect_conversation(rec, conversation, verify=not args.no_verify, archive_root=cfg.archive_root)
     return code
 
 
@@ -704,7 +782,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--model")
     p.add_argument("--project", help="claude.ai Project name (default from config)")
     p.add_argument("--no-project", action="store_true")
-    p.add_argument("--force", action="store_true", help="ignore the one-run cap")
+    p.add_argument("--force", action="store_true", help="ignore the per-account research cap")
+    p.add_argument("--wait", type=int, default=0, metavar="MINUTES",
+                   help="wait up to MINUTES for a free research slot instead of refusing (launches queue in order)")
     p.add_argument("--name", help="explicit archive name, lowercase kebab-case (the library directory becomes <date>-<name>)")
     p.set_defaults(func=cmd_launch)
 
