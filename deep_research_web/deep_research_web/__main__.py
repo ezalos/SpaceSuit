@@ -239,6 +239,8 @@ def launch_run(
     client.rename(org["uuid"], conv, charter.question[:NAME_MAX])
     print(f"  status:  deep-research-web status {run_id}")
     print(f"  collect: deep-research-web collect {run_id}")
+    print(f"  wait:    deep-research-web wait {run_id}   "
+          "<- agents: run this in the background; it exits when the run ends (your callback)")
     log("INFO", f"deep-research: launched {run_id}; {model}; {len(charter.must_answer)} sub-questions")
     return EXIT_OK
 
@@ -738,6 +740,35 @@ def cmd_report(args, cfg: Config) -> int:
     return EXIT_OK
 
 
+AGENT_HINT = ("Agents: after `launch`, run the printed `deep-research-web wait <run_id>` line in the BACKGROUND (a "
+              "background shell or a Monitor); it exits when the run ends (0 done, 5 needs a reply, 1 failed/stale/"
+              "halted, 6 still running at --timeout), which is your callback. Never poll `status` in a loop.")
+
+
+def cmd_wait(args, cfg: Config) -> int:
+    """Block until the run leaves `running`, reading its record on disk (the watcher timer writes the end state and
+    collects the report), then exit with a code per ending. Opens no browser, so any number of waits can run."""
+    if find_run(cfg.runs_root, args.run_id) is None:
+        print(f"no run named {args.run_id}")
+        return EXIT_PROBLEM
+    deadline = _clock() + 60 * args.timeout
+    while True:
+        rec = find_run(cfg.runs_root, args.run_id)
+        if rec.status != RunStatus.RUNNING.value:
+            break
+        if _clock() >= deadline:
+            print(f"{rec.run_id}  still running after {args.timeout} min: {rec.chat_url}")
+            return EXIT_RUNNING
+        _sleep(args.interval)
+    print(f"{rec.run_id}  {rec.status}  {rec.chat_url}")
+    if rec.status == RunStatus.DONE.value:
+        collected = rec.collected_at or (Path(rec.out_dir) / "report.md").exists()
+        print(f"  report:  {Path(rec.out_dir) / 'report.md'}" if collected
+              else f"  collect: deep-research-web collect {rec.run_id}   (the watcher collects within 5 min)")
+        return EXIT_OK
+    return EXIT_NEEDS_REPLY if rec.status == RunStatus.NEEDS_REPLY.value else EXIT_PROBLEM
+
+
 def cmd_list(args, cfg: Config) -> int:
     runs = list_all(cfg.runs_root)
     if not runs:
@@ -764,7 +795,8 @@ def cmd_watch(args, cfg: Config) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="deep-research-web", description="Run a research charter as a claude.ai Research conversation")
+    ap = argparse.ArgumentParser(prog="deep-research-web", description="Run a research charter as a claude.ai Research conversation",
+                                 epilog=AGENT_HINT)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("login", help="log a saved profile into claude.ai (email code)")
@@ -780,7 +812,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("profiles", help="saved profiles, the live one, and each account's meters")
     p.set_defaults(func=cmd_profiles)
 
-    p = sub.add_parser("launch", help="start a Research conversation from a charter")
+    p = sub.add_parser("launch", help="start a Research conversation from a charter", epilog=AGENT_HINT)
     p.add_argument("--charter", required=True)
     p.add_argument("--model")
     p.add_argument("--project", help="claude.ai Project name (default from config)")
@@ -790,6 +822,13 @@ def build_parser() -> argparse.ArgumentParser:
                    help="wait up to MINUTES for a free research slot instead of refusing (launches queue in order)")
     p.add_argument("--name", help="explicit archive name, lowercase kebab-case (the library directory becomes <date>-<name>)")
     p.set_defaults(func=cmd_launch)
+
+    p = sub.add_parser("wait", help="block until a run ends; exit 0 done, 5 needs a reply, 1 failed/stale/halted, "
+                       "6 still running at --timeout (the agent's callback: run it in the background)")
+    p.add_argument("run_id")
+    p.add_argument("--timeout", type=int, default=360, metavar="MINUTES", help="give up after this long (default 360)")
+    p.add_argument("--interval", type=int, default=60, metavar="SECONDS", help="seconds between checks (default 60)")
+    p.set_defaults(func=cmd_wait)
 
     p = sub.add_parser("status", help="show run state")
     p.add_argument("run_id", nargs="?")

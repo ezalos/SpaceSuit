@@ -1287,3 +1287,60 @@ def test_runner_prompt_warns_that_markers_are_cross_checked():
     prompt = build_runner_prompt(parse_charter(CHARTER_TEXT), Path("/runs/x"))
     assert "cross-checked" in prompt
     assert "listing fewer sources than you cite fails the run" in prompt
+
+
+# --- wait: the callback an agent blocks on (Louis, 2026-09-27: "I dont see you having some type of call back on it
+# being finished ... it should be better documented in the cli (and by default option when being an agent)") ---
+import deep_research.__main__ as cli_mod
+
+
+def _waitable(tmp_path, monkeypatch, *, alive):
+    out = tmp_path / "run"
+    write_manifest(out, _manifest(run_id="r1", out_dir=str(out)))
+    monkeypatch.setattr(cli_mod, "session_alive", lambda sid: alive())
+    monkeypatch.setattr(cli_mod, "_sleep", lambda s: None)
+    return out
+
+
+def test_wait_returns_0_when_the_run_is_done(tmp_path, monkeypatch, capsys):
+    out = _waitable(tmp_path, monkeypatch, alive=lambda: False)
+    (out / "DONE").write_text("", encoding="utf-8")
+    assert main(["wait", "r1", "--runs-root", str(tmp_path)]) == 0
+    printed = capsys.readouterr().out
+    assert "done" in printed and "deep-research collect r1" in printed
+
+
+def test_wait_blocks_while_running_and_returns_when_it_finishes(tmp_path, monkeypatch):
+    out = tmp_path / "run"
+    polls = []
+    def alive():
+        polls.append(1)
+        if len(polls) == 3:
+            (out / "DONE").write_text("", encoding="utf-8")
+        return True
+    _waitable(tmp_path, monkeypatch, alive=alive)
+    assert main(["wait", "r1", "--runs-root", str(tmp_path)]) == 0
+    assert len(polls) >= 3
+
+
+def test_wait_distinguishes_incomplete_lost_and_timeout(tmp_path, monkeypatch):
+    out = _waitable(tmp_path, monkeypatch, alive=lambda: False)
+    assert main(["wait", "r1", "--runs-root", str(tmp_path)]) == 4          # lost: no session, no report
+    (out / "report.md").write_text("# partial", encoding="utf-8")
+    assert main(["wait", "r1", "--runs-root", str(tmp_path)]) == 3          # incomplete: a report, no DONE
+    monkeypatch.setattr(cli_mod, "session_alive", lambda sid: True)
+    assert main(["wait", "r1", "--runs-root", str(tmp_path), "--timeout", "0"]) == 5   # still running at the deadline
+
+
+def test_wait_on_an_unknown_run_is_2(tmp_path):
+    assert main(["wait", "nope", "--runs-root", str(tmp_path)]) == 2
+
+
+def test_launch_prints_the_wait_callback_last(tmp_path, monkeypatch, capsys):
+    charter = tmp_path / "charter.md"
+    charter.write_text("# Q\n\n## Question\nWhich?\n\n## Must answer\n- a\n", encoding="utf-8")
+    monkeypatch.setattr(cli_mod, "parse_charter", lambda text: object())
+    monkeypatch.setattr(cli_mod, "launch", lambda *a, **k: _manifest(run_id="r9", out_dir=str(tmp_path / "o")))
+    assert main(["launch", "--charter", str(charter), "--out", str(tmp_path / "o"), "--runs-root", str(tmp_path)]) == 0
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert f"deep-research wait r9 --runs-root {tmp_path}" in last and "background" in last

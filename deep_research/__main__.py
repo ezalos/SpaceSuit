@@ -1,4 +1,4 @@
-# ABOUTME: CLI for detached deep research runs: launch, status, collect, stop, list.
+# ABOUTME: CLI for detached deep research runs: launch, wait, status, collect, stop, list.
 # ABOUTME: Invoked as `deep-research`; all research logic lives in the sibling modules.
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import argparse
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from .charter import CharterError, parse_charter
@@ -16,6 +17,12 @@ from .verify import VerdictKind, cited_markers, verify_sources
 
 DEFAULT_RUNS_ROOT = Path.home() / "research-runs"
 DEFAULT_NOTIFY = Path.home() / ".claude" / "skills" / "notify-louis" / "notify.sh"
+# `wait` exit codes, one per way a run ends, so a caller that backgrounds it knows what happened without parsing text.
+WAIT_DONE, WAIT_UNKNOWN, WAIT_INCOMPLETE, WAIT_LOST, WAIT_TIMEOUT = 0, 2, 3, 4, 5
+_sleep, _clock = time.sleep, time.monotonic     # replaced in the tests
+AGENT_HINT = ("Agents: after `launch`, run the printed `deep-research wait <run_id>` line in the BACKGROUND (a background "
+              "shell or a Monitor); it exits when the run ends (0 done, 3 incomplete, 4 lost, 5 timeout), which is "
+              "your callback. Never poll `status` in a loop, and never assume a run is still going.")
 
 
 def _find(runs_root: Path, run_id: str) -> Manifest | None:
@@ -70,7 +77,31 @@ def cmd_launch(args: argparse.Namespace) -> int:
     print(f"  output  {m.out_dir}")
     print(f"  watch   deep-research status {m.run_id} --runs-root {runs_root}")
     print(f"  collect deep-research collect {m.run_id} --runs-root {runs_root}")
+    print(f"  wait    deep-research wait {m.run_id} --runs-root {runs_root}   "
+          "<- agents: run this in the background; it exits when the run ends (your callback)")
     return 0
+
+
+def cmd_wait(args: argparse.Namespace) -> int:
+    """Block until the run leaves RUNNING, then exit with a code per ending (see WAIT_*)."""
+    m = _find(Path(args.runs_root), args.run_id)
+    if m is None:
+        print(f"no run named {args.run_id}", file=sys.stderr)
+        return WAIT_UNKNOWN
+    deadline = _clock() + 60 * args.timeout
+    while True:
+        state = _state(m)
+        if state is not RunState.RUNNING:
+            break
+        if _clock() >= deadline:
+            print(f"{m.run_id}  still running after {args.timeout} min")
+            return WAIT_TIMEOUT
+        _sleep(args.interval)
+    print(f"{m.run_id}  {state.value}  {m.out_dir}")
+    if state is RunState.DONE:
+        print(f"  collect deep-research collect {m.run_id} --runs-root {args.runs_root}")
+        return WAIT_DONE
+    return WAIT_INCOMPLETE if state is RunState.INCOMPLETE else WAIT_LOST
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -283,17 +314,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="deep-research",
         description="Launch and collect detached deep research runs.",
+        epilog=AGENT_HINT,
         parents=[runs_root_parent],
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("launch", help="start a detached research run", parents=[runs_root_parent])
+    p = sub.add_parser("launch", help="start a detached research run", epilog=AGENT_HINT, parents=[runs_root_parent])
     p.add_argument("--charter", required=True, help="path to the charter Markdown file")
     p.add_argument("--out", required=True, help="output directory for this run")
     p.add_argument("--model", default="fable")
     p.add_argument("--effort", default="max")
     p.add_argument("--force", action="store_true", help="ignore the concurrency cap")
     p.set_defaults(func=cmd_launch)
+
+    p = sub.add_parser("wait", help="block until a run ends; exit 0 done, 3 incomplete, 4 lost, 5 timeout, 2 unknown "
+                       "(the agent's callback: run it in the background)", parents=[runs_root_parent])
+    p.add_argument("run_id")
+    p.add_argument("--timeout", type=int, default=360, metavar="MINUTES", help="give up after this long (default 360)")
+    p.add_argument("--interval", type=int, default=60, metavar="SECONDS", help="seconds between checks (default 60)")
+    p.set_defaults(func=cmd_wait)
 
     p = sub.add_parser("status", help="show run state", parents=[runs_root_parent])
     p.add_argument("run_id", nargs="?")

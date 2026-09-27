@@ -75,7 +75,7 @@ deep-research-web launch --charter <path-to-charter.md> --name <lowercase-kebab-
 **Always pass `--name`**: it names the run's directory in the library (see Phase 3), so pick
 the name a reader would search for (`libero-plus-vs-pro-requirements`, not the question's
 first words). Lowercase kebab-case, at most 60 characters. `launch` prints the chat URL and
-the exact `status` and `collect` follow-ups; put the URL in the reply. Runs land under the
+the exact `status`, `collect` and `wait` follow-ups; put the URL in the reply. Runs land under the
 configured runs root (`~/research-runs` by default) and inside the configured claude.ai Project.
 
 Exit codes: 0 launched; 2 the browser profile is not logged in (run
@@ -86,6 +86,20 @@ already in flight: report which, never `--force` silently); 4 the usage window i
 no saved account had room, the account switched to was refused too, or claude-usage could
 not run (tell Louis to check `/usage`); 5 no research started and the assistant is
 waiting on an answer (the URL is printed; look at it with Louis before relaunching).
+
+**Your callback: `wait`, started in the background right after `launch`.** An agent never learns a run finished
+unless something wakes it (Louis, 2026-09-27: "I dont see you having some type of call back on it being finished").
+`launch` prints the exact line last:
+
+```bash
+deep-research-web wait <run_id>          # run it as a background shell (or a Monitor): it blocks, then exits
+```
+
+It reads the run's record, which the watcher timer updates, and exits when the run ends: 0 done (it prints the report
+path, or the `collect` line if the watcher has not collected yet), 5 needs a reply, 1 failed, stale or halted, 6 still
+running at `--timeout` (minutes, default 360). Its exit is your notification: collect, grade and report then. Do not
+poll `status` in a loop, and do not end your turn assuming the run is still going. The local engine has the same
+verb: `deep-research wait <run_id>` (0 done, 3 incomplete, 4 lost, 5 timeout, 2 unknown run).
 
 Each account has its own saved profile, named as in claude-usage. `deep-research-web login <name>`
 logs one in. `deep-research-web switch [<name>]` makes one live. With no name, `switch` picks

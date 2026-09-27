@@ -1127,3 +1127,49 @@ def test_a_launch_arriving_in_a_waiters_gap_queues_behind_it_and_cannot_take_the
     assert results["late_blocked"], "the direct launch waited in the queue behind the waiter"
     assert results["waiter"] == EXIT_OK, "the waiter took the slot it waited for"
     assert results["direct"] == EXIT_PREFLIGHT, "the later launch found the account full again, and never jumped"
+
+
+# --- wait: the per-run callback an agent blocks on (Louis, 2026-09-27) --------------------------------------------
+class _WaitArgs:
+    def __init__(self, run_id="x", timeout=360, interval=60):
+        self.run_id, self.timeout, self.interval = run_id, timeout, interval
+
+
+def test_wait_returns_ok_when_the_watcher_marks_the_run_done(runs_root, monkeypatch, capsys):
+    d = _running_run(runs_root)
+    polls = []
+    def sleep(s):
+        polls.append(s)
+        if len(polls) == 2:
+            update_run(d, status=RunStatus.DONE.value)
+    monkeypatch.setattr(cli, "_sleep", sleep)
+    assert cli.cmd_wait(_WaitArgs(), _cfg(runs_root)) == EXIT_OK
+    assert "done" in capsys.readouterr().out and len(polls) == 2
+
+
+def test_wait_exit_codes_for_each_end(runs_root, monkeypatch):
+    d = _running_run(runs_root)
+    monkeypatch.setattr(cli, "_sleep", lambda s: None)
+    for status, code in ((RunStatus.NEEDS_REPLY.value, EXIT_NEEDS_REPLY), (RunStatus.FAILED.value, EXIT_PROBLEM),
+                         (RunStatus.STALE.value, EXIT_PROBLEM), (RunStatus.HALTED.value, EXIT_PROBLEM)):
+        update_run(d, status=status)
+        assert cli.cmd_wait(_WaitArgs(), _cfg(runs_root)) == code, status
+
+
+def test_wait_times_out_while_still_running(runs_root, monkeypatch):
+    _running_run(runs_root)
+    monkeypatch.setattr(cli, "_sleep", lambda s: None)
+    assert cli.cmd_wait(_WaitArgs(timeout=0), _cfg(runs_root)) == EXIT_RUNNING
+
+
+def test_wait_on_an_unknown_run_is_a_problem(runs_root):
+    assert cli.cmd_wait(_WaitArgs(run_id="nope"), _cfg(runs_root)) == EXIT_PROBLEM
+
+
+def test_launch_prints_the_wait_callback_last(runs_root, tmp_path, capsys):
+    api = RoutingApi(_routes(research_started()))
+    assert launch_run(Client(api), _cfg(runs_root), _charter(tmp_path), "claude-fable-5-1", None, False,
+                      sleep=lambda s: None) == EXIT_OK
+    [rec] = find_runs(runs_root)
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert f"deep-research-web wait {rec.run_id}" in last and "background" in last
