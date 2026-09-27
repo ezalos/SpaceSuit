@@ -149,10 +149,15 @@ EOF
 
 # mkenv_uv ---------------------------------------------------
 function mkenv_uv() {
+    # An existing .envrc is never overwritten: it may hold secret refs. The venv block is appended once.
     local DIR_FOR_VENV=".venv"
-    cat > .envrc << EOF
-#!$(command -v bash)
-
+    local MARKER="# mkenv_uv venv block"
+    if [ ! -e .envrc ]; then
+        printf '#!%s\n\n' "$(command -v bash)" > .envrc
+    fi
+    if ! grep -qF "$MARKER" .envrc; then
+        cat >> .envrc << EOF
+$MARKER
 if [ -f "$DIR_FOR_VENV/bin/activate" ]; then
     source "$DIR_FOR_VENV/bin/activate"
     export VIRTUAL_ENV="\$(pwd)/$DIR_FOR_VENV"
@@ -162,7 +167,8 @@ fi
 
 unset PS1
 EOF
-    uv venv && direnv allow && uv init
+    fi
+    uv venv && direnv allow && { [ -f pyproject.toml ] || uv init; }
 }
 
 # Default alias ----------------------------------------------
