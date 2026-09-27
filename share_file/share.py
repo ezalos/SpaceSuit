@@ -5,7 +5,8 @@
 share-file <path> [--duration 7d] [--host HOST] [--remote-root /srv/share] [--base-url URL]
 
 Generates a 32-char URL-safe random token, scp's the file to the remote share host,
-writes an .expires timestamp, and prints the public URL.
+writes an .expires timestamp, and prints the public URL. A directory is zipped
+first (<dirname>.zip, the directory itself as the archive root) and the zip is shared.
 
 Stdlib only.
 """
@@ -14,8 +15,10 @@ import os
 import re
 import secrets
 import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -66,13 +69,19 @@ def parse_duration(s: str) -> int:
     return n * UNIT_SECS[u]
 
 
+def zip_dir(src: Path, out_dir: Path) -> Path:
+    """Zip directory src into out_dir/<src.name>.zip, keeping src.name as the archive root."""
+    return Path(shutil.make_archive(str(out_dir / src.name), "zip",
+                                    root_dir=src.parent, base_dir=src.name))
+
+
 def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, check=True, **kw)
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[1])
-    p.add_argument("path", type=Path, help="local file to share")
+    p.add_argument("path", type=Path, help="local file or directory (zipped) to share")
     p.add_argument("--duration", default=DEFAULTS["duration"],
                    help=f"link lifetime (default {DEFAULTS['duration']}); Ns/Nm/Nh/Nd")
     p.add_argument("--host", default=DEFAULTS["host"],
@@ -91,10 +100,17 @@ def main() -> int:
         )
 
     src = args.path.expanduser().resolve()
-    if not src.is_file():
-        p.error(f"not a file: {src}")
+    if not (src.is_file() or src.is_dir()):
+        p.error(f"not a file or directory: {src}")
 
     duration_s = parse_duration(args.duration)
+    if src.is_dir():
+        with tempfile.TemporaryDirectory(prefix="share-file-") as tmp:
+            return upload(zip_dir(src, Path(tmp)), args, duration_s)
+    return upload(src, args, duration_s)
+
+
+def upload(src: Path, args: argparse.Namespace, duration_s: int) -> int:
     token = secrets.token_urlsafe(24)  # 32 chars, 192 bits
 
     # Filename gets URL-encoded by browsers; keep the original on disk.

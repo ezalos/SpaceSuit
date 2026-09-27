@@ -22,7 +22,7 @@ This skill follows the universal observability baseline (see `docs/plans/2026-04
 | CRITICAL | Share infra not bootstrapped (`/srv/share` missing on Pi) | `share-file: infra not bootstrapped; pointed Louis at share_file/README.md` |
 | WARNING | Filename suggests sensitive content (e.g. contains "secret", "password", "key", "private") | `share-file: filename '<name>' may be sensitive; suggested rename` |
 | WARNING | File size > 1GB (no quota enforced; flag for user awareness) | `share-file: large file <name> (<size>); confirmed with Louis` |
-| WARNING | User asked to share a directory or multiple files (CLI rejects) | `share-file: directory/multi-file share requested; suggested zip` |
+| WARNING | User asked to share several loose files (CLI takes one path) | `share-file: multi-file share requested; zipped into one archive` |
 | WARNING | Duration parse failure (e.g. combined units like '2h30m') | `share-file: bad duration '<input>'; asked Louis for single-unit form` |
 | INFO | URL generated successfully | `share-file: shared <name> for <duration>; URL handed to Louis` |
 | INFO | Fell back to direct python invocation (`share-file` not on PATH) | `share-file: CLI not on PATH; used python3 direct path` |
@@ -52,20 +52,19 @@ Generates a long-random-token URL that serves a single local file from `share.de
 
 | Field | Required | Default | Notes |
 |---|---|---|---|
-| `path` | yes | — | absolute or relative path to a single file |
+| `path` | yes | — | a single file, or a directory (auto-zipped) |
 | `duration` | no | `7d` | `Ns`/`Nm`/`Nh`/`Nd` — no combined units |
 
-If Louis asks to share **multiple files or a directory**, the CLI takes a single file only — so zip
-them into one archive first and share that. Zip is the natural, universally-openable choice (opens
-on any OS without extra steps), so prefer it over tar:
+A **directory** is handled by the CLI: it zips it to `<dirname>.zip` (the directory is the
+archive root) in a temp dir, shares that, and deletes the local zip. The dir name appears in the URL.
+
+For **several loose files**, zip them into one archive first and share that — one zip, not one
+link per file. Confirm the archive name with Louis (it appears in the URL):
 
 ```bash
-zip -j bundle.zip file1 file2 ...   # -j flattens paths for loose files; drop -j to keep a dir tree
+zip -j bundle.zip file1 file2 ...   # -j flattens paths
 share-file bundle.zip [--duration <Nh|Nm|Nd>]
 ```
-
-Confirm the archive name with Louis (it appears in the URL). Don't invoke `share-file` once per file
-when the intent is to hand over a set — one zip is cleaner.
 
 ## Workflow
 

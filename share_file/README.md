@@ -180,7 +180,10 @@ curl -sI <url>             # 200 OK
 share-file <path> [--duration 1h] [--host TinyButMighty] [--remote-root /srv/share] [--base-url https://share.develle.fr]
 ```
 
-Duration syntax: `30s`, `15m`, `1h` (default), `2d`. No combined units.
+`<path>` may be a directory: it is zipped to `<dirname>.zip` (directory as archive root) in a
+temp dir, the zip is shared, and the local copy is removed.
+
+Duration syntax: `30s`, `15m`, `1h`, `2d` (default `7d`). No combined units.
 
 ## Security notes
 
