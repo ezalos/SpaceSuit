@@ -112,6 +112,7 @@ Then `develle-dns list` to confirm the record landed.
 - **Need an external port too?** Run `open-local-port` first; if the port is non-standard (not 80/443), set `proxied: false` because Cloudflare's proxy only forwards a fixed list of HTTP/HTTPS ports.
 - **For proxied A records**, `content` is the **current public IP** of the home connection. NEVER hardcode it here — it rotates, and a committed home IP is a deanonymization leak. Fetch it at use time: `curl -s https://api.ipify.org`. Cloudflare hides it from outside DNS lookups while the record is proxied.
 - **Apex (`develle.fr` itself)** uses `name: "@"`. Do not write `develle.fr` as the name.
+- **Every served subdomain gets a tab emoji.** Ask Louis for one (propose a fitting default), then follow `~/42/GroundControl/network/favicons/README.md`: one line in `icons.json`, one include line in the new vhost, `favicons deploy`. A host that only redirects elsewhere needs none. The weekly `favicon-coverage` probe flags a forgotten one.
 
 ## Reminders
 
