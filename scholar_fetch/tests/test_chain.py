@@ -150,9 +150,14 @@ def test_second_resolve_of_the_same_url_comes_from_the_text_cache(svc):
     assert again.served_by == "arxiv" and len(SEEN) == n
 
 
-def test_a_non_dict_unpaywall_answer_falls_through_instead_of_crashing(svc):
+def test_a_truthy_non_dict_nested_value_falls_through_instead_of_crashing(svc):
     b, ep, c = svc
-    ROUTES["/unpaywall/10.1038/nature14539"] = j([])
+    # A bare top-level [] is falsy and already degrades gracefully; the real hazard is a truthy
+    # non-dict one level *inside* an answer (best_oa_location as a string, openAccessPdf as a list),
+    # which the old (x or {}).get(...) chains never guarded against.
+    ROUTES["/unpaywall/10.1038/nature14539"] = j({"best_oa_location": "not-a-dict"})
+    ROUTES["/s2/DOI:10.1038/nature14539"] = j({"openAccessPdf": ["x"]})
     f = resolve(b + "/doi.org/10.1038/nature14539", c, ep)
     assert ("unpaywall", "no-oa-location") in steps(f)
+    assert ("semantic-scholar", "no-oa-location") in steps(f)
     assert [s for s, _ in steps(f)] == ["arxiv", "unpaywall", "semantic-scholar", "openalex", "direct"]
