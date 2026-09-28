@@ -113,7 +113,11 @@ class Client:
                     ctype = r.headers.get("Content-Type", "").split(";")[0].strip().lower()
                     if r.status_code != 200:
                         return Downloaded(r.status_code, ctype, None, f"http {r.status_code}")
-                    if int(r.headers.get("Content-Length") or 0) > max_bytes:
+                    try:
+                        declared = int(r.headers.get("Content-Length") or 0)
+                    except ValueError:
+                        declared = 0  # malformed Content-Length: treat as undeclared, cap still applies while streaming
+                    if declared > max_bytes:
                         return Downloaded(200, ctype, None, "too-large")
                     buf, start = bytearray(), time.monotonic()
                     for chunk in r.iter_content(CHUNK):

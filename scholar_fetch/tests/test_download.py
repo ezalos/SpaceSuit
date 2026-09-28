@@ -21,7 +21,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/pdf")
             self.send_header("Content-Length", str(n))
             self.end_headers()
-            self.wfile.write(b"x" * n)
+            try:
+                self.wfile.write(b"x" * n)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
         elif self.path == "/endless":  # no Content-Length, streams until the client hangs up
             self.send_response(200)
             self.send_header("Content-Type", "application/pdf")
@@ -40,6 +43,12 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"x" * 10)
             self.close_connection = True
+        elif self.path == "/badlength":  # a non-numeric Content-Length with a small body
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Length", "abc")
+            self.end_headers()
+            self.wfile.write(b"hello")
 
     def log_message(self, *args):
         pass
@@ -101,6 +110,17 @@ def test_second_process_waits_for_the_lock(base, tmp_path):
 def test_a_body_cut_mid_stream_releases_the_lock(base, tmp_path):
     c = mk(tmp_path)
     assert c.download(f"{base}/cut").outcome.startswith("error: ")
+    t0 = time.monotonic()
+    assert c.download(f"{base}/bytes/10").outcome == "ok"
+    assert time.monotonic() - t0 < 1
+
+
+def test_a_malformed_content_length_never_raises_and_does_not_block_the_next_download(base, tmp_path):
+    c = mk(tmp_path)
+    d = c.download(f"{base}/badlength")
+    assert d.outcome == "ok" or d.outcome.startswith("error: ")
+    if d.outcome == "ok":
+        assert d.body == b"hello"
     t0 = time.monotonic()
     assert c.download(f"{base}/bytes/10").outcome == "ok"
     assert time.monotonic() - t0 < 1
