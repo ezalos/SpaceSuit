@@ -6,6 +6,8 @@ import os
 import time
 from dataclasses import asdict, dataclass, field
 
+import requests
+
 from .extract import to_text
 from .http import Client
 from .ids import ARXIV_DOI, Ids, identify, normalize_doi
@@ -48,8 +50,10 @@ def _fetch_text(client: Client, url: str, max_bytes: int) -> tuple[str | None, s
     text, outcome = to_text(d.body, d.content_type)
     if text is not None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"url": url, "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps({"url": url, "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                                     "text": text}, ensure_ascii=False))
+        os.replace(tmp, path)  # atomic: a crash mid-write never leaves a corrupt cache file behind
     return text, outcome
 
 
@@ -57,6 +61,14 @@ def _s2(client: Client, ep: dict, ids: Ids) -> dict | None:
     pid = f"DOI:{ids.doi}" if ids.doi else f"ARXIV:{ids.arxiv}" if ids.arxiv else f"PMID:{ids.pmid}"
     key = os.environ.get("S2_API_KEY")
     return client.json("GET", ep["s2"].format(pid=pid), headers={"x-api-key": key} if key else None)
+
+
+def _get(x, *keys):
+    """Walk a chain of dict keys; anything that isn't a dict along the way (None, a list, a bare
+    string, any successful-but-unexpected API answer) is simply "no answer", never an AttributeError."""
+    for k in keys:
+        x = x.get(k) if isinstance(x, dict) else None
+    return x
 
 
 def resolve(url: str, client: Client, endpoints: dict | None = None, max_bytes: int = 50_000_000) -> Fetched:
@@ -79,14 +91,18 @@ def resolve(url: str, client: Client, endpoints: dict | None = None, max_bytes: 
     def api(step, call):
         try:
             return call()
-        except Exception as exc:  # one broken API never stops the chain; the log keeps the reason
+        # requests.RequestException: a connection/timeout/HTTP error out of Client.json.
+        # RuntimeError: Client.json's own "gave up after N retries".
+        # ValueError: a malformed JSON body (json.JSONDecodeError is a ValueError).
+        # One broken API never stops the chain; the log keeps the reason.
+        except (requests.RequestException, RuntimeError, ValueError) as exc:
             log(step, "", f"error: {type(exc).__name__}")
             return False
 
     # PMID-only: S2 maps it to a DOI first, and step 3 reuses the same answer.
     if ids.pmid and not ids.doi:
         s2 = api("semantic-scholar", lambda: _s2(client, ep, ids))
-        doi = ((s2 or {}).get("externalIds") or {}).get("DOI")
+        doi = _get(s2, "externalIds", "DOI")
         if doi:
             ids = f.ids = Ids(arxiv=ids.arxiv, doi=normalize_doi(doi), pmid=ids.pmid)
 
@@ -103,8 +119,7 @@ def resolve(url: str, client: Client, endpoints: dict | None = None, max_bytes: 
         log("unpaywall", ids.doi, "skipped: no-contact-email")
     else:
         u = api("unpaywall", lambda: client.json("GET", ep["unpaywall"].format(doi=ids.doi, email=email)))
-        loc = (u or {}).get("best_oa_location") or {}
-        target = loc.get("url_for_pdf") or loc.get("url")
+        target = _get(u, "best_oa_location", "url_for_pdf") or _get(u, "best_oa_location", "url")
         if target and attempt("unpaywall", target):
             return f
         if u is not False and not target:
@@ -115,7 +130,7 @@ def resolve(url: str, client: Client, endpoints: dict | None = None, max_bytes: 
     else:
         if s2 is None:
             s2 = api("semantic-scholar", lambda: _s2(client, ep, ids))
-        target = ((s2 or {}).get("openAccessPdf") or {}).get("url")
+        target = _get(s2, "openAccessPdf", "url")
         if target and attempt("semantic-scholar", target):
             return f
         if s2 is not False and not target:
@@ -125,7 +140,7 @@ def resolve(url: str, client: Client, endpoints: dict | None = None, max_bytes: 
         log("openalex", "", "skipped: no doi")
     else:
         o = api("openalex", lambda: client.json("GET", ep["openalex"].format(doi=ids.doi)))
-        target = ((o or {}).get("best_oa_location") or {}).get("pdf_url") or ((o or {}).get("open_access") or {}).get("oa_url")
+        target = _get(o, "best_oa_location", "pdf_url") or _get(o, "open_access", "oa_url")
         if target and attempt("openalex", target):
             return f
         if o is not False and not target:

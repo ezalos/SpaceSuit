@@ -13,6 +13,7 @@ from scholar_fetch.http import Client
 
 class Handler(BaseHTTPRequestHandler):
     hits: dict[str, int] = {}
+    cross_port: int | None = None
 
     def _answer(self):
         n = Handler.hits[self.path] = Handler.hits.get(self.path, 0) + 1
@@ -37,6 +38,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/s2redir":
             self.send_response(302)
             self.send_header("Location", f"http://localhost:{self.server.server_port}/landed")
+            self.end_headers()
+            return
+        if self.path == "/s2same":
+            self.send_response(302)
+            self.send_header("Location", "/landed")  # relative: covers urljoin, same scheme/host/port
+            self.end_headers()
+            return
+        if self.path == "/s2crossport" and Handler.cross_port:
+            self.send_response(302)
+            self.send_header("Location", f"http://127.0.0.1:{Handler.cross_port}/landed")
             self.end_headers()
             return
         body = json.dumps({"path": self.path, "n": n, "ua": self.headers.get("User-Agent")}).encode()
@@ -183,3 +194,69 @@ def test_a_cross_host_redirect_drops_the_per_request_header(base, tmp_path):
         Handler._answer = orig
     assert data["path"] == "/landed"
     assert seen == [("/s2redir", "sekrit"), ("/landed", None)]
+
+
+def test_a_same_host_relative_redirect_keeps_the_header(base, tmp_path):
+    seen = []
+    orig = Handler._answer
+
+    def spy(self):
+        seen.append((self.path, self.headers.get("x-api-key")))
+        orig(self)
+
+    Handler._answer = spy
+    try:
+        c, _ = client(tmp_path)
+        c.json("GET", f"{base}/s2same", headers={"x-api-key": "sekrit"})
+    finally:
+        Handler._answer = orig
+    assert seen == [("/s2same", "sekrit"), ("/landed", "sekrit")]
+
+
+def test_a_same_host_different_port_redirect_drops_the_header(base, tmp_path):
+    other = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=other.serve_forever, daemon=True).start()
+    Handler.cross_port = other.server_port
+    seen = []
+    orig = Handler._answer
+
+    def spy(self):
+        seen.append((self.path, self.headers.get("x-api-key")))
+        orig(self)
+
+    Handler._answer = spy
+    try:
+        c, _ = client(tmp_path)
+        c.json("GET", f"{base}/s2crossport", headers={"x-api-key": "sekrit"})
+    finally:
+        Handler._answer = orig
+        Handler.cross_port = None
+        other.shutdown()
+    assert seen == [("/s2crossport", "sekrit"), ("/landed", None)]
+
+
+def test_the_client_never_sends_a_cookie_back(base, tmp_path):
+    seen = []
+    orig = Handler._answer
+
+    def spy(self):
+        seen.append((self.path, self.headers.get("Cookie")))
+        if self.path == "/setcookie":
+            body = b"{}"
+            self.send_response(200)
+            self.send_header("Set-Cookie", "sid=abc")
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        orig(self)
+
+    Handler._answer = spy
+    try:
+        c, _ = client(tmp_path)
+        c.json("GET", f"{base}/setcookie")
+        c.json("GET", f"{base}/after-cookie")
+    finally:
+        Handler._answer = orig
+    assert seen == [("/setcookie", None), ("/after-cookie", None)]

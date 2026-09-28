@@ -2,6 +2,7 @@
 # ABOUTME: Also the capped, one-at-a-time document download (rate, size, cross-process lock) every fetch goes through.
 import fcntl
 import hashlib
+import http.cookiejar
 import json
 import os
 import time
@@ -53,6 +54,14 @@ def retry_after(header: str | None, fallback: float) -> float:
     return max(0.0, min(300.0, (when - datetime.now(timezone.utc)).total_seconds()))
 
 
+def _origin(url: str) -> tuple[str, str, int]:
+    """(scheme, hostname, port), the scheme's default port filled in. A bare hostname match would call
+    an https-to-http downgrade or a port change "the same host"; this does not."""
+    parts = urlsplit(url)
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    return (parts.scheme, parts.hostname or "", port)
+
+
 class Client:
     def __init__(self, cache_dir: Path, headers: dict | None = None, retries: int = 5,
                  sleep=time.sleep, min_interval: dict | None = None, rate_bps: int = 25_000_000,
@@ -65,6 +74,7 @@ class Client:
         self.lock_path = lock_path
         self.last: dict[str, float] = {}
         self.session = requests.Session()
+        self.session.cookies.set_policy(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))  # no cookies, no logins
         email = os.environ.get("CONTACT_EMAIL")
         self.session.headers["User-Agent"] = f"scholar-fetch/0.1 (mailto:{email})" if email else "scholar-fetch/0.1"
         self.session.headers.update(headers or {})
@@ -93,10 +103,10 @@ class Client:
                                       allow_redirects=headers is None)
             if headers is not None and r.is_redirect:
                 target = urljoin(r.url, r.headers.get("Location", ""))
-                same_host = (urlsplit(target).hostname or "") == host
+                same_origin = _origin(target) == _origin(url)
                 self._space(urlsplit(target).hostname or "")
                 r = self.session.request(method, target, json=body, timeout=60,
-                                          headers=headers if same_host else None,
+                                          headers=headers if same_origin else None,
                                           allow_redirects=False)
             if r.status_code != 429 and r.status_code < 500:
                 break

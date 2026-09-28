@@ -3,7 +3,7 @@
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit, parse_qs
+from urllib.parse import urlsplit
 
 import pytest
 from pdfs import make_pdf
@@ -148,3 +148,11 @@ def test_second_resolve_of_the_same_url_comes_from_the_text_cache(svc):
     n = len(SEEN)
     again = resolve(b + "/arxiv.org/abs/2511.15605", c, ep)
     assert again.served_by == "arxiv" and len(SEEN) == n
+
+
+def test_a_non_dict_unpaywall_answer_falls_through_instead_of_crashing(svc):
+    b, ep, c = svc
+    ROUTES["/unpaywall/10.1038/nature14539"] = j([])
+    f = resolve(b + "/doi.org/10.1038/nature14539", c, ep)
+    assert ("unpaywall", "no-oa-location") in steps(f)
+    assert [s for s, _ in steps(f)] == ["arxiv", "unpaywall", "semantic-scholar", "openalex", "direct"]
