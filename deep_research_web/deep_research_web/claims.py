@@ -164,13 +164,22 @@ def check_claims(
     out = Path(rec.out_dir)
     report = (out / REPORT_NAME).read_text(encoding="utf-8")
     sources = (out / SOURCES_NAME).read_text(encoding="utf-8") if (out / SOURCES_NAME).exists() else ""
-    index = prefetch(out, sources, resolver or default_resolver())
+    try:
+        index = prefetch(out, sources, resolver or default_resolver())
+    except Exception as exc:
+        # A resolver reads and writes the filesystem and the network; an unexpected failure there
+        # (a full disk, a broken resolver) is reported like every other verifier failure, not a traceback.
+        raise ClaimsError(f"pre-fetch failed: {exc}") from exc
     day = today().isoformat()
     prompt = build_prompt(rec.question, report, sources, day, fetched=fetched_listing(index))
-    # The variadic tool lists go last so they cannot swallow another flag; Write and Bash are never offered.
+    # --restricted confines Read to the run dir (cwd) and ignores user settings, including
+    # defaultMode: auto: the verifier reads untrusted third-party text and must not be able to
+    # read a local secret and exfiltrate it through WebFetch (R13). The variadic tool lists go
+    # last so they cannot swallow another flag; Write and Bash are never offered.
     argv = [
         claude_bin, "-p", prompt, "--output-format", "json", "--json-schema", json.dumps(VERIFICATION_SCHEMA),
-        "--model", model, "--no-session-persistence", "--allowedTools", *TOOLS, "--tools", *TOOLS,
+        "--model", model, "--no-session-persistence", "--restricted", "--permission-mode", "dontAsk",
+        "--allowedTools", *TOOLS, "--tools", *TOOLS,
     ]
     try:
         proc = runner(argv, cwd=str(out), capture_output=True, text=True, timeout=timeout_s)

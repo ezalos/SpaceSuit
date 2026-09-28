@@ -681,7 +681,7 @@ def cmd_check_claims(args, cfg: Config, runner=subprocess.run, resolver=None) ->
     print(f"  verdicts: {verdict_counts(data['claims'])}")
     fetched = json.loads((Path(rec.out_dir) / FETCHED_JSON).read_text(encoding="utf-8"))
     served = Counter((v.get("served_by") or "not fetched") for v in fetched.values())
-    print("  served by: " + (", ".join(f"{n} {k}" for k, n in served.items()) or "no sources"))
+    print("  sources served by: " + (", ".join(f"{n} {k}" for k, n in served.items()) or "no sources"))
     for line in data["summary"]["refuted_or_materially_different"]:
         print(f"  refuted or different: {line}")
     for line in data["summary"]["unreachable"]:

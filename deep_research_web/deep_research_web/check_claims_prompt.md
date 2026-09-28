@@ -17,7 +17,7 @@ The question the report answers: {question}
 
 ## Rules
 
-- read-only: fetch web pages with WebFetch and WebSearch only; never download files yourself: the pre-fetch already did, within its caps; never fetch model weights, datasets, archives or installers. One request at a time; no loops over a site.
+- read-only: fetch web pages with WebFetch and WebSearch only, Read is for the pre-fetched files in `fetched/` only; never download files yourself: the pre-fetch already did, within its caps; never fetch model weights, datasets, archives or installers. One request at a time; no loops over a site.
 - Quote verbatim. supporting_text is copied from the page, never paraphrased. date_seen is today's date.
 - Do not fix the report, do not write files, do not summarise the report. Output only the JSON object the schema asks for.
 

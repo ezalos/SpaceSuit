@@ -127,6 +127,26 @@ def test_check_claims_runs_headless_claude_in_the_run_dir_and_writes_both_files(
     assert "Write" not in argv and "Bash" not in argv
 
 
+def test_check_claims_restricts_permissions_since_it_reads_untrusted_sources(tmp_path):
+    rec = _collected_run(tmp_path)
+    runner = Runner(_envelope(GOOD))
+    check_claims(rec, "m", runner=runner, resolver=_resolver)
+    [(argv, kw)] = runner.calls
+    assert "--restricted" in argv
+    assert argv[argv.index("--permission-mode") + 1] == "dontAsk"
+
+
+def test_check_claims_wraps_an_unexpected_prefetch_error(tmp_path):
+    rec = _collected_run(tmp_path)
+
+    def broken(url):
+        raise OSError("disk full")
+
+    with pytest.raises(ClaimsError, match="disk full"):
+        check_claims(rec, "m", runner=Runner(_envelope(GOOD)), resolver=broken)
+    assert not (Path(rec.out_dir) / "verification.json").exists()
+
+
 def test_check_claims_refuses_an_error_envelope_and_writes_nothing(tmp_path):
     rec = _collected_run(tmp_path)
     with pytest.raises(ClaimsError, match="is_error"):
@@ -156,9 +176,10 @@ def test_check_claims_command_re_archives_so_the_library_carries_the_verificatio
     assert code == EXIT_OK
     dest = lib / "2026-09-17-changelog"
     assert (dest / "verification.json").exists() and json.loads((dest / "archive.json").read_text())["checked"] is True
+    assert (dest / "fetched.json").exists()
     out = capsys.readouterr().out
     assert "12 CONFIRMED, 1 REFUTED" in out and "SRPO 82.1 is augmented-data" in out
-    assert "served by:" in out and "arxiv" in out
+    assert "sources served by:" in out and "arxiv" in out
 
 
 def test_check_claims_command_reports_a_bad_result_as_a_problem(tmp_path, capsys):
