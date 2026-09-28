@@ -34,6 +34,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(500)
             self.end_headers()
             return
+        if self.path == "/s2redir":
+            self.send_response(302)
+            self.send_header("Location", f"http://localhost:{self.server.server_port}/landed")
+            self.end_headers()
+            return
         body = json.dumps({"path": self.path, "n": n, "ua": self.headers.get("User-Agent")}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -160,3 +165,21 @@ def test_per_request_headers_reach_that_request_only_and_stay_out_of_the_cache(b
     assert seen == [("/s2", "sekrit"), ("/other", None)]
     for f in tmp_path.glob("*.json"):
         assert "sekrit" not in f.read_text()
+
+
+def test_a_cross_host_redirect_drops_the_per_request_header(base, tmp_path):
+    seen = []
+    orig = Handler._answer
+
+    def spy(self):
+        seen.append((self.path, self.headers.get("x-api-key")))
+        orig(self)
+
+    Handler._answer = spy
+    try:
+        c, _ = client(tmp_path)
+        data = c.json("GET", f"{base}/s2redir", headers={"x-api-key": "sekrit"})
+    finally:
+        Handler._answer = orig
+    assert data["path"] == "/landed"
+    assert seen == [("/s2redir", "sekrit"), ("/landed", None)]

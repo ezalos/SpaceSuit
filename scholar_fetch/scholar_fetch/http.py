@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import requests
 
@@ -86,7 +86,18 @@ class Client:
         host = urlsplit(url).hostname or ""
         for attempt in range(self.retries):
             self._space(host)
-            r = self.session.request(method, url, json=body, timeout=60, headers=headers)
+            # Per-request headers (the S2 key) must never survive a cross-host redirect: requests only
+            # strips Authorization automatically, not our x-api-key. So with headers we take redirects
+            # off autopilot and follow at most one hop ourselves, dropping the headers off-host.
+            r = self.session.request(method, url, json=body, timeout=60, headers=headers,
+                                      allow_redirects=headers is None)
+            if headers is not None and r.is_redirect:
+                target = urljoin(r.url, r.headers.get("Location", ""))
+                same_host = (urlsplit(target).hostname or "") == host
+                self._space(urlsplit(target).hostname or "")
+                r = self.session.request(method, target, json=body, timeout=60,
+                                          headers=headers if same_host else None,
+                                          allow_redirects=False)
             if r.status_code != 429 and r.status_code < 500:
                 break
             delay = retry_after(r.headers.get("Retry-After"), min(60.0, 5.0 * 2 ** attempt))
