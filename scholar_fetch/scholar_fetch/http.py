@@ -1,0 +1,89 @@
+# ABOUTME: Polite HTTP client: contact User-Agent, per-host minimum spacing, 429/5xx backoff, JSON response cache.
+# ABOUTME: Also the capped, one-at-a-time document download (rate, size, cross-process lock) every fetch goes through.
+import hashlib
+import json
+import os
+import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from pathlib import Path
+from urllib.parse import urlsplit
+
+import requests
+
+MIN_INTERVAL = {
+    "api.semanticscholar.org": 1.5,
+    "export.arxiv.org": 3.0,
+    "arxiv.org": 3.0,
+    "api.openalex.org": 0.2,
+    "sparql.dblp.org": 1.0,
+    "api.unpaywall.org": 0.2,
+}
+
+
+def retry_after(header: str | None, fallback: float) -> float:
+    """Seconds to wait: the numeric form, the RFC 7231 HTTP-date form, else the caller's backoff. Clamped to 5 minutes."""
+    if not header:
+        return fallback
+    try:
+        return max(0.0, min(300.0, float(header)))
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(header)
+    except (TypeError, ValueError):
+        return fallback
+    if when is None:
+        return fallback
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0.0, min(300.0, (when - datetime.now(timezone.utc)).total_seconds()))
+
+
+class Client:
+    def __init__(self, cache_dir: Path, headers: dict | None = None, retries: int = 5,
+                 sleep=time.sleep, min_interval: dict | None = None, rate_bps: int = 25_000_000,
+                 lock_path: Path | None = None):
+        self.cache_dir = cache_dir
+        self.retries = retries
+        self.sleep = sleep
+        self.min_interval = MIN_INTERVAL if min_interval is None else min_interval
+        self.rate_bps = rate_bps
+        self.lock_path = lock_path
+        self.last: dict[str, float] = {}
+        self.session = requests.Session()
+        email = os.environ.get("CONTACT_EMAIL")
+        self.session.headers["User-Agent"] = f"scholar-fetch/0.1 (mailto:{email})" if email else "scholar-fetch/0.1"
+        self.session.headers.update(headers or {})
+
+    def _cache_path(self, method: str, url: str, body) -> Path:
+        digest = hashlib.sha256(json.dumps([method, url, body], sort_keys=True).encode()).hexdigest()
+        return self.cache_dir / f"{digest}.json"
+
+    def _space(self, host: str) -> None:
+        wait = self.min_interval.get(host, 0) - (time.monotonic() - self.last.get(host, float("-inf")))
+        if wait > 0:
+            self.sleep(wait)
+        self.last[host] = time.monotonic()
+
+    def json(self, method: str, url: str, body=None, cache: bool = True, headers: dict | None = None):
+        path = self._cache_path(method, url, body)
+        if cache and path.exists():
+            return json.loads(path.read_text())["response"]
+        host = urlsplit(url).hostname or ""
+        for attempt in range(self.retries):
+            self._space(host)
+            r = self.session.request(method, url, json=body, timeout=60, headers=headers)
+            if r.status_code != 429 and r.status_code < 500:
+                break
+            delay = retry_after(r.headers.get("Retry-After"), min(60.0, 5.0 * 2 ** attempt))
+            self.sleep(delay)
+        else:
+            raise RuntimeError(f"{method} {url}: HTTP {r.status_code} after {self.retries} tries")
+        data = None if r.status_code == 404 else (r.raise_for_status() or r.json())
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "method": method, "url": url, "body": body, "status": r.status_code,
+            "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "response": data,
+        }, ensure_ascii=False))
+        return data
