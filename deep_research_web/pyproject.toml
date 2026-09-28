@@ -3,10 +3,13 @@ name = "deep-research-web"
 version = "0.1.0"
 description = "Run deep research as a Research conversation on claude.ai and collect the report"
 requires-python = ">=3.13"
-dependencies = ["playwright>=1.50"]
+dependencies = ["playwright>=1.50", "scholar-fetch"]
 
 [dependency-groups]
 dev = ["pytest>=8.0"]
+
+[tool.uv.sources]
+scholar-fetch = { path = "../scholar_fetch", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
