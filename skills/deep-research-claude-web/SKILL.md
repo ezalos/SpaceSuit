@@ -168,6 +168,17 @@ report's load-bearing claims against primary pages and writes `verification.json
 and takes minutes. Run it when the report feeds a decision, or when Louis asks; report its
 REFUTED and PARTIALLY lines by name, and its `most_consequential` paragraph verbatim.
 
+Before the reader starts, every source in `sources.md` goes through the `scholar_fetch`
+open-access chain (arXiv, Unpaywall, Semantic Scholar, OpenAlex, then the cited URL; PubMed
+links map to a DOI through OpenAlex). The text lands in `fetched/<n>.txt` and `fetched.json`
+records which step served each source and what every step tried. The archive keeps
+`fetched.json` but not the text. The reader runs `--restricted` (Read confined to the run
+dir, no MCP servers). Verdicts: UNREACHABLE means no primary copy could be fetched at all,
+while NOT_FOUND means the source was fetched and the claim is not in it. Each claim carries
+`served_by` and a deterministic `chain` field (served, failed or unlisted). The env file needs
+`CONTACT_EMAIL`, and `S2_API_KEY` as a `pass://` ref, which the wrapper resolves for
+check-claims only.
+
 ### Citation grades
 
 The Research product cites pages but does not quote them, so the v1 "quote on the page"
