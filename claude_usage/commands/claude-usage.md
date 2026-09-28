@@ -22,7 +22,7 @@ What the rows mean:
   account always beats a deprioritised one with a sooner reset; if only a deprioritised one has room it is still
   taken — a dead machine is worse. The alert warns only when a preferred account existed and had no room, since with
   no preferred candidate the switch was the only possible move.
-  `gpt-perso` is 1. `perso` is 0 since 2026-09-27 (Louis lifted its last-resort status; `priority perso 1` restores it).
+  `perso` and `gpt-perso` are 0 since 2026-09-27 (Louis lifted their last-resort status; `priority <name> 1` restores it).
 - `4m old` on a window means that reading came from the meter, not from a fresh call: the usage endpoint has a
   request budget and the tool reuses a reading rather than spend one (45 s checked out, 5 min parked, and longer
   while an account is backed off after a 429). It is the real number, just not this second's. `stats --fresh`
