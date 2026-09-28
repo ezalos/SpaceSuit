@@ -22,7 +22,7 @@ What the rows mean:
   account always beats a deprioritised one with a sooner reset; if only a deprioritised one has room it is still
   taken — a dead machine is worse. The alert warns only when a preferred account existed and had no room, since with
   no preferred candidate the switch was the only possible move.
-  `perso` and `gpt-perso` are both 1.
+  `gpt-perso` is 1. `perso` is 0 since 2026-09-27 (Louis lifted its last-resort status; `priority perso 1` restores it).
 - `4m old` on a window means that reading came from the meter, not from a fresh call: the usage endpoint has a
   request budget and the tool reuses a reading rather than spend one (45 s checked out, 5 min parked, and longer
   while an account is backed off after a 429). It is the real number, just not this second's. `stats --fresh`
@@ -124,12 +124,12 @@ Switching (Louis asks "switch to work", "use the perso account", "which account 
   - **Hard rule** — the live account cannot serve: a locked window, 5-hour ≥ 85 % (`sessionHot`), weekly ≥ 95 %
     (`switchAt`), or Fable ≥ 90 % (`fableCeiling`; `auto on --fable-ceiling off` drops that gate while Fable is not
     the model in use, `--fable-ceiling 90` restores it). It moves now, to the usable account whose weekly reset is
-    soonest (EDF) — perso only when nothing preferred is usable, and the log says so. Never held back. The 5-hour
+    soonest (EDF) — a last-resort account only when nothing preferred is usable, and the log says so. Never held back. The 5-hour
     bound sits under 100 because a switch lands at the next request: at 98 % there is no headroom to absorb that.
-  - **Rotation** — otherwise, the EDF pick among usable accounts in the live account's tier or better (perso is
+  - **Rotation** — otherwise, the EDF pick among usable accounts in the live account's tier or better (a last-resort account is
     never rotated onto), entered only when its own 5-hour window is under 65 % (`sessionWarm`), and only when it
     leads the live account's weekly reset by ≥ 2 h (`edfLeadMs`), or a preferred account has become usable while
-    the machine is on perso, or the live 5-hour window is itself ≥ 65 %. At most once per 10 min (`minHoldMs`),
+    the machine is on a last-resort account, or the live 5-hour window is itself ≥ 65 %. At most once per 10 min (`minHoldMs`),
     hand switches included. Two accounts resetting minutes apart never ping-pong.
   - Why EDF: headroom left when a window resets is lost, so spend the account whose reset is soonest; the 5-hour
     window is a rate cap, not a score — it decides whether an account can take work now, never which is "better".
