@@ -1,9 +1,11 @@
 # ABOUTME: Polite HTTP client: contact User-Agent, per-host minimum spacing, 429/5xx backoff, JSON response cache.
 # ABOUTME: Also the capped, one-at-a-time document download (rate, size, cross-process lock) every fetch goes through.
+import fcntl
 import hashlib
 import json
 import os
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -19,6 +21,17 @@ MIN_INTERVAL = {
     "sparql.dblp.org": 1.0,
     "api.unpaywall.org": 0.2,
 }
+
+DEFAULT_LOCK = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "scholar-fetch" / "download.lock"
+CHUNK = 65536
+
+
+@dataclass
+class Downloaded:
+    status: int | None
+    content_type: str
+    body: bytes | None
+    outcome: str
 
 
 def retry_after(header: str | None, fallback: float) -> float:
@@ -87,3 +100,29 @@ class Client:
             "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "response": data,
         }, ensure_ascii=False))
         return data
+
+    def download(self, url: str, max_bytes: int = 50_000_000, headers: dict | None = None) -> Downloaded:
+        """One document, under the byte-rate cap and the size cap, holding the cross-process lock throughout."""
+        lock = self.lock_path or DEFAULT_LOCK
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        with open(lock, "w") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)  # released when the file closes, including on an exception
+            self._space(urlsplit(url).hostname or "")
+            try:
+                with self.session.get(url, headers=headers, stream=True, timeout=60) as r:
+                    ctype = r.headers.get("Content-Type", "").split(";")[0].strip().lower()
+                    if r.status_code != 200:
+                        return Downloaded(r.status_code, ctype, None, f"http {r.status_code}")
+                    if int(r.headers.get("Content-Length") or 0) > max_bytes:
+                        return Downloaded(200, ctype, None, "too-large")
+                    buf, start = bytearray(), time.monotonic()
+                    for chunk in r.iter_content(CHUNK):
+                        buf += chunk
+                        if len(buf) > max_bytes:
+                            return Downloaded(200, ctype, None, "too-large")
+                        ahead = len(buf) / self.rate_bps - (time.monotonic() - start)
+                        if ahead > 0:
+                            self.sleep(ahead)
+                    return Downloaded(200, ctype, bytes(buf), "ok")
+            except requests.RequestException as exc:
+                return Downloaded(None, "", None, f"error: {type(exc).__name__}")
