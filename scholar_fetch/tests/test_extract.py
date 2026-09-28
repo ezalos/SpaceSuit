@@ -40,3 +40,36 @@ def test_plain_text_passes_through():
 
 def test_binary_is_unsupported():
     assert to_text(b"\x89PNG....", "image/png") == (None, "unsupported-type image/png")
+
+
+def test_latin1_html_with_charset_decodes_accents():
+    # Latin-1 encoded HTML with meta charset and accented characters
+    latin1_body = b'<html><head><meta charset="iso-8859-1"></head><body><p>' + ("éèà " * 60).encode("iso-8859-1") + b'</p></body></html>'
+    text, outcome = to_text(latin1_body, "text/html")
+    assert outcome == "ok"
+    assert "éèà" in text
+    assert "�" not in text  # No replacement character
+
+
+def test_latin1_html_without_charset_falls_back_to_cp1252():
+    # Latin-1 encoded HTML without charset declaration
+    latin1_body = b'<html><body><p>' + ("éèà " * 60).encode("iso-8859-1") + b'</p></body></html>'
+    text, outcome = to_text(latin1_body, "text/html")
+    assert outcome == "ok"
+    assert "éèà" in text
+    assert "�" not in text
+
+
+def test_unclosed_nav_tag_doesnt_swallow_rest():
+    # Unclosed <nav> should not prevent parsing the rest of the document
+    html = b"<html><body><nav>Menu" + LONG.encode() + b"</body></html>"
+    text, outcome = to_text(html, "text/html")
+    assert outcome == "ok"
+    assert "Attention is all you need" in text
+
+
+def test_unclosed_script_tag_behaves_like_browser():
+    # Unclosed <script> swallows the rest, matching browser behavior
+    html = b"<html><body><script>var x=1" + LONG.encode() + b"</body></html>"
+    text, outcome = to_text(html, "text/html")
+    assert (text, outcome) == (None, "no-text-layer")
