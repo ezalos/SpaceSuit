@@ -1538,6 +1538,26 @@
                 "TheBeast.ezalos": "~/42/GroundControl/dotfiles/claude_md.thebeast"
             },
             "fanout": false
+        },
+        "reflect": {
+            "alias": "reflect",
+            "main": "~/42/DailyDiary/.claude/skills/reflect",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/skills/reflect",
+                    "backups": []
+                },
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.claude/skills/reflect",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos",
+                "lighthouse.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
         }
     },
     "devices": {
