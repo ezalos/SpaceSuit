@@ -1,0 +1,135 @@
+# ABOUTME: resolve(url): identify the paper, then arXiv, Unpaywall, Semantic Scholar, OpenAlex, the cited URL, first text wins.
+# ABOUTME: Every step, taken or skipped, is logged in tried; open-access full text outranks a publisher landing page.
+import hashlib
+import json
+import os
+import time
+from dataclasses import asdict, dataclass, field
+
+from .extract import to_text
+from .http import Client
+from .ids import ARXIV_DOI, Ids, identify, normalize_doi
+
+STEPS = ("arxiv", "unpaywall", "semantic-scholar", "openalex", "direct")
+ENDPOINTS = {
+    "arxiv": "https://arxiv.org/pdf/{id}",
+    "unpaywall": "https://api.unpaywall.org/v2/{doi}?email={email}",
+    "s2": "https://api.semanticscholar.org/graph/v1/paper/{pid}?fields=externalIds,openAccessPdf",
+    "openalex": "https://api.openalex.org/works/doi:{doi}",
+}
+
+
+@dataclass
+class Fetched:
+    url: str
+    text: str | None
+    served_by: str | None
+    kind: str | None
+    ids: Ids
+    tried: list[dict] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {"url": self.url, "served_by": self.served_by, "kind": self.kind,
+                "ids": asdict(self.ids), "tried": self.tried}
+
+
+def _text_cache(client: Client, url: str):
+    return client.cache_dir / "text" / (hashlib.sha256(url.encode()).hexdigest() + ".json")
+
+
+def _fetch_text(client: Client, url: str, max_bytes: int) -> tuple[str | None, str]:
+    """Download and extract one document; a success is cached by URL, a failure is not (it may be transient)."""
+    path = _text_cache(client, url)
+    if path.exists():
+        return json.loads(path.read_text())["text"], "ok"
+    d = client.download(url, max_bytes=max_bytes)
+    if d.outcome != "ok":
+        return None, d.outcome
+    text, outcome = to_text(d.body, d.content_type)
+    if text is not None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"url": url, "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                                    "text": text}, ensure_ascii=False))
+    return text, outcome
+
+
+def _s2(client: Client, ep: dict, ids: Ids) -> dict | None:
+    pid = f"DOI:{ids.doi}" if ids.doi else f"ARXIV:{ids.arxiv}" if ids.arxiv else f"PMID:{ids.pmid}"
+    key = os.environ.get("S2_API_KEY")
+    return client.json("GET", ep["s2"].format(pid=pid), headers={"x-api-key": key} if key else None)
+
+
+def resolve(url: str, client: Client, endpoints: dict | None = None, max_bytes: int = 50_000_000) -> Fetched:
+    ep = {**ENDPOINTS, **(endpoints or {})}
+    ids = identify(url)
+    f = Fetched(url, None, None, None, ids)
+    s2 = None
+
+    def log(step, target, outcome):
+        f.tried.append({"step": step, "target": target, "outcome": outcome})
+
+    def attempt(step, target) -> bool:
+        text, outcome = _fetch_text(client, target, max_bytes)
+        log(step, target, outcome)
+        if text is not None:
+            f.text, f.served_by = text, step
+            f.kind = "landing" if step == "direct" and ids.any() else "fulltext"
+        return text is not None
+
+    def api(step, call):
+        try:
+            return call()
+        except Exception as exc:  # one broken API never stops the chain; the log keeps the reason
+            log(step, "", f"error: {type(exc).__name__}")
+            return False
+
+    # PMID-only: S2 maps it to a DOI first, and step 3 reuses the same answer.
+    if ids.pmid and not ids.doi:
+        s2 = api("semantic-scholar", lambda: _s2(client, ep, ids))
+        doi = ((s2 or {}).get("externalIds") or {}).get("DOI")
+        if doi:
+            ids = f.ids = Ids(arxiv=ids.arxiv, doi=normalize_doi(doi), pmid=ids.pmid)
+
+    if ids.arxiv:
+        if attempt("arxiv", ep["arxiv"].format(id=ids.arxiv)):
+            return f
+    else:
+        log("arxiv", "", "skipped: no arxiv id")
+
+    email = os.environ.get("CONTACT_EMAIL")
+    if not ids.doi:
+        log("unpaywall", "", "skipped: no doi")
+    elif not email:
+        log("unpaywall", ids.doi, "skipped: no-contact-email")
+    else:
+        u = api("unpaywall", lambda: client.json("GET", ep["unpaywall"].format(doi=ids.doi, email=email)))
+        loc = (u or {}).get("best_oa_location") or {}
+        target = loc.get("url_for_pdf") or loc.get("url")
+        if target and attempt("unpaywall", target):
+            return f
+        if u is not False and not target:
+            log("unpaywall", ids.doi, "no-oa-location")
+
+    if not ids.any():
+        log("semantic-scholar", "", "skipped: no paper id")
+    else:
+        if s2 is None:
+            s2 = api("semantic-scholar", lambda: _s2(client, ep, ids))
+        target = ((s2 or {}).get("openAccessPdf") or {}).get("url")
+        if target and attempt("semantic-scholar", target):
+            return f
+        if s2 is not False and not target:
+            log("semantic-scholar", "", "no-oa-location")
+
+    if not ids.doi or ARXIV_DOI.match(ids.doi):
+        log("openalex", "", "skipped: no doi")
+    else:
+        o = api("openalex", lambda: client.json("GET", ep["openalex"].format(doi=ids.doi)))
+        target = ((o or {}).get("best_oa_location") or {}).get("pdf_url") or ((o or {}).get("open_access") or {}).get("oa_url")
+        if target and attempt("openalex", target):
+            return f
+        if o is not False and not target:
+            log("openalex", ids.doi, "no-oa-location")
+
+    attempt("direct", url)
+    return f
