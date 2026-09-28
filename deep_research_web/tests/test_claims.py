@@ -15,8 +15,8 @@ from scholar_fetch.ids import Ids
 from deep_research_web import __main__ as cli
 from deep_research_web.__main__ import EXIT_OK, EXIT_PROBLEM
 from deep_research_web.claims import (
-    VERDICTS, VERIFICATION_SCHEMA, ClaimsError, build_prompt, check_claims, render_verification_md,
-    validate_verification,
+    VERDICTS, VERIFICATION_SCHEMA, ClaimsError, build_prompt, check_claims, fetched_listing,
+    render_verification_md, validate_verification,
 )
 from deep_research_web.config import Config
 from deep_research_web.runs import RunRecord, write_run
@@ -273,6 +273,29 @@ def test_prompt_sends_a_failed_source_to_one_webfetch():
     prompt = build_prompt("q", "r", "s", "2026-09-27", fetched="f")
     assert "not fetched" in prompt and "ONE WebFetch" in prompt and "webfetch" in prompt
     assert "Secondary summaries" in prompt and "do not confirm anything" in prompt
+
+
+def test_prompt_lets_the_verifier_reach_another_primary_copy_of_a_failed_source():
+    prompt = build_prompt("q", "r", "s", "2026-09-27", fetched="f")
+    assert "PRIMARY copy" in prompt and "PMC" in prompt and "at most 3 fetches" in prompt
+    assert "WebSearch" in prompt
+    assert "nothing could fetch any primary copy" in prompt
+
+
+def test_fetched_listing_shows_the_tried_target_for_a_failed_source():
+    index = {1: {"url": "https://pubmed.ncbi.nlm.nih.gov/25965026/", "served_by": None, "kind": None, "tried": [
+        {"step": "openalex", "target": "pmid:25965026", "outcome": "ok"},
+        {"step": "unpaywall", "target": "https://pmc.ncbi.nlm.nih.gov/articles/PMC1/pdf", "outcome": "bot-wall"},
+    ]}}
+    listing = fetched_listing(index)
+    assert "https://pmc.ncbi.nlm.nih.gov/articles/PMC1/pdf" in listing
+    assert "bot-wall" in listing and "pmid:25965026" in listing
+
+
+def test_fetched_listing_omits_the_parenthesised_target_when_none_was_tried():
+    index = {1: {"url": "https://a", "served_by": None, "kind": None,
+                 "tried": [{"step": "arxiv", "target": "", "outcome": "skipped: no arxiv id"}]}}
+    assert fetched_listing(index) == "1. https://a → not fetched; tried: arxiv: skipped: no arxiv id"
 
 
 def test_each_claim_is_cross_checked_against_the_prefetch(tmp_path):

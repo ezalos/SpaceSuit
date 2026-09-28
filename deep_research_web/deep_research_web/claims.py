@@ -75,7 +75,9 @@ def build_prompt(question: str, report: str, sources: str, today: str, fetched: 
 
 
 def fetched_listing(index: dict[int, dict]) -> str:
-    """One line per pre-fetched source, for the prompt: what served it, or what was tried and failed."""
+    """One line per pre-fetched source, for the prompt: what served it, or what was tried and failed.
+    A failed attempt's target (a PMC URL from OpenAlex, a DOI landing page...) is shown too, so the
+    verifier has somewhere else to try besides the cited URL."""
     if not index:
         return "(no sources listed)"
     lines = []
@@ -84,7 +86,8 @@ def fetched_listing(index: dict[int, dict]) -> str:
         if f.get("served_by"):
             lines.append(f"{n}. {f['url']} → {FETCHED_DIR}/{n}.txt ({f['served_by']}, {f.get('kind')})")
         else:
-            tried = "; ".join(f"{t['step']}: {t['outcome']}" for t in f.get("tried") or [])
+            tried = "; ".join(f"{t['step']}: {t['outcome']}" + (f" ({t['target']})" if t.get("target") else "")
+                              for t in f.get("tried") or [])
             lines.append(f"{n}. {f['url']} → not fetched; tried: {tried}")
     return "\n".join(lines)
 
