@@ -88,3 +88,27 @@ def test_any_parser_exception_is_unreadable_not_a_crash():
     # pypdf raises outside its own error classes on odd input: DependencyError for AES without the
     # crypto extra (found in the wild), a TypeError for a /Font entry that is a bare number.
     assert to_text(make_pdf("x", font_is_a_number=True), "application/pdf") == (None, "unreadable-pdf")
+
+
+def test_cloudflare_challenge_title_is_a_bot_wall_regardless_of_length():
+    html = (b"<html><head><title>Just a moment...</title></head><body><p>"
+            + b"Checking your browser before accessing. " * 40 + b"</p></body></html>")
+    assert to_text(html, "text/html") == (None, "bot-wall")
+
+
+def test_challenge_title_matches_case_insensitively_and_with_attributes():
+    html = b'<html><head><title class="x">JUST A MOMENT...</title></head><body><p>' + LONG.encode() + b"</p></body></html>"
+    assert to_text(html, "text/html") == (None, "bot-wall")
+
+
+def test_a_short_page_mentioning_a_captcha_is_a_bot_wall():
+    body = "Please prove you are not a robot by solving this captcha challenge. " * 4  # ~280 chars, >= MIN_TEXT
+    html = b"<html><body><p>" + body.encode() + b"</p></body></html>"
+    assert to_text(html, "text/html") == (None, "bot-wall")
+
+
+def test_captcha_mentioned_in_a_long_legitimate_page_is_not_a_bot_wall():
+    body = "This article discusses captcha systems as an anti-bot measure in some detail. " * 20  # >1000 chars
+    html = b"<html><body><p>" + body.encode() + b"</p></body></html>"
+    text, outcome = to_text(html, "text/html")
+    assert outcome == "ok" and "captcha" in text.lower()

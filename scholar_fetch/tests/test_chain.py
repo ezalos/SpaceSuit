@@ -48,6 +48,7 @@ def svc(tmp_path, monkeypatch):
         "unpaywall": b + "/unpaywall/{doi}?email={email}",
         "s2": b + "/s2/{pid}?fields=externalIds,openAccessPdf",
         "openalex": b + "/openalex/doi:{doi}",
+        "openalex_pmid": b + "/openalex/pmid:{pmid}",
     }
     client = Client(tmp_path / "cache", min_interval={}, lock_path=tmp_path / "dl.lock")
     yield b, endpoints, client
@@ -112,6 +113,53 @@ def test_pubmed_maps_through_s2_and_reuses_its_open_access_pdf(svc):
     f = resolve(b + "/pubmed.ncbi.nlm.nih.gov/31285318/", c, ep)
     assert f.served_by == "semantic-scholar"
     assert f.ids.doi == "10.2222/y" and f.ids.pmid == "31285318"
+
+
+def test_pubmed_resolves_through_openalex_first_and_s2_is_never_called(svc):
+    b, ep, c = svc
+    ROUTES["/openalex/pmid:25965026"] = j({"doi": "https://doi.org/10.1016/j.brat.2015.05.004"})
+    ROUTES["/unpaywall/10.1016/j.brat.2015.05.004"] = j({"best_oa_location": {"url": b + "/oa.pdf"}})
+    ROUTES["/oa.pdf"] = (200, "application/pdf", PAPER)
+    f = resolve(b + "/pubmed.ncbi.nlm.nih.gov/25965026/", c, ep)
+    assert f.served_by == "unpaywall"
+    assert f.ids.doi == "10.1016/j.brat.2015.05.004" and f.ids.pmid == "25965026"
+    assert {"step": "openalex", "target": "pmid:25965026", "outcome": "ok"} in f.tried
+    assert not any(p.startswith("/s2/") for p, _ in SEEN)
+
+
+def test_pubmed_falls_back_to_s2_when_openalex_has_no_doi(svc):
+    b, ep, c = svc
+    ROUTES["/openalex/pmid:31285318"] = j({"doi": None})
+    ROUTES["/s2/PMID:31285318"] = j({"externalIds": {"DOI": "10.2222/y"}, "openAccessPdf": {"url": b + "/pmc.pdf"}})
+    ROUTES["/unpaywall/10.2222/y"] = j({"best_oa_location": None})
+    ROUTES["/pmc.pdf"] = (200, "application/pdf", PAPER)
+    f = resolve(b + "/pubmed.ncbi.nlm.nih.gov/31285318/", c, ep)
+    assert f.served_by == "semantic-scholar"
+    assert f.ids.doi == "10.2222/y" and f.ids.pmid == "31285318"
+    assert {"step": "openalex", "target": "pmid:31285318", "outcome": "no-doi"} in f.tried
+    assert any(p.startswith("/s2/") for p, _ in SEEN)
+
+
+def test_pubmed_falls_back_to_s2_when_openalex_errors(svc):
+    b, ep, c = svc
+    ROUTES["/openalex/pmid:31285318"] = (200, "application/json", b"not-json")
+    ROUTES["/s2/PMID:31285318"] = j({"externalIds": {"DOI": "10.2222/y"}, "openAccessPdf": {"url": b + "/pmc.pdf"}})
+    ROUTES["/unpaywall/10.2222/y"] = j({"best_oa_location": None})
+    ROUTES["/pmc.pdf"] = (200, "application/pdf", PAPER)
+    f = resolve(b + "/pubmed.ncbi.nlm.nih.gov/31285318/", c, ep)
+    assert f.served_by == "semantic-scholar"
+    assert f.ids.doi == "10.2222/y" and f.ids.pmid == "31285318"
+    assert any(t["step"] == "openalex" and t["outcome"].startswith("error:") for t in f.tried)
+
+
+def test_a_bot_wall_page_is_never_served_as_the_answer(svc):
+    b, ep, c = svc
+    body = (b"<html><head><title>Just a moment...</title></head><body><p>"
+            + b"Checking your browser before accessing. " * 40 + b"</p></body></html>")
+    ROUTES["/gate"] = (200, "text/html", body)
+    f = resolve(b + "/gate", c, ep)
+    assert (f.text, f.served_by, f.kind) == (None, None, None)
+    assert steps(f)[-1] == ("direct", "bot-wall")
 
 
 def test_openalex_is_skipped_for_arxiv_datacite_dois(svc):

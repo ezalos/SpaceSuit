@@ -13,6 +13,9 @@ logging.getLogger("pypdf").setLevel(logging.ERROR)
 MIN_TEXT = 200
 SKIPPED = {"script", "style", "nav", "header", "footer", "noscript", "svg", "form"}
 BLOCK = {"p", "div", "li", "br", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "section", "article", "pre", "td"}
+BOT_WALL_TITLE = "just a moment..."  # Cloudflare's interstitial challenge page
+BOT_WALL_TEXT_CAP = 1000  # "captcha" mentioned on a short page is the page itself, not an article about one
+TITLE_TAG = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
 
 
 def _decode(body: bytes) -> str:
@@ -59,6 +62,16 @@ def _tidy(text: str) -> str:
     return "\n".join(ln for ln in lines if ln)
 
 
+def _is_bot_wall(decoded: str, text: str) -> bool:
+    """A captcha or interstitial page must never count as a success: Cloudflare's "Just a moment..."
+    challenge title is always a bot wall regardless of length; a short page merely mentioning a
+    captcha is also one, but a long page that discusses captchas as a topic is not."""
+    m = TITLE_TAG.search(decoded)
+    if m and _tidy(m.group(1)).strip().lower() == BOT_WALL_TITLE:
+        return True
+    return "captcha" in text.lower() and len(text) < BOT_WALL_TEXT_CAP
+
+
 def is_pdf(body: bytes, content_type: str) -> bool:
     """Sniffed or declared: servers mislabel PDFs as octet-stream often enough to check the magic bytes."""
     return body[:5] == b"%PDF-" or content_type == "application/pdf"
@@ -83,6 +96,8 @@ def to_text(body: bytes, content_type: str) -> tuple[str | None, str]:
             parser = _Visible(skipped={"script", "style"})
             parser.feed(decoded)
             text = "".join(parser.parts)
+        if _is_bot_wall(decoded, _tidy(text)):
+            return None, "bot-wall"
     elif content_type.startswith("text/"):
         text = _decode(body)
     else:

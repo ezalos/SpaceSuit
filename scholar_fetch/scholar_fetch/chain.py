@@ -18,6 +18,7 @@ ENDPOINTS = {
     "unpaywall": "https://api.unpaywall.org/v2/{doi}?email={email}",
     "s2": "https://api.semanticscholar.org/graph/v1/paper/{pid}?fields=externalIds,openAccessPdf",
     "openalex": "https://api.openalex.org/works/doi:{doi}",
+    "openalex_pmid": "https://api.openalex.org/works/pmid:{pmid}",
 }
 
 
@@ -111,12 +112,21 @@ def resolve(url: str, client: Client, endpoints: dict | None = None, max_bytes: 
             log(step, "", f"error: {type(exc).__name__}")
             return False
 
-    # PMID-only: S2 maps it to a DOI first, and step 3 reuses the same answer.
+    # PMID-only: OpenAlex maps it to a DOI first (unauthenticated S2 429s even on one call); only when
+    # OpenAlex has no answer does S2 get asked, and step 3 then reuses that same S2 answer.
     if ids.pmid and not ids.doi:
-        s2 = api("semantic-scholar", lambda: _s2(client, ep, ids))
-        doi = _get(s2, "externalIds", "DOI")
+        o = api("openalex", lambda: client.json("GET", ep["openalex_pmid"].format(pmid=ids.pmid)))
+        doi = _get(o, "doi")
         if doi:
+            log("openalex", f"pmid:{ids.pmid}", "ok")
             ids = f.ids = Ids(arxiv=ids.arxiv, doi=normalize_doi(doi), pmid=ids.pmid)
+        else:
+            if o is not False:  # False means api() already logged the error; don't log it twice
+                log("openalex", f"pmid:{ids.pmid}", "no-doi")
+            s2 = api("semantic-scholar", lambda: _s2(client, ep, ids))
+            doi = _get(s2, "externalIds", "DOI")
+            if doi:
+                ids = f.ids = Ids(arxiv=ids.arxiv, doi=normalize_doi(doi), pmid=ids.pmid)
 
     if ids.arxiv:
         if attempt("arxiv", ep["arxiv"].format(id=ids.arxiv)):
