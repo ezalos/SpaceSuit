@@ -13,6 +13,7 @@ ARXIV_DOI = re.compile(r"^10\.48550/arxiv\.(\d{4}\.\d{4,5})$", re.I)
 
 ARXIV_URL = re.compile(r"arxiv\.org/(?:abs|pdf|html)/" + ARXIV_ID + r"(?:v\d+)?", re.I)
 PMID_URL = re.compile(r"(?:pubmed\.ncbi\.nlm\.nih\.gov/|ncbi\.nlm\.nih\.gov/pubmed/)(\d+)", re.I)
+PUBLISHER_VIEW_WORDS = {"full", "abstract", "pdf", "epdf", "fulltext", "html", "citation", "references", "figures", "summary", "meta", "supplementary"}
 
 
 def normalize_doi(doi: str) -> str:
@@ -59,6 +60,21 @@ class Ids:
         return bool(self.arxiv or self.doi or self.pmid)
 
 
+def _strip_url_view_suffix(doi: str) -> str:
+    """Strip trailing '/' and known publisher view words (full, abstract, pdf, etc.) from a DOI
+    extracted from a URL path. Only used in identify(); does not affect DOI_ANY or trim_doi_tail."""
+    # Strip trailing slash first
+    doi = doi.rstrip("/")
+    # Repeatedly strip trailing path segments that are known view words (case-insensitive)
+    while doi:
+        parts = doi.rsplit("/", 1)
+        if len(parts) == 2 and parts[1].lower() in PUBLISHER_VIEW_WORDS:
+            doi = parts[0]
+        else:
+            break
+    return doi
+
+
 def identify(url: str) -> Ids:
     """What paper a cited URL points at, from the URL alone. An arXiv DataCite DOI counts as its arXiv id."""
     parts = urlsplit(url)
@@ -72,7 +88,10 @@ def identify(url: str) -> Ids:
     for value in [*parse_qs(parts.query).get("doi", []), unquote(parts.path)]:
         hit = DOI_ANY.search(value)
         if hit:
-            doi = normalize_doi(trim_doi_tail(hit.group(1)))
+            raw_doi = hit.group(1)
+            # Strip URL view suffixes (full, abstract, pdf, etc.) before normalization
+            raw_doi = _strip_url_view_suffix(raw_doi)
+            doi = normalize_doi(trim_doi_tail(raw_doi))
             as_arxiv = ARXIV_DOI.match(doi)
             return Ids(arxiv=as_arxiv.group(1)) if as_arxiv else Ids(doi=doi)
     return Ids()

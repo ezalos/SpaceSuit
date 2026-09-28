@@ -1,5 +1,5 @@
 # ABOUTME: Tests for identifying papers from URLs and extracting arXiv/DOI from text.
-# ABOUTME: Tests for the URL chain endpoints: what id do we extract from a given URL?
+# ABOUTME: Moved candidates() tests from Research; new tests for URL identification.
 import pytest
 
 from scholar_fetch.ids import Ids, candidates, identify
@@ -51,6 +51,13 @@ def test_a_citation_in_stamp_form_does_not_outrank_the_dated_margin_stamp():
     ("https://github.com/sylvestf/LIBERO-plus", Ids()),
     ("https://huggingface.co/Sylvest/openvla-7b-oft-finetuned-libero-plus-mixdata", Ids()),
     ("https://www.sciencedirect.com/science/article/pii/S0092867415006340", Ids()),
+    # Trailing view segments and slashes: publisher view words should be stripped
+    ("https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2023.1204166/full", Ids(doi="10.3389/fpsyg.2023.1204166")),
+    ("https://doi.org/10.1145/3313831.3376167/", Ids(doi="10.1145/3313831.3376167")),
+    ("https://onlinelibrary.wiley.com/doi/10.1111/cdev.13100/abstract", Ids(doi="10.1111/cdev.13100")),
+    ("https://onlinelibrary.wiley.com/doi/10.1111/cdev.13100/pdf", Ids(doi="10.1111/cdev.13100")),
+    # Multi-slash DOIs must be kept whole
+    ("https://doi.org/10.1093/ajae/aaq063", Ids(doi="10.1093/ajae/aaq063")),
 ])
 def test_identify(url, want):
     assert identify(url) == want
