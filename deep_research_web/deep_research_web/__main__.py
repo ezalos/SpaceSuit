@@ -24,7 +24,7 @@ from .accounts import (
     UsageUnavailable, earliest_reset, email_for, pick_all, profiles_table, read_usage, verdict_line,
 )
 from .archive import NAME_MAX as ARCHIVE_NAME_MAX, ArchiveError, archive_run, valid_name
-from .claims import ClaimsError, check_claims, verdict_counts
+from .claims import ClaimsError, chain_counts, check_claims, verdict_counts
 from .client import USAGE_REFUSALS, ApiError, Client, choose_org, exhausted, refusal
 from .config import Config, load_config
 from .grade import Grade, count_grades, grade_citations
@@ -672,13 +672,16 @@ def cmd_check_claims(args, cfg: Config, runner=subprocess.run, resolver=None) ->
     model = args.model or cfg.model
     print(f"pre-fetching sources, then checking {rec.run_id} with {model}; this can take a while")
     try:
-        written = check_claims(rec, model, runner=runner, resolver=resolver, timeout_s=int(args.timeout) * 60)
+        written = check_claims(rec, model, runner=runner, resolver=resolver, timeout_s=int(args.timeout) * 60,
+                               log=print)
     except ClaimsError as exc:
         print(f"claims check failed: {exc}")
         log("WARNING", f"deep-research: claims check failed for {rec.run_id}: {exc}")
         return EXIT_PROBLEM
     data = json.loads(written.read_text(encoding="utf-8"))
     print(f"  verdicts: {verdict_counts(data['claims'])}")
+    if chain_counts(data["claims"]):
+        print(f"  by pre-fetch chain: {chain_counts(data['claims'])}")
     fetched = json.loads((Path(rec.out_dir) / FETCHED_JSON).read_text(encoding="utf-8"))
     served = Counter((v.get("served_by") or "not fetched") for v in fetched.values())
     print("  sources served by: " + (", ".join(f"{n} {k}" for k, n in served.items()) or "no sources"))

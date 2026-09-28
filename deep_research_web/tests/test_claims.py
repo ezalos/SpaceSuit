@@ -115,7 +115,9 @@ def test_check_claims_runs_headless_claude_in_the_run_dir_and_writes_both_files(
         "method": "sources pre-fetched by scholar_fetch (arXiv, Unpaywall, Semantic Scholar, OpenAlex, direct); "
                    "headless Claude Code, Read/WebFetch/WebSearch, structured output validated by deep-research-web",
     }
-    assert data["claims"] == GOOD["claims"] and data["summary"] == GOOD["summary"]
+    assert [{k: v for k, v in c.items() if k != "chain"} for c in data["claims"]] == GOOD["claims"]
+    assert [c["chain"] for c in data["claims"]] == ["unlisted"] * 12 + ["served"]  # example.org is not a source
+    assert data["summary"] == GOOD["summary"]
     assert (out / "verification.md").read_text().count("| CONFIRMED |") == 12
     [(argv, kw)] = runner.calls
     assert argv[0] == "/bin/claude" and "-p" in argv and "--json-schema" in argv and "--model" in argv
@@ -134,17 +136,30 @@ def test_check_claims_restricts_permissions_since_it_reads_untrusted_sources(tmp
     [(argv, kw)] = runner.calls
     assert "--restricted" in argv
     assert argv[argv.index("--permission-mode") + 1] == "dontAsk"
+    # no MCP server (mail, chat, tasks) is loaded into a process that reads untrusted text; the flag
+    # sits before the variadic tool lists, which would otherwise swallow it
+    assert "--strict-mcp-config" in argv and argv.index("--strict-mcp-config") < argv.index("--allowedTools")
 
 
 def test_check_claims_wraps_an_unexpected_prefetch_error(tmp_path):
+    rec = _collected_run(tmp_path)
+    (Path(rec.out_dir) / "fetched").write_text("a file where the fetched/ folder goes")  # the run dir itself is broken
+
+    with pytest.raises(ClaimsError, match="pre-fetch failed"):
+        check_claims(rec, "m", runner=Runner(_envelope(GOOD)), resolver=_resolver)
+    assert not (Path(rec.out_dir) / "verification.json").exists()
+
+
+def test_a_resolver_raising_for_a_source_still_runs_the_verifier(tmp_path):
     rec = _collected_run(tmp_path)
 
     def broken(url):
         raise OSError("disk full")
 
-    with pytest.raises(ClaimsError, match="disk full"):
-        check_claims(rec, "m", runner=Runner(_envelope(GOOD)), resolver=broken)
-    assert not (Path(rec.out_dir) / "verification.json").exists()
+    runner = Runner(_envelope(GOOD))
+    check_claims(rec, "m", runner=runner, resolver=broken)
+    prompt = runner.calls[0][0][runner.calls[0][0].index("-p") + 1]
+    assert "not fetched" in prompt and "prefetch: error: OSError" in prompt
 
 
 def test_check_claims_refuses_an_error_envelope_and_writes_nothing(tmp_path):
@@ -238,3 +253,61 @@ def test_a_failed_prefetch_source_is_listed_as_not_fetched_in_the_prompt(tmp_pat
     check_claims(rec, "m", runner=runner, resolver=dead)
     prompt = seen["argv"][seen["argv"].index("-p") + 1]
     assert "not fetched" in prompt and "http 403" in prompt
+
+
+def _claim(url, verdict="CONFIRMED", served_by="arxiv"):
+    return {"claim": f"about {url}", "url": url, "verdict": verdict, "supporting_text": "t", "note": "",
+            "date_seen": "2026-09-27", "served_by": served_by}
+
+
+def test_not_found_is_a_verdict_distinct_from_unreachable():
+    assert "NOT_FOUND" in VERDICTS and "UNREACHABLE" in VERDICTS
+    prompt = build_prompt("q", "r", "s", "2026-09-27", fetched="f")
+    assert "NOT_FOUND" in prompt
+    ok = {**GOOD, "claims": GOOD["claims"] + [_claim("https://a", "NOT_FOUND")]}
+    assert validate_verification(ok) == []
+    assert "1 NOT_FOUND" in render_verification_md(ok, "r", "m", "2026-09-27")
+
+
+def test_prompt_sends_a_failed_source_to_one_webfetch():
+    prompt = build_prompt("q", "r", "s", "2026-09-27", fetched="f")
+    assert "not fetched" in prompt and "ONE WebFetch" in prompt and "webfetch" in prompt
+    assert "Secondary summaries" in prompt and "do not confirm anything" in prompt
+
+
+def test_each_claim_is_cross_checked_against_the_prefetch(tmp_path):
+    rec = _collected_run(tmp_path)
+    out = Path(rec.out_dir)
+    (out / "sources.md").write_text("# Sources\n\n1. https://arxiv.org/abs/2511.15605\n2. https://www.npmjs.com/package/x\n")
+    claims = [_claim(f"https://example.org/{i}") for i in range(10)] + [
+        _claim("https://arxiv.org/abs/2511.15605"),
+        _claim("https://www.npmjs.com/package/x", "UNREACHABLE", "none"),
+        _claim("https://arxiv.org/abs/2511.15605", served_by="the-moon"),
+    ]
+
+    def resolver(url):
+        if "npmjs" in url:
+            return Fetched(url, None, None, None, Ids(), [{"step": "direct", "target": url, "outcome": "http 403"}])
+        return _resolver(url)
+
+    written = check_claims(rec, "m", runner=Runner(_envelope({**GOOD, "claims": claims})), resolver=resolver)
+    got = json.loads(written.read_text())["claims"]
+    assert [c["chain"] for c in got[9:]] == ["unlisted", "served", "failed", "served"]
+    assert got[-1]["served_by"] == "unrecorded" and got[-2]["served_by"] == "none"
+    md = (out / "verification.md").read_text()
+    assert "| Chain |" in md and "| failed |" in md
+    assert "By pre-fetch chain: served: 2 CONFIRMED; failed: 1 UNREACHABLE; unlisted: 10 CONFIRMED." in md
+    assert "1 unrecorded" in md
+
+
+def test_an_old_verification_without_chain_still_renders():
+    md = render_verification_md(GOOD, "r", "m", "2026-09-19")
+    assert md.count("| CONFIRMED |") == 12 and "By pre-fetch chain" not in md
+
+
+def test_check_claims_command_prints_one_line_per_prefetched_source(tmp_path, capsys):
+    rec = _collected_run(tmp_path)
+    cfg = Config("claude-fable-5-1", None, tmp_path / "runs", tmp_path / "p", tmp_path / "ps")
+    cli.cmd_check_claims(Namespace(run_id=rec.run_id, model=None, timeout=30), cfg,
+                         runner=Runner(_envelope(GOOD)), resolver=_resolver)
+    assert "  [1/1] arxiv https://arxiv.org/abs/2511.15605" in capsys.readouterr().out

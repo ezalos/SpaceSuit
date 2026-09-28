@@ -39,3 +39,49 @@ def test_prefetch_twice_replaces_stale_text(tmp_path):
     prefetch(tmp_path, SOURCES, lambda u: Fetched(u, "old", "direct", "fulltext", Ids(), []))
     prefetch(tmp_path, SOURCES, lambda u: Fetched(u, None, None, None, Ids(), []))
     assert not list((tmp_path / "fetched").glob("*.txt"))
+
+
+def test_one_raising_source_is_recorded_and_never_aborts_the_run(tmp_path):
+    def flaky(url):
+        if "npmjs" in url:
+            raise RuntimeError("parser blew up")
+        return Fetched(url, f"text of {url}", "direct", "fulltext", Ids(), [])
+
+    got = prefetch(tmp_path, SOURCES, flaky)
+    assert got[2]["served_by"] is None and got[2]["kind"] is None
+    assert got[2]["tried"] == [{"step": "prefetch", "target": "https://www.npmjs.com/package/x",
+                                "outcome": "error: RuntimeError"}]
+    assert got[1]["served_by"] == got[3]["served_by"] == "direct"
+    assert (tmp_path / "fetched" / "3.txt").exists()
+    assert json.loads((tmp_path / "fetched.json").read_text())["2"]["tried"][0]["step"] == "prefetch"
+
+
+def test_fetched_json_is_written_atomically(tmp_path):
+    prefetch(tmp_path, SOURCES, lambda u: Fetched(u, "t", "direct", "fulltext", Ids(), []))
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["fetched", "fetched.json"]  # no .tmp left behind
+
+
+def test_a_url_listed_twice_is_resolved_once(tmp_path):
+    calls = []
+
+    def counting(url):
+        calls.append(url)
+        return Fetched(url, "t", "direct", "fulltext", Ids(), [])
+
+    got = prefetch(tmp_path, SOURCES + "4. https://github.com/sylvestf/LIBERO-plus\n", counting)
+    assert len(calls) == 3 and got[4] == got[3]
+    assert (tmp_path / "fetched" / "4.txt").read_text() == "t"
+
+
+def test_prefetch_reports_one_line_per_source(tmp_path):
+    lines = []
+
+    def fake(url):
+        if "npmjs" in url:
+            return Fetched(url, None, None, None, Ids(), [])
+        return Fetched(url, "t", "arxiv", "fulltext", Ids(), [])
+
+    prefetch(tmp_path, SOURCES, fake, log=lines.append)
+    assert lines == ["  [1/3] arxiv https://arxiv.org/abs/2511.15605",
+                     "  [2/3] not fetched https://www.npmjs.com/package/x",
+                     "  [3/3] arxiv https://github.com/sylvestf/LIBERO-plus"]

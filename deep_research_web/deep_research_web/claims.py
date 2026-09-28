@@ -16,7 +16,10 @@ from .prefetch import FETCHED_DIR, default_resolver, prefetch
 from .report import REPORT_NAME, SOURCES_NAME
 from .runs import RunRecord
 
-VERDICTS = ("CONFIRMED", "PARTIALLY", "REFUTED", "UNREACHABLE")
+# NOT_FOUND: the source was fetched and the claim is not on it. UNREACHABLE: nothing could fetch the source.
+VERDICTS = ("CONFIRMED", "PARTIALLY", "REFUTED", "NOT_FOUND", "UNREACHABLE")
+SERVED_BY = ("arxiv", "unpaywall", "semantic-scholar", "openalex", "direct", "webfetch", "none")
+CHAINS = ("served", "failed", "unlisted")
 MIN_CLAIMS = 10
 VERIFICATION_JSON = "verification.json"
 VERIFICATION_MD = "verification.md"
@@ -122,6 +125,32 @@ def verdict_counts(claims: list[dict]) -> str:
     return ", ".join(f"{counts[v]} {v}" for v in VERDICTS if counts[v]) or "no claims"
 
 
+def cross_check(claims: list[dict], index: dict[int, dict]) -> list[dict]:
+    """What the pre-fetch did for each claim's URL, recorded by us rather than reported by the model:
+    chain is served / failed (the chain found no text) / unlisted (not a source in sources.md, exact match).
+    A served_by outside the known steps is not trusted; it becomes "unrecorded"."""
+    by_url = {f.get("url"): f for f in index.values()}
+    checked = []
+    for c in claims:
+        f = by_url.get(c.get("url"))
+        chain = "unlisted" if f is None else "served" if f.get("served_by") else "failed"
+        served_by = c.get("served_by") if c.get("served_by") in SERVED_BY else "unrecorded"
+        checked.append({**c, "served_by": served_by, "chain": chain})
+    return checked
+
+
+def chain_counts(claims: list[dict]) -> str:
+    """Verdicts per chain value, e.g. "served: 2 CONFIRMED; failed: 1 UNREACHABLE"; "" when no claim has one."""
+    if not any("chain" in c for c in claims):
+        return ""
+    parts = []
+    for chain in CHAINS:
+        subset = [c for c in claims if c.get("chain") == chain]
+        if subset:
+            parts.append(f"{chain}: {verdict_counts(subset)}")
+    return "; ".join(parts)
+
+
 def _cell(text) -> str:
     return " ".join(str(text or "").split()).replace("|", "\\|")
 
@@ -130,18 +159,23 @@ def render_verification_md(data: dict, run_id: str, model: str, today: str) -> s
     claims, summary = data["claims"], data["summary"]
     rows = [
         f"| {i} | {c['verdict']} | {_cell(c['claim'])} | {_cell(c['url'])} | {_cell(c.get('served_by', ''))} | "
-        f"{_cell(c['supporting_text'])} | {_cell(c.get('note'))} |"
+        f"{_cell(c.get('chain'))} | {_cell(c['supporting_text'])} | {_cell(c.get('note'))} |"
         for i, c in enumerate(claims, 1)
     ]
     bullets = lambda items: "\n".join(f"- {x}" for x in items) or "- (none)"
     served_counts = Counter(c.get("served_by") or "unrecorded" for c in claims)
     served_str = ", ".join(f"{n} {k}" for k, n in served_counts.items()) or "no claims"
+    chains = chain_counts(claims)  # absent from a verification written before the cross-check existed
+    chain_line = f"By pre-fetch chain: {chains}.\n" if chains else ""
     return (
         f"# Claims check of {run_id}\n\n"
         f"Checked on {today} by {model} ({METHOD}). Verdicts: {verdict_counts(claims)}.\n"
-        f"Served by: {served_str}.\n\n"
-        "A CONFIRMED claim was found verbatim on a primary page; nothing here reproduces a result.\n\n"
-        "| # | Verdict | Claim | Source | Served by | Supporting text | Note |\n|---|---|---|---|---|---|---|\n"
+        f"Served by: {served_str}.\n{chain_line}\n"
+        "A CONFIRMED claim was found verbatim on a primary page; NOT_FOUND means the source was fetched but does "
+        "not carry the claim; UNREACHABLE means nothing could fetch it. Chain is what the pre-fetch did for the "
+        "claim's URL (served, failed, or unlisted in sources.md). Nothing here reproduces a result.\n\n"
+        "| # | Verdict | Claim | Source | Served by | Chain | Supporting text | Note |\n"
+        "|---|---|---|---|---|---|---|---|\n"
         + "\n".join(rows) + "\n\n"
         f"## Refuted or materially different\n\n{bullets(summary['refuted_or_materially_different'])}\n\n"
         f"## Unreachable\n\n{bullets(summary['unreachable'])}\n\n"
@@ -158,14 +192,14 @@ def _write_atomic(target: Path, text: str) -> None:
 def check_claims(
     rec: RunRecord, model: str, runner: Callable = subprocess.run, claude_bin: str = "claude",
     timeout_s: int = 3600, today: Callable[[], date] = date.today,
-    resolver: Callable[[str], Fetched] | None = None,
+    resolver: Callable[[str], Fetched] | None = None, log: Callable[[str], None] | None = None,
 ) -> Path:
     """Run the headless verifier on a collected run; write verification.json and .md; return the JSON path."""
     out = Path(rec.out_dir)
     report = (out / REPORT_NAME).read_text(encoding="utf-8")
     sources = (out / SOURCES_NAME).read_text(encoding="utf-8") if (out / SOURCES_NAME).exists() else ""
     try:
-        index = prefetch(out, sources, resolver or default_resolver())
+        index = prefetch(out, sources, resolver or default_resolver(), log=log)
     except Exception as exc:
         # A resolver reads and writes the filesystem and the network; an unexpected failure there
         # (a full disk, a broken resolver) is reported like every other verifier failure, not a traceback.
@@ -176,10 +210,12 @@ def check_claims(
     # defaultMode: auto: the verifier reads untrusted third-party text and must not be able to
     # read a local secret and exfiltrate it through WebFetch (R13). The variadic tool lists go
     # last so they cannot swallow another flag; Write and Bash are never offered.
+    # --strict-mcp-config with no --mcp-config loads no MCP server at all: the account's mail, chat
+    # and task servers can send things, and nothing that reads untrusted text may hold a way to send.
     argv = [
         claude_bin, "-p", prompt, "--output-format", "json", "--json-schema", json.dumps(VERIFICATION_SCHEMA),
         "--model", model, "--no-session-persistence", "--restricted", "--permission-mode", "dontAsk",
-        "--allowedTools", *TOOLS, "--tools", *TOOLS,
+        "--strict-mcp-config", "--allowedTools", *TOOLS, "--tools", *TOOLS,
     ]
     try:
         proc = runner(argv, cwd=str(out), capture_output=True, text=True, timeout=timeout_s)
@@ -204,7 +240,7 @@ def check_claims(
         raise ClaimsError("invalid verification: " + "; ".join(errors))
     data = {
         "meta": {"run_id": rec.run_id, "verified_on": day, "model": model, "method": METHOD},
-        "claims": structured["claims"], "summary": structured["summary"],
+        "claims": cross_check(structured["claims"], index), "summary": structured["summary"],
     }
     _write_atomic(out / VERIFICATION_JSON, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
     _write_atomic(out / VERIFICATION_MD, render_verification_md(data, rec.run_id, model, day))
