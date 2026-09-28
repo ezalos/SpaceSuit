@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import time
+from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,6 +30,7 @@ from .config import Config, load_config
 from .grade import Grade, count_grades, grade_citations
 from .notify import NotifyError
 from .payload import completion_payload, local_timezone, new_uuid
+from .prefetch import FETCHED_JSON
 from .profiles import ProfileError, group_by_profile, live_name, run_profile, saved_profiles, switch_to
 from .prompt import build_web_prompt
 from .report import (
@@ -658,7 +660,7 @@ def cmd_archive(args, cfg: Config) -> int:
     return EXIT_OK
 
 
-def cmd_check_claims(args, cfg: Config, runner=subprocess.run) -> int:
+def cmd_check_claims(args, cfg: Config, runner=subprocess.run, resolver=None) -> int:
     """Opt-in only: nothing calls this but the user. A headless verifier re-reads the report against primary pages."""
     rec = find_run(cfg.runs_root, args.run_id)
     if rec is None:
@@ -668,15 +670,18 @@ def cmd_check_claims(args, cfg: Config, runner=subprocess.run) -> int:
         print(f"{rec.run_id} is not collected ({rec.status}); collect it first")
         return EXIT_PROBLEM
     model = args.model or cfg.model
-    print(f"checking {rec.run_id} with {model}; this fetches primary pages and can take a while")
+    print(f"pre-fetching sources, then checking {rec.run_id} with {model}; this can take a while")
     try:
-        written = check_claims(rec, model, runner=runner, timeout_s=int(args.timeout) * 60)
+        written = check_claims(rec, model, runner=runner, resolver=resolver, timeout_s=int(args.timeout) * 60)
     except ClaimsError as exc:
         print(f"claims check failed: {exc}")
         log("WARNING", f"deep-research: claims check failed for {rec.run_id}: {exc}")
         return EXIT_PROBLEM
     data = json.loads(written.read_text(encoding="utf-8"))
     print(f"  verdicts: {verdict_counts(data['claims'])}")
+    fetched = json.loads((Path(rec.out_dir) / FETCHED_JSON).read_text(encoding="utf-8"))
+    served = Counter((v.get("served_by") or "not fetched") for v in fetched.values())
+    print("  served by: " + (", ".join(f"{n} {k}" for k, n in served.items()) or "no sources"))
     for line in data["summary"]["refuted_or_materially_different"]:
         print(f"  refuted or different: {line}")
     for line in data["summary"]["unreachable"]:

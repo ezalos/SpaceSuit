@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from scholar_fetch.chain import Fetched
+from scholar_fetch.ids import Ids
 
 from deep_research_web import __main__ as cli
 from deep_research_web.__main__ import EXIT_OK, EXIT_PROBLEM
@@ -22,13 +24,18 @@ from deep_research_web.runs import RunRecord, write_run
 GOOD = {
     "claims": [
         {"claim": f"claim {i}", "url": f"https://example.org/{i}", "verdict": "CONFIRMED",
-         "supporting_text": "verbatim text", "note": "", "date_seen": "2026-09-19"}
+         "supporting_text": "verbatim text", "note": "", "date_seen": "2026-09-19", "served_by": "arxiv"}
         for i in range(12)
     ] + [{"claim": "SRPO 82.1 is zero-shot", "url": "https://arxiv.org/abs/2511.15605", "verdict": "REFUTED",
-          "supporting_text": "With Augmented Data", "note": "augmented, not zero-shot", "date_seen": "2026-09-19"}],
+          "supporting_text": "With Augmented Data", "note": "augmented, not zero-shot", "date_seen": "2026-09-19",
+          "served_by": "arxiv"}],
     "summary": {"refuted_or_materially_different": ["SRPO 82.1 is augmented-data"], "unreachable": [],
                 "most_consequential": "the headline number is not zero-shot"},
 }
+
+
+def _resolver(url):
+    return Fetched(url, "SRPO reaches 82.1 With Augmented Data", "arxiv", "fulltext", Ids(arxiv="2511.15605"), [])
 
 
 def _envelope(structured, is_error=False):
@@ -62,8 +69,10 @@ class Runner:
 
 
 def test_prompt_carries_the_report_the_rules_and_the_verdicts():
-    prompt = build_prompt("What changed?", "# Report\n\nSRPO reaches 82.1 [1].", "1. https://a\n", "2026-09-19")
+    prompt = build_prompt("What changed?", "# Report\n\nSRPO reaches 82.1 [1].", "1. https://a\n", "2026-09-19",
+                          fetched="1. https://a → fetched/1.txt (arxiv, fulltext)")
     assert "SRPO reaches 82.1 [1]." in prompt and "https://a" in prompt and "What changed?" in prompt and "2026-09-19" in prompt
+    assert "fetched/1.txt" in prompt
     for verdict in VERDICTS:
         assert verdict in prompt
     for rule in ("primary", "never download", "weights", "datasets", "read-only", "did not write"):
@@ -96,12 +105,16 @@ def test_render_md_has_one_row_per_claim_and_the_summary():
 def test_check_claims_runs_headless_claude_in_the_run_dir_and_writes_both_files(tmp_path):
     rec = _collected_run(tmp_path)
     runner = Runner(_envelope(GOOD))
-    written = check_claims(rec, "claude-fable-5-1", runner=runner, claude_bin="/bin/claude", today=lambda: date(2026, 9, 19))
+    written = check_claims(rec, "claude-fable-5-1", runner=runner, claude_bin="/bin/claude", resolver=_resolver,
+                           today=lambda: date(2026, 9, 19))
     out = Path(rec.out_dir)
     assert written == out / "verification.json"
     data = json.loads(written.read_text())
-    assert data["meta"] == {"run_id": rec.run_id, "verified_on": "2026-09-19", "model": "claude-fable-5-1",
-                            "method": "headless Claude Code, WebFetch and WebSearch only, structured output validated by deep-research-web"}
+    assert data["meta"] == {
+        "run_id": rec.run_id, "verified_on": "2026-09-19", "model": "claude-fable-5-1",
+        "method": "sources pre-fetched by scholar_fetch (arXiv, Unpaywall, Semantic Scholar, OpenAlex, direct); "
+                   "headless Claude Code, Read/WebFetch/WebSearch, structured output validated by deep-research-web",
+    }
     assert data["claims"] == GOOD["claims"] and data["summary"] == GOOD["summary"]
     assert (out / "verification.md").read_text().count("| CONFIRMED |") == 12
     [(argv, kw)] = runner.calls
@@ -109,15 +122,15 @@ def test_check_claims_runs_headless_claude_in_the_run_dir_and_writes_both_files(
     assert kw["cwd"] == str(out) and kw["timeout"] > 0
     prompt = argv[argv.index("-p") + 1]
     assert "SRPO reaches 82.1 on LIBERO-Plus zero-shot [1]." in prompt
-    tools = argv[argv.index("--tools") + 1:argv.index("--tools") + 3]
-    assert tools == ["WebFetch", "WebSearch"]
+    tools = argv[argv.index("--tools") + 1:argv.index("--tools") + 4]
+    assert tools == ["Read", "WebFetch", "WebSearch"]
     assert "Write" not in argv and "Bash" not in argv
 
 
 def test_check_claims_refuses_an_error_envelope_and_writes_nothing(tmp_path):
     rec = _collected_run(tmp_path)
     with pytest.raises(ClaimsError, match="is_error"):
-        check_claims(rec, "m", runner=Runner(_envelope(None, is_error=True)), claude_bin="c")
+        check_claims(rec, "m", runner=Runner(_envelope(None, is_error=True)), claude_bin="c", resolver=_resolver)
     assert not (Path(rec.out_dir) / "verification.json").exists()
 
 
@@ -125,31 +138,34 @@ def test_check_claims_refuses_an_invalid_result(tmp_path):
     rec = _collected_run(tmp_path)
     few = {"claims": GOOD["claims"][:2], "summary": GOOD["summary"]}
     with pytest.raises(ClaimsError, match="2 claims"):
-        check_claims(rec, "m", runner=Runner(_envelope(few)), claude_bin="c")
+        check_claims(rec, "m", runner=Runner(_envelope(few)), claude_bin="c", resolver=_resolver)
 
 
 def test_check_claims_refuses_a_failed_process(tmp_path):
     rec = _collected_run(tmp_path)
     with pytest.raises(ClaimsError, match="exit 1"):
-        check_claims(rec, "m", runner=Runner("", returncode=1), claude_bin="c")
+        check_claims(rec, "m", runner=Runner("", returncode=1), claude_bin="c", resolver=_resolver)
 
 
 def test_check_claims_command_re_archives_so_the_library_carries_the_verification(tmp_path, capsys):
     rec = _collected_run(tmp_path)
     lib = tmp_path / "lib"
     cfg = Config("claude-fable-5-1", None, tmp_path / "runs", tmp_path / "p", tmp_path / "ps", archive_root=lib)
-    code = cli.cmd_check_claims(Namespace(run_id=rec.run_id, model=None, timeout=30), cfg, runner=Runner(_envelope(GOOD)))
+    code = cli.cmd_check_claims(Namespace(run_id=rec.run_id, model=None, timeout=30), cfg,
+                                runner=Runner(_envelope(GOOD)), resolver=_resolver)
     assert code == EXIT_OK
     dest = lib / "2026-09-17-changelog"
     assert (dest / "verification.json").exists() and json.loads((dest / "archive.json").read_text())["checked"] is True
     out = capsys.readouterr().out
     assert "12 CONFIRMED, 1 REFUTED" in out and "SRPO 82.1 is augmented-data" in out
+    assert "served by:" in out and "arxiv" in out
 
 
 def test_check_claims_command_reports_a_bad_result_as_a_problem(tmp_path, capsys):
     rec = _collected_run(tmp_path)
     cfg = Config("claude-fable-5-1", None, tmp_path / "runs", tmp_path / "p", tmp_path / "ps")
-    code = cli.cmd_check_claims(Namespace(run_id=rec.run_id, model=None, timeout=30), cfg, runner=Runner("", returncode=1))
+    code = cli.cmd_check_claims(Namespace(run_id=rec.run_id, model=None, timeout=30), cfg,
+                                runner=Runner("", returncode=1), resolver=_resolver)
     assert code == EXIT_PROBLEM and "exit 1" in capsys.readouterr().out
 
 
@@ -157,3 +173,47 @@ def test_check_claims_parser():
     args = cli.build_parser().parse_args(["check-claims", "r1", "--model", "claude-opus-5", "--timeout", "90"])
     assert args.run_id == "r1" and args.model == "claude-opus-5" and args.timeout == 90
     assert cli.build_parser().parse_args(["check-claims", "r1"]).timeout == 60
+
+
+def test_prefetch_runs_before_the_verifier_and_the_prompt_points_at_it(tmp_path):
+    rec = _collected_run(tmp_path)
+    seen = {}
+
+    def runner(argv, **kw):
+        seen["argv"], seen["cwd"] = argv, kw["cwd"]
+        assert (Path(kw["cwd"]) / "fetched" / "1.txt").exists()  # written before claude starts
+        return subprocess.CompletedProcess(argv, 0, _envelope(GOOD), "")
+
+    check_claims(rec, "m", runner=runner, resolver=_resolver, today=lambda: date(2026, 9, 27))
+    prompt = seen["argv"][seen["argv"].index("-p") + 1]
+    assert "fetched/1.txt" in prompt and "arxiv" in prompt
+    assert "Read" in seen["argv"][seen["argv"].index("--tools") + 1:]
+
+
+def test_served_by_is_required_and_shown():
+    bad = json.loads(json.dumps(GOOD))
+    del bad["claims"][0]["served_by"]
+    assert any("served_by" in e for e in validate_verification(bad))
+    md = render_verification_md({**GOOD, "meta": {}}, "r", "m", "2026-09-27")
+    assert "| Served by |" in md and "arxiv" in md
+
+
+def test_an_old_verification_without_served_by_still_renders():
+    old = json.loads(json.dumps(GOOD))
+    for c in old["claims"]:
+        del c["served_by"]
+    assert "CONFIRMED" in render_verification_md(old, "r", "m", "2026-09-19")
+
+
+def test_a_failed_prefetch_source_is_listed_as_not_fetched_in_the_prompt(tmp_path):
+    rec = _collected_run(tmp_path)
+    seen = {}
+
+    def runner(argv, **kw):
+        seen["argv"] = argv
+        return subprocess.CompletedProcess(argv, 0, _envelope(GOOD), "")
+
+    dead = lambda u: Fetched(u, None, None, None, Ids(), [{"step": "direct", "target": u, "outcome": "http 403"}])
+    check_claims(rec, "m", runner=runner, resolver=dead)
+    prompt = seen["argv"][seen["argv"].index("-p") + 1]
+    assert "not fetched" in prompt and "http 403" in prompt

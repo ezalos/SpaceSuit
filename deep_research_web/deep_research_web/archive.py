@@ -11,6 +11,7 @@ from datetime import date
 from pathlib import Path
 from typing import Callable
 
+from .prefetch import FETCHED_JSON
 from .report import REPORT_NAME, RESULT_NAME, SOURCES_NAME
 from .runs import RunRecord
 
@@ -23,7 +24,8 @@ VERIFICATION_MD = "verification.md"
 PAPERS_LINK = "papers"
 NAME_MAX = 60
 NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-COPIED = (CHARTER_NAME, REPORT_NAME, SOURCES_NAME, RESULT_NAME, VERIFICATION_JSON, VERIFICATION_MD)
+# fetched/*.txt is deliberately not copied: fetched.json alone (which step served each source) is enough context.
+COPIED = (CHARTER_NAME, REPORT_NAME, SOURCES_NAME, RESULT_NAME, VERIFICATION_JSON, VERIFICATION_MD, FETCHED_JSON)
 GRADE_ORDER = ("quoted", "live", "misquoted", "dead", "unverifiable")
 
 
@@ -99,7 +101,8 @@ def _readme(rec: RunRecord, meta: dict) -> str:
         f"- Chat: {meta['chat_url']}\n"
         f"- Files: `{CHARTER_NAME}` (the question as launched), `{REPORT_NAME}` (the original report, frozen), "
         f"`{SOURCES_NAME}` and `{RESULT_NAME}` (the engine's graded citations), "
-        f"`{VERIFICATION_JSON}` / `{VERIFICATION_MD}` when an independent claims check was run\n"
+        f"`{VERIFICATION_JSON}` / `{VERIFICATION_MD}` and `{FETCHED_JSON}` (which open-access step served each source) "
+        "when an independent claims check was run\n"
         f"- Grades at archive time: {format_grades(meta['grades'])}\n"
         f"- Papers: none linked. To link a Drive folder: a relative symlink `{PAPERS_LINK}` to it, and its mirror-relative path here.\n\n"
         "## Used in\n\n(nothing recorded yet)\n\n"

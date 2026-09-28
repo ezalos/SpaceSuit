@@ -10,6 +10,9 @@ from datetime import date
 from pathlib import Path
 from typing import Callable
 
+from scholar_fetch.chain import Fetched
+
+from .prefetch import FETCHED_DIR, default_resolver, prefetch
 from .report import REPORT_NAME, SOURCES_NAME
 from .runs import RunRecord
 
@@ -18,9 +21,10 @@ MIN_CLAIMS = 10
 VERIFICATION_JSON = "verification.json"
 VERIFICATION_MD = "verification.md"
 PROMPT_FILE = Path(__file__).with_name("check_claims_prompt.md")
-TOOLS = ("WebFetch", "WebSearch")
-METHOD = "headless Claude Code, WebFetch and WebSearch only, structured output validated by deep-research-web"
-REQUIRED_CLAIM_FIELDS = ("claim", "url", "verdict", "supporting_text", "date_seen")
+TOOLS = ("Read", "WebFetch", "WebSearch")
+METHOD = ("sources pre-fetched by scholar_fetch (arXiv, Unpaywall, Semantic Scholar, OpenAlex, direct); "
+          "headless Claude Code, Read/WebFetch/WebSearch, structured output validated by deep-research-web")
+REQUIRED_CLAIM_FIELDS = ("claim", "url", "verdict", "supporting_text", "date_seen", "served_by")
 
 VERIFICATION_SCHEMA = {
     "type": "object",
@@ -36,6 +40,7 @@ VERIFICATION_SCHEMA = {
                     "supporting_text": {"type": "string"},
                     "note": {"type": "string"},
                     "date_seen": {"type": "string"},
+                    "served_by": {"type": "string"},
                 },
                 "required": list(REQUIRED_CLAIM_FIELDS),
             },
@@ -58,11 +63,27 @@ class ClaimsError(Exception):
     pass
 
 
-def build_prompt(question: str, report: str, sources: str, today: str) -> str:
+def build_prompt(question: str, report: str, sources: str, today: str, fetched: str) -> str:
     # str.replace, not str.format: a report is full of braces the template must not interpret.
     template = PROMPT_FILE.read_text(encoding="utf-8")
     return (template.replace("{today}", today).replace("{question}", question)
-            .replace("{sources}", sources.strip() or "(none listed)").replace("{report}", report))
+            .replace("{sources}", sources.strip() or "(none listed)").replace("{report}", report)
+            .replace("{fetched}", fetched))
+
+
+def fetched_listing(index: dict[int, dict]) -> str:
+    """One line per pre-fetched source, for the prompt: what served it, or what was tried and failed."""
+    if not index:
+        return "(no sources listed)"
+    lines = []
+    for n in sorted(index):
+        f = index[n]
+        if f.get("served_by"):
+            lines.append(f"{n}. {f['url']} → {FETCHED_DIR}/{n}.txt ({f['served_by']}, {f.get('kind')})")
+        else:
+            tried = "; ".join(f"{t['step']}: {t['outcome']}" for t in f.get("tried") or [])
+            lines.append(f"{n}. {f['url']} → not fetched; tried: {tried}")
+    return "\n".join(lines)
 
 
 def validate_verification(data) -> list[str]:
@@ -108,15 +129,20 @@ def _cell(text) -> str:
 def render_verification_md(data: dict, run_id: str, model: str, today: str) -> str:
     claims, summary = data["claims"], data["summary"]
     rows = [
-        f"| {i} | {c['verdict']} | {_cell(c['claim'])} | {_cell(c['url'])} | {_cell(c['supporting_text'])} | {_cell(c.get('note'))} |"
+        f"| {i} | {c['verdict']} | {_cell(c['claim'])} | {_cell(c['url'])} | {_cell(c.get('served_by', ''))} | "
+        f"{_cell(c['supporting_text'])} | {_cell(c.get('note'))} |"
         for i, c in enumerate(claims, 1)
     ]
     bullets = lambda items: "\n".join(f"- {x}" for x in items) or "- (none)"
+    served_counts = Counter(c.get("served_by") or "unrecorded" for c in claims)
+    served_str = ", ".join(f"{n} {k}" for k, n in served_counts.items()) or "no claims"
     return (
         f"# Claims check of {run_id}\n\n"
-        f"Checked on {today} by {model} ({METHOD}). Verdicts: {verdict_counts(claims)}. "
+        f"Checked on {today} by {model} ({METHOD}). Verdicts: {verdict_counts(claims)}.\n"
+        f"Served by: {served_str}.\n\n"
         "A CONFIRMED claim was found verbatim on a primary page; nothing here reproduces a result.\n\n"
-        "| # | Verdict | Claim | Source | Supporting text | Note |\n|---|---|---|---|---|---|\n" + "\n".join(rows) + "\n\n"
+        "| # | Verdict | Claim | Source | Served by | Supporting text | Note |\n|---|---|---|---|---|---|---|\n"
+        + "\n".join(rows) + "\n\n"
         f"## Refuted or materially different\n\n{bullets(summary['refuted_or_materially_different'])}\n\n"
         f"## Unreachable\n\n{bullets(summary['unreachable'])}\n\n"
         f"## Most consequential\n\n{summary['most_consequential'].strip() or '(none)'}\n"
@@ -132,13 +158,15 @@ def _write_atomic(target: Path, text: str) -> None:
 def check_claims(
     rec: RunRecord, model: str, runner: Callable = subprocess.run, claude_bin: str = "claude",
     timeout_s: int = 3600, today: Callable[[], date] = date.today,
+    resolver: Callable[[str], Fetched] | None = None,
 ) -> Path:
     """Run the headless verifier on a collected run; write verification.json and .md; return the JSON path."""
     out = Path(rec.out_dir)
     report = (out / REPORT_NAME).read_text(encoding="utf-8")
     sources = (out / SOURCES_NAME).read_text(encoding="utf-8") if (out / SOURCES_NAME).exists() else ""
+    index = prefetch(out, sources, resolver or default_resolver())
     day = today().isoformat()
-    prompt = build_prompt(rec.question, report, sources, day)
+    prompt = build_prompt(rec.question, report, sources, day, fetched=fetched_listing(index))
     # The variadic tool lists go last so they cannot swallow another flag; Write and Bash are never offered.
     argv = [
         claude_bin, "-p", prompt, "--output-format", "json", "--json-schema", json.dumps(VERIFICATION_SCHEMA),
