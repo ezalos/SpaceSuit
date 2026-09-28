@@ -9,4 +9,11 @@ if [ -f "$ENV_FILE" ]; then set -a; . "$ENV_FILE"; set +a; fi
 # and deep_research.verify, which are not installable. DEEP_RESEARCH_WEB_SPACESUIT still overrides
 # for a checkout that lives elsewhere. The caller's cwd is preserved.
 SPACESUIT="${DEEP_RESEARCH_WEB_SPACESUIT:-$(cd "$HERE/.." && pwd)}"
-PYTHONPATH="$HERE:$SPACESUIT${PYTHONPATH:+:$PYTHONPATH}" exec uv run --project "$HERE" python -m deep_research_web "$@"
+export PYTHONPATH="$HERE:$SPACESUIT${PYTHONPATH:+:$PYTHONPATH}"
+# check-claims pre-fetches through Semantic Scholar, which answers 429 without a key. The env
+# file may hold the key as a pass:// vault ref: resolve it for that one command only, so every
+# other command (timers included) skips the vault round-trip.
+if [ "${1:-}" = "check-claims" ] && [[ "${S2_API_KEY:-}" == pass://* ]]; then
+  exec secrets run --only S2_API_KEY -- uv run --project "$HERE" python -m deep_research_web "$@"
+fi
+exec uv run --project "$HERE" python -m deep_research_web "$@"
