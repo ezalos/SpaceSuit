@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
 import requests
+import urllib3.exceptions
 
 MIN_INTERVAL = {
     "api.semanticscholar.org": 1.5,
@@ -65,13 +66,14 @@ def _origin(url: str) -> tuple[str, str, int]:
 class Client:
     def __init__(self, cache_dir: Path, headers: dict | None = None, retries: int = 5,
                  sleep=time.sleep, min_interval: dict | None = None, rate_bps: int = 25_000_000,
-                 lock_path: Path | None = None):
+                 lock_path: Path | None = None, grace_s: float = 60.0):
         self.cache_dir = cache_dir
         self.retries = retries
         self.sleep = sleep
         self.min_interval = MIN_INTERVAL if min_interval is None else min_interval
         self.rate_bps = rate_bps
         self.lock_path = lock_path
+        self.grace_s = grace_s
         self.last: dict[str, float] = {}
         self.session = requests.Session()
         self.session.cookies.set_policy(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))  # no cookies, no logins
@@ -141,13 +143,22 @@ class Client:
                     if declared > max_bytes:
                         return Downloaded(200, ctype, None, "too-large")
                     buf, start = bytearray(), time.monotonic()
-                    for chunk in r.iter_content(CHUNK):
+                    # timeout=60 bounds each read, not the whole body: a slow-drip server would otherwise
+                    # hold the cross-process lock forever. The largest allowed file at the capped rate, plus grace.
+                    deadline = start + max_bytes / self.rate_bps + self.grace_s
+                    # read1 returns what has arrived (up to CHUNK); iter_content would block until a full
+                    # CHUNK came in, so a drip of a few bytes a second would never reach the deadline check.
+                    while chunk := r.raw.read1(CHUNK, decode_content=True):
                         buf += chunk
                         if len(buf) > max_bytes:
                             return Downloaded(200, ctype, None, "too-large")
+                        if time.monotonic() > deadline:
+                            return Downloaded(200, ctype, None, "timeout")
                         ahead = len(buf) / self.rate_bps - (time.monotonic() - start)
                         if ahead > 0:
                             self.sleep(ahead)
                     return Downloaded(200, ctype, bytes(buf), "ok")
-            except requests.RequestException as exc:
+            # urllib3's own errors (a body cut short, a read timeout) come straight out of raw.read1,
+            # without the requests wrappers iter_content would have put around them.
+            except (requests.RequestException, urllib3.exceptions.HTTPError) as exc:
                 return Downloaded(None, "", None, f"error: {type(exc).__name__}")

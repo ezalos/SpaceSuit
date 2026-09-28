@@ -161,3 +161,55 @@ def test_a_truthy_non_dict_nested_value_falls_through_instead_of_crashing(svc):
     assert ("unpaywall", "no-oa-location") in steps(f)
     assert ("semantic-scholar", "no-oa-location") in steps(f)
     assert [s for s, _ in steps(f)] == ["arxiv", "unpaywall", "semantic-scholar", "openalex", "direct"]
+
+
+def html(words: str) -> tuple[int, str, bytes]:
+    return (200, "text/html", b"<p>" + words.encode() * 30 + b"</p>")
+
+
+def test_an_oa_landing_page_does_not_stop_the_chain_a_later_pdf_wins(svc):
+    b, ep, c = svc
+    ROUTES["/unpaywall/10.1234/x"] = j({"best_oa_location": {"url": b + "/repo/landing"}})
+    ROUTES["/repo/landing"] = html("Repository record, abstract only. ")
+    ROUTES["/s2/DOI:10.1234/x"] = j({"openAccessPdf": {"url": b + "/s2.pdf"}})
+    ROUTES["/s2.pdf"] = (200, "application/pdf", PAPER)
+    f = resolve(b + "/doi/10.1234/x", c, ep)
+    assert (f.served_by, f.kind) == ("semantic-scholar", "fulltext")
+    assert "Attention" in f.text
+    assert ("unpaywall", "landing") in steps(f)
+
+
+def test_when_every_oa_step_serves_html_the_first_landing_is_returned(svc):
+    b, ep, c = svc
+    ROUTES["/unpaywall/10.1234/x"] = j({"best_oa_location": {"url": b + "/u"}})
+    ROUTES["/u"] = html("Unpaywall landing. ")
+    ROUTES["/s2/DOI:10.1234/x"] = j({"openAccessPdf": {"url": b + "/s"}})
+    ROUTES["/s"] = html("S2 landing. ")
+    ROUTES["/openalex/doi:10.1234/x"] = j({"open_access": {"oa_url": b + "/o"}})
+    ROUTES["/o"] = html("OpenAlex landing. ")
+    ROUTES["/doi/10.1234/x"] = html("Publisher landing. ")
+    f = resolve(b + "/doi/10.1234/x", c, ep)
+    assert (f.served_by, f.kind) == ("unpaywall", "landing")
+    assert "Unpaywall landing" in f.text
+    assert [s for s, _ in steps(f)] == ["arxiv", "unpaywall", "semantic-scholar", "openalex", "direct"]
+
+
+def test_a_direct_pdf_is_fulltext_even_for_a_paper_url(svc):
+    b, ep, c = svc
+    ROUTES["/doi/10.1234/x"] = (200, "application/pdf", PAPER)
+    f = resolve(b + "/doi/10.1234/x", c, ep)
+    assert (f.served_by, f.kind) == ("direct", "fulltext")
+
+
+def test_a_text_cache_entry_without_the_pdf_flag_is_a_miss(svc):
+    b, ep, c = svc
+    ROUTES["/arxiv/pdf/2511.15605"] = (200, "application/pdf", PAPER)
+    resolve(b + "/arxiv.org/abs/2511.15605", c, ep)
+    [entry] = (c.cache_dir / "text").glob("*.json")
+    old = json.loads(entry.read_text())
+    assert old.pop("pdf") is True
+    entry.write_text(json.dumps(old))  # an entry written before the content kind was recorded
+    n = len(SEEN)
+    again = resolve(b + "/arxiv.org/abs/2511.15605", c, ep)
+    assert (again.served_by, again.kind) == ("arxiv", "fulltext") and len(SEEN) == n + 1
+    assert json.loads(entry.read_text())["pdf"] is True

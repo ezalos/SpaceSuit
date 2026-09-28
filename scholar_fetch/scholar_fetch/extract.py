@@ -6,7 +6,6 @@ from html.parser import HTMLParser
 from io import BytesIO
 
 from pypdf import PdfReader
-from pypdf.errors import PdfReadError
 
 # Suppress pypdf warnings (check-claims is a CLI whose stderr a person reads)
 logging.getLogger("pypdf").setLevel(logging.ERROR)
@@ -60,11 +59,19 @@ def _tidy(text: str) -> str:
     return "\n".join(ln for ln in lines if ln)
 
 
+def is_pdf(body: bytes, content_type: str) -> bool:
+    """Sniffed or declared: servers mislabel PDFs as octet-stream often enough to check the magic bytes."""
+    return body[:5] == b"%PDF-" or content_type == "application/pdf"
+
+
 def to_text(body: bytes, content_type: str) -> tuple[str | None, str]:
-    if body[:5] == b"%PDF-" or content_type == "application/pdf":
+    if is_pdf(body, content_type):
         try:
             text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(body)).pages)
-        except (PdfReadError, ValueError, KeyError):
+        # pypdf is a third-party parser reading untrusted bytes: besides its own PdfReadError it raises
+        # DependencyError (AES without the crypto extra), TypeError, AttributeError, recursion limits...
+        # Any of them means "this PDF cannot be read here", never a reason to stop the chain.
+        except Exception:
             return None, "unreadable-pdf"
     elif content_type in ("text/html", "application/xhtml+xml"):
         decoded = _decode(body)

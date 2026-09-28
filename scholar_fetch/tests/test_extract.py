@@ -1,6 +1,6 @@
 # ABOUTME: Tests for turning a fetched body into text: PDF text layer, visible HTML text, the refusals.
 # ABOUTME: PDFs are real ones built by tests/pdfs.py; nothing is mocked.
-from pdfs import make_pdf
+from pdfs import make_aes_pdf, make_pdf
 
 from scholar_fetch.extract import to_text
 
@@ -73,3 +73,18 @@ def test_unclosed_script_tag_behaves_like_browser():
     html = b"<html><body><script>var x=1" + LONG.encode() + b"</body></html>"
     text, outcome = to_text(html, "text/html")
     assert (text, outcome) == (None, "no-text-layer")
+
+
+def test_aes_pdf_with_only_an_owner_password_extracts():
+    text, outcome = to_text(make_aes_pdf(LONG), "application/pdf")
+    assert outcome == "ok" and "Attention is all you need" in text
+
+
+def test_aes_pdf_behind_a_user_password_is_unreadable_not_an_exception():
+    assert to_text(make_aes_pdf(LONG, user_password="secret"), "application/pdf") == (None, "unreadable-pdf")
+
+
+def test_any_parser_exception_is_unreadable_not_a_crash():
+    # pypdf raises outside its own error classes on odd input: DependencyError for AES without the
+    # crypto extra (found in the wild), a TypeError for a /Font entry that is a bare number.
+    assert to_text(make_pdf("x", font_is_a_number=True), "application/pdf") == (None, "unreadable-pdf")

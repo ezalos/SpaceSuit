@@ -3,7 +3,7 @@ name = "scholar-fetch"
 version = "0.1.0"
 description = "Open-access failover chain: find and fetch the text of a cited paper or page, politely"
 requires-python = ">=3.12"
-dependencies = ["requests>=2.32", "pypdf>=5"]
+dependencies = ["requests>=2.32", "urllib3>=2.3", "pypdf[crypto]>=5"]
 
 [dependency-groups]
 dev = ["pytest>=8"]

@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field
 
 import requests
 
-from .extract import to_text
+from .extract import is_pdf, to_text
 from .http import Client
 from .ids import ARXIV_DOI, Ids, identify, normalize_doi
 
@@ -39,22 +39,26 @@ def _text_cache(client: Client, url: str):
     return client.cache_dir / "text" / (hashlib.sha256(url.encode()).hexdigest() + ".json")
 
 
-def _fetch_text(client: Client, url: str, max_bytes: int) -> tuple[str | None, str]:
-    """Download and extract one document; a success is cached by URL, a failure is not (it may be transient)."""
+def _fetch_text(client: Client, url: str, max_bytes: int) -> tuple[str | None, str, bool]:
+    """Download and extract one document: (text, outcome, whether the body was a PDF).
+    A success is cached by URL, a failure is not (it may be transient)."""
     path = _text_cache(client, url)
     if path.exists():
-        return json.loads(path.read_text())["text"], "ok"
+        cached = json.loads(path.read_text())
+        if "pdf" in cached:  # an entry from before the content kind was recorded is a miss
+            return cached["text"], "ok", cached["pdf"]
     d = client.download(url, max_bytes=max_bytes)
     if d.outcome != "ok":
-        return None, d.outcome
+        return None, d.outcome, False
+    pdf = is_pdf(d.body, d.content_type)
     text, outcome = to_text(d.body, d.content_type)
     if text is not None:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".tmp")
         tmp.write_text(json.dumps({"url": url, "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                                    "text": text}, ensure_ascii=False))
+                                    "text": text, "pdf": pdf}, ensure_ascii=False))
         os.replace(tmp, path)  # atomic: a crash mid-write never leaves a corrupt cache file behind
-    return text, outcome
+    return text, outcome, pdf
 
 
 def _s2(client: Client, ep: dict, ids: Ids) -> dict | None:
@@ -76,17 +80,25 @@ def resolve(url: str, client: Client, endpoints: dict | None = None, max_bytes: 
     ids = identify(url)
     f = Fetched(url, None, None, None, ids)
     s2 = None
+    landings: list[tuple[str, str]] = []  # (step, text): HTML an open-access step served instead of the paper
 
     def log(step, target, outcome):
         f.tried.append({"step": step, "target": target, "outcome": outcome})
 
     def attempt(step, target) -> bool:
-        text, outcome = _fetch_text(client, target, max_bytes)
-        log(step, target, outcome)
-        if text is not None:
-            f.text, f.served_by = text, step
-            f.kind = "landing" if step == "direct" and ids.any() else "fulltext"
-        return text is not None
+        """True when the chain is done. The kind comes from the content, not the step: an open-access
+        location may be an HTML landing page, which is only kept as a fallback while the chain goes on."""
+        text, outcome, pdf = _fetch_text(client, target, max_bytes)
+        if text is None:
+            log(step, target, outcome)
+            return False
+        if pdf or (step == "direct" and not ids.any()):
+            log(step, target, outcome)
+            f.text, f.served_by, f.kind = text, step, "fulltext"
+            return True
+        log(step, target, "landing")
+        landings.append((step, text))
+        return False
 
     def api(step, call):
         try:
@@ -146,5 +158,7 @@ def resolve(url: str, client: Client, endpoints: dict | None = None, max_bytes: 
         if o is not False and not target:
             log("openalex", ids.doi, "no-oa-location")
 
-    attempt("direct", url)
+    if not attempt("direct", url) and landings:
+        f.text, f.served_by = landings[0][1], landings[0][0]  # no full text anywhere: the first landing page
+        f.kind = "landing"
     return f

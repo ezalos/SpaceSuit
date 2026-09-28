@@ -43,6 +43,17 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"x" * 10)
             self.close_connection = True
+        elif self.path == "/drip":  # a slow-drip server: no length, every read succeeds, the body takes 10 s
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.end_headers()
+            try:
+                for _ in range(200):
+                    self.wfile.write(b"x")
+                    self.wfile.flush()
+                    time.sleep(0.05)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
         elif self.path == "/badlength":  # a non-numeric Content-Length with a small body
             self.send_response(200)
             self.send_header("Content-Type", "application/pdf")
@@ -124,3 +135,15 @@ def test_a_malformed_content_length_never_raises_and_does_not_block_the_next_dow
     t0 = time.monotonic()
     assert c.download(f"{base}/bytes/10").outcome == "ok"
     assert time.monotonic() - t0 < 1
+
+
+def test_a_slow_drip_download_gives_up_at_the_wall_clock_deadline_and_frees_the_lock(base, tmp_path):
+    # deadline = max_bytes / rate_bps + grace: 2000 B at 2000 B/s plus 0.5 s, so 1.5 s, not the 10 s of drip
+    c = mk(tmp_path, rate_bps=2000, grace_s=0.5)
+    t0 = time.monotonic()
+    d = c.download(f"{base}/drip", max_bytes=2000)
+    assert (d.outcome, d.body) == ("timeout", None)
+    assert time.monotonic() - t0 < 3
+    t1 = time.monotonic()
+    assert c.download(f"{base}/bytes/10").outcome == "ok"
+    assert time.monotonic() - t1 < 1
