@@ -5,12 +5,13 @@ import json
 import os
 import time
 from dataclasses import asdict, dataclass, field
+from urllib.parse import quote_plus
 
 import requests
 
 from .extract import is_pdf, to_text
 from .http import Client
-from .ids import ARXIV_DOI, Ids, identify, normalize_doi
+from .ids import ARXIV_DOI, Ids, from_doi, identify, normalize_doi, researchgate_title, same_title
 
 STEPS = ("arxiv", "unpaywall", "semantic-scholar", "openalex", "direct")
 ENDPOINTS = {
@@ -19,6 +20,7 @@ ENDPOINTS = {
     "s2": "https://api.semanticscholar.org/graph/v1/paper/{pid}?fields=externalIds,openAccessPdf",
     "openalex": "https://api.openalex.org/works/doi:{doi}",
     "openalex_pmid": "https://api.openalex.org/works/pmid:{pmid}",
+    "openalex_search": "https://api.openalex.org/works?search={title}&per-page=5&select=doi,title",
 }
 
 
@@ -127,6 +129,21 @@ def resolve(url: str, client: Client, endpoints: dict | None = None, max_bytes: 
             doi = _get(s2, "externalIds", "DOI")
             if doi:
                 ids = f.ids = Ids(arxiv=ids.arxiv, doi=normalize_doi(doi), pmid=ids.pmid)
+
+    # A ResearchGate link carries only the title. OpenAlex's search gives a DOI when one of its top five
+    # hits has exactly that title (an arXiv DataCite DOI becomes the arXiv id); a near match is never
+    # taken, since a wrong DOI would serve a different paper as this one.
+    title = None if ids.any() else researchgate_title(url)
+    if title:
+        o = api("openalex", lambda: client.json("GET", ep["openalex_search"].format(title=quote_plus(title))))
+        hits = _get(o, "results")
+        match = next((w for w in hits if isinstance(w, dict) and isinstance(w.get("doi"), str)
+                      and same_title(str(w.get("title") or ""), title)), None) if isinstance(hits, list) else None
+        if match:
+            ids = f.ids = from_doi(match["doi"])
+            log("openalex", f"title:{title}", "ok")
+        elif o is not False:
+            log("openalex", f"title:{title}", "no-title-match")
 
     if ids.arxiv:
         if attempt("arxiv", ep["arxiv"].format(id=ids.arxiv)):

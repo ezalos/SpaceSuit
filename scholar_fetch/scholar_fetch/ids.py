@@ -13,6 +13,7 @@ ARXIV_DOI = re.compile(r"^10\.48550/arxiv\.(\d{4}\.\d{4,5})$", re.I)
 
 ARXIV_URL = re.compile(r"arxiv\.org/(?:abs|pdf|html)/" + ARXIV_ID + r"(?:v\d+)?", re.I)
 PMID_URL = re.compile(r"(?:pubmed\.ncbi\.nlm\.nih\.gov/|ncbi\.nlm\.nih\.gov/pubmed/)(\d+)", re.I)
+RESEARCHGATE_URL = re.compile(r"researchgate\.net/publication/\d+_([^/]+)", re.I)
 PUBLISHER_VIEW_WORDS = {"full", "abstract", "pdf", "epdf", "fulltext", "html", "citation", "references", "figures", "summary", "meta", "supplementary"}
 
 
@@ -91,7 +92,28 @@ def identify(url: str) -> Ids:
             raw_doi = hit.group(1)
             # Strip URL view suffixes (full, abstract, pdf, etc.) before normalization
             raw_doi = _strip_url_view_suffix(raw_doi)
-            doi = normalize_doi(trim_doi_tail(raw_doi))
-            as_arxiv = ARXIV_DOI.match(doi)
-            return Ids(arxiv=as_arxiv.group(1)) if as_arxiv else Ids(doi=doi)
+            return from_doi(trim_doi_tail(raw_doi))
     return Ids()
+
+
+def from_doi(doi: str) -> Ids:
+    """The Ids a DOI stands for: normalised, and an arXiv DataCite DOI counted as its arXiv id."""
+    doi = normalize_doi(doi)
+    as_arxiv = ARXIV_DOI.match(doi)
+    return Ids(arxiv=as_arxiv.group(1)) if as_arxiv else Ids(doi=doi)
+
+
+def researchgate_title(url: str) -> str | None:
+    """The title a ResearchGate publication URL spells in its slug (words joined by '_', punctuation
+    dropped), or None for any other URL. ResearchGate never puts a DOI in the URL."""
+    parts = urlsplit(url)
+    m = RESEARCHGATE_URL.search(parts.netloc + parts.path)
+    return unquote(m.group(1)).replace("_", " ").strip() if m else None
+
+
+def same_title(a: str, b: str) -> bool:
+    """Titles equal once markup, case and punctuation are dropped: a slug and a catalogue title of the
+    same paper compare equal; a near-duplicate record (another word, a missing article) does not."""
+    def words(s):
+        return re.findall(r"[a-z0-9]+", re.sub(r"<[^>]+>", " ", s).lower())
+    return bool(words(a)) and words(a) == words(b)

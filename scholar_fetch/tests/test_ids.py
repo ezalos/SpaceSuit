@@ -2,7 +2,7 @@
 # ABOUTME: Moved candidates() tests from Research; new tests for URL identification.
 import pytest
 
-from scholar_fetch.ids import Ids, candidates, identify
+from scholar_fetch.ids import Ids, candidates, from_doi, identify, researchgate_title, same_title
 
 
 def test_margin_stamp_comes_first_even_when_later_in_the_text():
@@ -66,3 +66,33 @@ def test_identify(url, want):
 def test_ids_any():
     assert not Ids().any()
     assert Ids(pmid="1").any()
+
+
+@pytest.mark.parametrize("url, want", [
+    ("https://www.researchgate.net/publication/232458848_The_Effects_of_Feedback_Interventions_on_Performance_A_Historical_Review",
+     "The Effects of Feedback Interventions on Performance A Historical Review"),
+    ("https://www.researchgate.net/publication/385394918_The_current_evidence_of_solution-focused_brief_therapy?enrichId=x#pf2",
+     "The current evidence of solution-focused brief therapy"),
+    ("https://www.researchgate.net/publication/381119750_Clean_language_questions/link/abc/download", "Clean language questions"),
+    ("https://www.researchgate.net/profile/Some-One", None),
+    ("https://doi.org/10.1038/nature14539", None),
+])
+def test_researchgate_title(url, want):
+    assert researchgate_title(url) == want
+    assert identify(url).any() is (url.startswith("https://doi.org"))  # identify itself never guesses from a title
+
+
+@pytest.mark.parametrize("a, b, same", [
+    ("The effects of feedback interventions on performance: A historical review",
+     "The Effects of Feedback Interventions on Performance A Historical Review", True),
+    ("Sycophantic AI decreases prosocial <i>intentions</i>", "Sycophantic AI Decreases Prosocial Intentions", True),
+    ("Effects of feedback intervention on performance", "The Effects of Feedback Interventions on Performance", False),
+    ("", "", False),
+])
+def test_same_title(a, b, same):
+    assert same_title(a, b) is same
+
+
+def test_from_doi_maps_an_arxiv_datacite_doi_to_its_arxiv_id():
+    assert from_doi("https://doi.org/10.48550/arXiv.2510.01395") == Ids(arxiv="2510.01395")
+    assert from_doi("https://doi.org/10.1037/0033-2909.119.2.254") == Ids(doi="10.1037/0033-2909.119.2.254")

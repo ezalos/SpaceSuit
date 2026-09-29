@@ -10,6 +10,7 @@ from pdfs import make_pdf
 
 from scholar_fetch.chain import resolve
 from scholar_fetch.http import Client
+from scholar_fetch.ids import Ids
 
 PAPER = make_pdf("Attention is all you need. " * 20)
 ROUTES: dict[str, tuple[int, str, bytes]] = {}
@@ -49,6 +50,7 @@ def svc(tmp_path, monkeypatch):
         "s2": b + "/s2/{pid}?fields=externalIds,openAccessPdf",
         "openalex": b + "/openalex/doi:{doi}",
         "openalex_pmid": b + "/openalex/pmid:{pmid}",
+        "openalex_search": b + "/openalex/search?search={title}",
     }
     client = Client(tmp_path / "cache", min_interval={}, lock_path=tmp_path / "dl.lock")
     yield b, endpoints, client
@@ -261,3 +263,59 @@ def test_a_text_cache_entry_without_the_pdf_flag_is_a_miss(svc):
     again = resolve(b + "/arxiv.org/abs/2511.15605", c, ep)
     assert (again.served_by, again.kind) == ("arxiv", "fulltext") and len(SEEN) == n + 1
     assert json.loads(entry.read_text())["pdf"] is True
+
+
+RG = "/researchgate.net/publication/232458848_The_Effects_of_Feedback_Interventions_on_Performance_A_Historical_Review"
+RG_TITLE = "The effects of feedback interventions on performance: A historical review"
+
+
+def test_a_researchgate_title_resolves_to_a_doi_that_the_oa_steps_then_use(svc):
+    b, ep, c = svc
+    ROUTES["/openalex/search"] = j({"results": [
+        {"doi": "https://doi.org/10.1037//0033-2909.119.2.254", "title": "Effects of feedback intervention on performance"},
+        {"doi": "https://doi.org/10.1037/0033-2909.119.2.254", "title": RG_TITLE}]})
+    ROUTES["/unpaywall/10.1037/0033-2909.119.2.254"] = j({"best_oa_location": {"url_for_pdf": b + "/oa.pdf"}})
+    ROUTES["/oa.pdf"] = (200, "application/pdf", PAPER)
+    f = resolve(b + RG, c, ep)
+    assert f.ids == Ids(doi="10.1037/0033-2909.119.2.254")  # the exact title, not the near-duplicate above it
+    assert f.served_by == "unpaywall"
+    assert f.tried[0] == {"step": "openalex", "outcome": "ok",
+                          "target": "title:The Effects of Feedback Interventions on Performance A Historical Review"}
+    assert ("/openalex/search?search=The+Effects+of+Feedback+Interventions+on+Performance+A+Historical+Review", None) in SEEN
+
+
+def test_a_researchgate_title_with_only_near_matches_gets_no_doi(svc):
+    b, ep, c = svc
+    ROUTES["/openalex/search"] = j({"results": [
+        {"doi": "https://doi.org/10.3389/fpsyg.2019.03087", "title": "The Power of Feedback Revisited"},
+        {"doi": "https://doi.org/10.1037//0033-2909.119.2.254", "title": "Effects of feedback intervention on performance: A historical review"}]})
+    f = resolve(b + RG, c, ep)
+    assert f.ids == Ids()
+    assert f.tried[0]["outcome"] == "no-title-match"
+    assert not any(p.startswith("/unpaywall/") for p, _ in SEEN)
+
+
+def test_a_researchgate_title_matching_an_arxiv_doi_is_served_by_arxiv(svc):
+    b, ep, c = svc
+    ROUTES["/openalex/search"] = j({"results": [
+        {"doi": "https://doi.org/10.48550/arxiv.2510.01395", "title": "The Effects of <i>Feedback</i> Interventions on Performance: A Historical Review"}]})
+    ROUTES["/arxiv/pdf/2510.01395"] = (200, "application/pdf", PAPER)
+    f = resolve(b + RG, c, ep)
+    assert f.ids == Ids(arxiv="2510.01395")
+    assert f.served_by == "arxiv"
+
+
+def test_a_broken_search_answer_is_logged_once_and_the_chain_goes_on(svc):
+    b, ep, c = svc
+    ROUTES["/openalex/search"] = (200, "application/json", b'{"results": "not a list"}')
+    ROUTES[RG] = (403, "text/html", b"")
+    f = resolve(b + RG, c, ep)
+    assert f.ids == Ids()
+    assert [o for s, o in steps(f) if s == "openalex"][0] == "no-title-match"
+    assert steps(f)[-1] == ("direct", "http 403")
+
+
+def test_a_url_that_already_names_the_paper_never_searches_by_title(svc):
+    b, ep, c = svc
+    resolve(b + "/doi.org/10.1038/nature14539", c, ep)
+    assert not any(p.startswith("/openalex/search") for p, _ in SEEN)
