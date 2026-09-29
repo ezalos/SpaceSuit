@@ -62,6 +62,13 @@ converged taste): `visuals/2026-07-16-mira-mini-linkedin-worldmodel.py`.
 7. Page count ~8; total 60-90 s; end on partnership/CTA (repo chip + "Report & demo at
    <url>" line, no https://).
 
+## Equations: define every symbol
+
+Any equation or pseudocode line on screen gets its terms coloured and defined by
+leaders, one per beat: `mlkit.tex_terms` + `mlkit.term_notes` + `motion.define`.
+Louis's standing request (2026-09-28): never show a bare symbol. How-to, rules and a
+copy-paste example: `visuals/identity/IDENTITY.md`, section 6.
+
 ## Video-in-video
 
 - Extract PNGs at 10 fps (`ffmpeg -vf fps=10`), play with `make_frame_flipper()`.
