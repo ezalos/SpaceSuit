@@ -187,9 +187,23 @@ def test_missing_session_id_still_shows_the_badge(tmp_path, claude_on_tty):
     assert run(tmp_path, f"%12={tty}").stdout == "🔴 "
 
 
-def test_session_outside_tmux_is_ignored(tmp_path, claude_on_tty):
+def test_session_without_tmux_field_matches_on_its_tty(tmp_path, claude_on_tty):
+    # Claude Code 2.1.284 no longer writes "tmux"; the pane's tty still places it.
     pid, tty = claude_on_tty()
     write_session(tmp_path, pid, None, "waiting")
+    assert run(tmp_path, f"%12={tty}").stdout == "🔴 510 "
+
+
+def test_session_without_tmux_field_on_another_tty_is_ignored(tmp_path, claude_on_tty):
+    pid, _ = claude_on_tty()
+    _, other_tty = claude_on_tty()
+    write_session(tmp_path, pid, None, "waiting")
+    assert run(tmp_path, f"%12={other_tty}").stdout == ""
+
+
+def test_session_without_tmux_field_dead_pid_is_ignored(tmp_path, claude_on_tty, dead_pid):
+    _, tty = claude_on_tty()
+    write_session(tmp_path, dead_pid, None, "waiting")
     assert run(tmp_path, f"%12={tty}").stdout == ""
 
 

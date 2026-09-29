@@ -13,6 +13,10 @@ set -uo pipefail
 # a permission is approved or a turn is interrupted with Esc, so a hook-driven
 # badge would stay stale in both cases.
 #
+# Claude Code 2.1.284 stopped writing "tmux" (seen 2026-09-29: every session started
+# on it lacks the field). Such a session is matched by tty alone: a process whose
+# controlling terminal is the pane's tty runs in that pane, on any tmux server.
+#
 # Pane ids restart at %0 on every tmux server and the file does not name the
 # server, so a pane-id match is confirmed against the pane's tty (unique across
 # servers, the key tls matches on). That same `ps` check drops dead pids.
@@ -56,8 +60,8 @@ for f in "$sessions_dir"/*.json; do
   [ -f "$f" ] || continue  # unmatched glob when the dir is empty or absent
   json=""
   IFS= read -r -d '' json < "$f"
-  [[ $json =~ $re_pane ]] || continue
-  pane="${BASH_REMATCH[1]}"
+  pane="-"  # no "tmux" field: matched on the tty below
+  [[ $json =~ $re_pane ]] && pane="${BASH_REMATCH[1]}"
   [[ $json =~ $re_pid ]] || continue
   pid="${BASH_REMATCH[1]}"
   status=""
@@ -78,7 +82,10 @@ for want in "$@"; do
   want_pane="${want%%=*}"
   want_tty="${want#*=/dev/}"  # ps prints pts/5 (Linux) / ttys005 (macOS)
   for entry in ${found[@]+"${found[@]}"}; do
-    [ "${entry%% *}" = "$want_pane" ] || continue
+    case "${entry%% *}" in
+      "$want_pane" | -) ;;
+      *) continue ;;
+    esac
     rest="${entry#* }"
     # A crashed Claude leaves its file behind (a dead pid is on no tty), and the
     # same pane id on another tmux server sits on another tty.
