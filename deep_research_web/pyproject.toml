@@ -11,6 +11,13 @@ dev = ["pytest>=8.0"]
 [tool.uv.sources]
 scholar-fetch = { path = "../scholar_fetch", editable = true }
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["deep_research_web", "bin"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
