@@ -85,3 +85,42 @@ def test_prefetch_reports_one_line_per_source(tmp_path):
     assert lines == ["  [1/3] arxiv https://arxiv.org/abs/2511.15605",
                      "  [2/3] not fetched https://www.npmjs.com/package/x",
                      "  [3/3] arxiv https://github.com/sylvestf/LIBERO-plus"]
+
+
+def test_default_resolver_uses_prefetch_resolver_env_var(monkeypatch, tmp_path):
+    """PREFETCH_RESOLVER env var overrides default_resolver: it imports the named factory and calls
+    it with the Client, replacing bare chain.resolve with the caller's own resolver."""
+    from deep_research_web.prefetch import default_resolver
+
+    calls = []
+    fake = Fetched("u", "plugged in", "custom", "fulltext", Ids(), [])
+
+    def make_resolver(client):
+        return lambda url: (calls.append((url, client)), fake)[1]
+
+    monkeypatch.setenv("PREFETCH_RESOLVER", "tests.test_prefetch.make_resolver_fixture")
+    import sys, types
+    mod = types.ModuleType("tests.test_prefetch.make_resolver_fixture")
+    monkeypatch.setitem(sys.modules, "tests.test_prefetch.make_resolver_fixture", mod)
+
+    # Simpler: patch importlib.import_module so we don't need to create a real module
+    import importlib
+    real_import = importlib.import_module
+
+    def fake_import(name, *a, **k):
+        if name == "tests_scihub_plugin_fixture":
+            m = types.ModuleType(name)
+            m.make_resolver = make_resolver
+            return m
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(importlib, "import_module", fake_import)
+    monkeypatch.setenv("PREFETCH_RESOLVER", "tests_scihub_plugin_fixture.make_resolver")
+
+    sentinel_client = object()
+    resolver = default_resolver.__wrapped__(sentinel_client) if hasattr(default_resolver, "__wrapped__") else None
+    # Call default_resolver() the normal way; it reads PREFETCH_RESOLVER and calls our factory
+    resolver = default_resolver()
+    result = resolver("https://doi.org/10.1000/plugin-test")
+    assert result is fake
+    assert calls[0][0] == "https://doi.org/10.1000/plugin-test"

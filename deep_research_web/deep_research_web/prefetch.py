@@ -24,6 +24,12 @@ def parse_sources(md: str) -> list[tuple[int, str]]:
 def default_resolver() -> Callable[[str], Fetched]:
     cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "scholar-fetch"
     client = Client(cache)
+    resolver_path = os.environ.get("PREFETCH_RESOLVER")
+    if resolver_path:
+        import importlib
+        module_name, attr = resolver_path.rsplit(".", 1)
+        mod = importlib.import_module(module_name)
+        return getattr(mod, attr)(client)
     return lambda url: resolve(url, client)
 
 
