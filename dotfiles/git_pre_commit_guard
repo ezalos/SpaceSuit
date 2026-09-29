@@ -35,8 +35,53 @@ if [ "$email" != "$ctx_email" ] || [ "$name" != "$ctx_name" ]; then
 	exit 1
 fi
 
+# A merge scans only the paths whose staged content differs from EVERY parent. A path taken whole from one parent
+# was committed upstream and is not new authorship; scanning it blocked a merge of an already-published branch on
+# upstream files, and the only way through was PRO_CONTENT_SCRUB=off, which also stops scanning our own resolutions.
+# Accepted limit: a resolved path is diffed against HEAD, so the other parent's lines in that file are scanned too.
+merge_authored_paths() {
+	git -c core.quotepath=off diff --cached --name-only --no-renames --diff-filter=ACMR HEAD >"$part" || return 1
+	LC_ALL=C sort -u "$part" >"$keep" || return 1
+	while read -r parent || [ -n "$parent" ]; do
+		git -c core.quotepath=off diff --cached --name-only --no-renames --diff-filter=ACMR "$parent" >"$part" ||
+			return 1
+		LC_ALL=C sort -u "$part" | LC_ALL=C comm -12 "$keep" - >"$both" || return 1
+		cat "$both" >"$keep" || return 1
+	done <"$mh"
+}
+
+# Names are matched exactly as git prints them (C-quoted when odd, and a header name with a space gets a trailing
+# tab), so no pathspec globbing and no argv limit.
+# The header state stops an added line that itself starts with "++ " from being read as a file header.
+staged_diff() {
+	if [ -z "$mh" ]; then
+		git diff --cached -U0 --no-color --diff-filter=ACMR
+	elif [ -s "$keep" ]; then
+		git -c core.quotepath=off diff --cached -U0 --no-color --no-renames --diff-filter=ACMR \
+			--src-prefix=a/ --dst-prefix=b/ HEAD | awk -v list="$keep" '
+			BEGIN { while ((getline l < list) > 0) want[l] = 1 }
+			/^diff --git / { on = 0; hdr = 1; next }
+			hdr && /^\+\+\+ / {
+				p = substr($0, 5); sub(/\t$/, "", p)
+				if (substr(p, 1, 3) == "\"b/") p = "\"" substr(p, 4)
+				else if (substr(p, 1, 2) == "b/") p = substr(p, 3)
+				on = (p in want); hdr = 0; next
+			}
+			!hdr && on'
+	fi
+}
+
 if [ "${PRO_CONTENT_SCRUB:-}" != "off" ] && [ -f "$CFG/scrub.py" ]; then
-	git diff --cached -U0 --no-color --diff-filter=ACMR | \
+	mh=$(git rev-parse --git-path MERGE_HEAD) && [ -f "$mh" ] || mh=""
+	if [ -n "$mh" ]; then
+		keep=$(mktemp) && part=$(mktemp) && both=$(mktemp) || exit 1
+		trap 'rm -f "$keep" "$part" "$both"' EXIT
+		merge_authored_paths || {
+			printf '[content-scrub] BLOCKED: could not list the paths this merge authors\n' >&2
+			exit 1
+		}
+	fi
+	staged_diff | \
 		python3 "$CFG/scrub.py" --context "$ctx" --config-dir "$CFG" \
 			--forbidden-file "$HOME/.config/git-content-scrub/spacesuit-extra.txt" || {
 			printf '  bypass once: PRO_CONTENT_SCRUB=off git commit ...\n' >&2
