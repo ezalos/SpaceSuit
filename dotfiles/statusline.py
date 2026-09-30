@@ -39,7 +39,11 @@ if _session and os.path.exists(_tool):
         ).stdout.strip()
         if _out:
             _cost_exact = not _out.endswith("?")
-            cost = float(_out.rstrip("?"))
+            _tool_cost = float(_out.rstrip("?"))
+            # A partial figure left some turns unpriced (a model newer than the price table), so it is a floor, not
+            # the total: never let it hide Claude Code's own number. Seen 2026-09-29: a whole Opus 5.5 session read
+            # "$0.00?" because no row priced it.
+            cost = _tool_cost if _cost_exact else max(_tool_cost, cost)
     except Exception:
         pass  # a status line must never be the thing that breaks a prompt
 
