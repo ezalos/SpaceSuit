@@ -46,7 +46,7 @@ Generates a long-random-token URL that serves a single local file from `share.de
 - **Duration**: 1 week (`7d`)
 - **Token**: 32-char URL-safe base64 (192 bits of entropy, generated on TheBeast)
 - **URL shape**: `https://share.develle.fr/<token>/<filename>` (filename percent-encoded, so a name with spaces stays one clickable link)
-- **Size**: printed on stderr (`size: 170 KB (170414 bytes)`, decimal units like Gmail's 25 MB attachment cap) — quote it whenever the link stands in for a mail attachment
+- **Size**: printed on stderr (`size: 170 KB (170414 bytes)`, decimal units like Gmail's 25 MB attachment cap) — quote it, with the expiry date, next to every link that stands in for a mail attachment
 - **Backend**: scp → `tinybutmighty:/srv/share/<token>/<filename>`. Caddy serves it. A systemd timer prunes expired tokens every 5 minutes.
 
 ## Inputs to gather
