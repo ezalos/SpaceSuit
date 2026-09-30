@@ -328,6 +328,26 @@ def test_launch_run_records_none_when_the_caller_passes_none(runs_root, tmp_path
     assert rec.account is None
 
 
+def test_launch_records_the_launching_session_id_and_cwd(runs_root, tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "sess-abc123")
+    monkeypatch.chdir(tmp_path)
+    api = RoutingApi(_routes(research_started()))
+    code = launch_run(Client(api), _cfg(runs_root), _charter(tmp_path), "claude-fable-5-1", "Deep research", False, sleep=lambda s: None)
+    assert code == EXIT_OK
+    [rec] = find_runs(runs_root)
+    assert rec.launched_by_session == "sess-abc123"
+    assert rec.launched_cwd == str(tmp_path)
+
+
+def test_launch_records_no_session_id_when_unset(runs_root, tmp_path, monkeypatch):
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    api = RoutingApi(_routes(research_started()))
+    code = launch_run(Client(api), _cfg(runs_root), _charter(tmp_path), "claude-fable-5-1", "Deep research", False, sleep=lambda s: None)
+    assert code == EXIT_OK
+    [rec] = find_runs(runs_root)
+    assert rec.launched_by_session is None
+
+
 class _LaunchArgs:
     def __init__(self, charter):
         self.charter, self.model, self.project, self.no_project, self.force = str(charter), None, None, False, False

@@ -192,6 +192,7 @@ def launch_run(
         org_uuid=org["uuid"], conversation_uuid=conv, chat_url=url, model=model,
         charter=str(out_dir / "charter.md"), out_dir=str(out_dir), started_at=now(), name=name,
         task_id=None, project_uuid=project_uuid, account=resolved_account,
+        launched_by_session=os.environ.get("CLAUDE_CODE_SESSION_ID"), launched_cwd=os.getcwd(),
     )
     write_run(out_dir, rec)
 

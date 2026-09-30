@@ -48,6 +48,8 @@ class RunRecord:
     reason: str | None = None
     account: str | None = None
     name: str | None = None  # explicit archive name chosen at launch; None falls back to a slug of the question
+    launched_by_session: str | None = None  # CLAUDE_CODE_SESSION_ID at launch, or None outside a Claude Code session
+    launched_cwd: str | None = None  # absolute cwd at launch
 
 
 def slugify(text: str) -> str:

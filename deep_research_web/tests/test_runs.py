@@ -98,6 +98,17 @@ def test_a_legacy_record_without_account_still_parses(tmp_path):
     assert read_run(d).account is None
 
 
+def test_a_legacy_record_without_launch_fields_still_parses(tmp_path):
+    d = tmp_path / "old"
+    d.mkdir()
+    (d / "run.json").write_text(json.dumps({
+        "run_id": "old", "question": "q", "status": "done", "org_uuid": "o", "conversation_uuid": "c",
+        "chat_url": "u", "model": "m", "charter": "c.md", "out_dir": str(d), "started_at": "t",
+    }))
+    rec = read_run(d)
+    assert rec.launched_by_session is None and rec.launched_cwd is None
+
+
 def test_find_run_refuses_an_ambiguous_prefix(tmp_path):
     import pytest
 
