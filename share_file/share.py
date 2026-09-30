@@ -5,8 +5,10 @@
 share-file <path> [--duration 7d] [--host HOST] [--remote-root /srv/share] [--base-url URL]
 
 Generates a 32-char URL-safe random token, scp's the file to the remote share host,
-writes an .expires timestamp, and prints the public URL. A directory is zipped
-first (<dirname>.zip, the directory itself as the archive root) and the zip is shared.
+writes an .expires timestamp, and prints the public URL (stdout) plus the expiry and
+the shared file's size (stderr; the size is what a mail must budget against Gmail's
+25 MB attachment cap). A directory is zipped first (<dirname>.zip, the directory itself
+as the archive root) and the zip is shared.
 
 Stdlib only.
 """
@@ -20,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 from pathlib import Path
 
 CONFIG_ENV_PATH = Path.home() / ".config" / "share-file" / "env"
@@ -75,6 +78,17 @@ def zip_dir(src: Path, out_dir: Path) -> Path:
                                     root_dir=src.parent, base_dir=src.name))
 
 
+def human_size(n: int) -> str:
+    """Decimal units, the way Gmail states its 25 MB cap: 170414 -> '170 KB'."""
+    if n >= 10**9:
+        return f"{n / 10**9:.1f} GB"
+    if n >= 10**6:
+        return f"{n / 10**6:.1f} MB"   # one decimal: 24.6 MB must not read as the 25 MB cap
+    if n >= 10**3:
+        return f"{n / 10**3:.0f} KB"
+    return f"{n} B"
+
+
 def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, check=True, **kw)
 
@@ -123,11 +137,14 @@ def upload(src: Path, args: argparse.Namespace, duration_s: int) -> int:
     run(["scp", "-q", str(src), f"{args.host}:{remote_dir}/"])
     run(["ssh", args.host, f"echo {expires_at} > {shlex.quote(remote_dir + '/.expires')}"])
 
-    url = f"{args.base_url}/{token}/{filename}"
+    # Quoted so a name with spaces survives being pasted into a mail or chat as one link.
+    url = f"{args.base_url}/{token}/{urllib.parse.quote(filename)}"
     print(url)
+    size = src.stat().st_size
     sys.stderr.write(
         f"expires: {time.strftime('%Y-%m-%d %H:%M:%S %Z', time.localtime(expires_at))} "
         f"({args.duration})\n"
+        f"size: {human_size(size)} ({size} bytes)\n"
     )
     return 0
 

@@ -73,6 +73,14 @@
 - Incident 2026-08-11: an agent used `send-email` to send a mail on my behalf without
   me. It could not be unsent. Sending is not an action my agents are authorized to
   take, whoever the recipient is. This must be impossible, not just discouraged.
+- **Drafts with files:** the draft tools cannot carry a real attachment (the file would
+  have to be typed out as base64), and no Gmail credential can draft without also being
+  able to send. So: `share-file <path>` each file (default 7d; it prints the size),
+  then end the draft body with a block I delete before sending:
+  `--- attach before sending, then delete this block ---`, one line per file
+  `name (size): URL`, then the total and whether it fits Gmail's 25 MB cap. Over
+  25 MB, say so and propose a Drive link instead. Tell me the links' expiry date.
+  <!-- 2026-09-29: three invoice PDFs, drafts went out attachment-less; update_draft also detached a reply from its thread, so create, don't update -->
 ## Network
 - Bulk transfers (anything over ~2 GB): the machine's local file (`~/.claude/CLAUDE.local.md`)
   states the line's rules. Before starting, say what you pull, how big, and how long; if
