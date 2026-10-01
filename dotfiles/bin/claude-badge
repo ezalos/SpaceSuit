@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ABOUTME: Print a state badge and short session id for each Claude Code session in the given tmux panes.
-# ABOUTME: Called from tmux window-status-format via #(); reads Claude Code's own session files.
+# ABOUTME: tmux runs it once per refresh with --all (sets each window's @badge); reads Claude Code's session files.
 set -uo pipefail
 # Usage: claude-badge %12=/dev/pts/5 %40=/dev/pts/9 ...  ->  "🔴 a1c ✅ 7f8 "
 #        (tmux passes #{P:#{pane_id}=#{pane_tty} }; per Claude pane its badge and the first
@@ -77,20 +77,55 @@ for f in "$sessions_dir"/*.json; do
   found+=("$pane $pid $badge")
 done
 
-out=""
-for want in "$@"; do
-  want_pane="${want%%=*}"
-  want_tty="${want#*=/dev/}"  # ps prints pts/5 (Linux) / ttys005 (macOS)
-  for entry in ${found[@]+"${found[@]}"}; do
-    case "${entry%% *}" in
-      "$want_pane" | -) ;;
-      *) continue ;;
-    esac
-    rest="${entry#* }"
-    # A crashed Claude leaves its file behind (a dead pid is on no tty), and the
-    # same pane id on another tmux server sits on another tty.
-    on_tty "${rest%% *}" "$want_tty" && out="${out:+$out }${rest#* }"
+# Sets $out to the badges of the given panes (%12=/dev/pts/5 ...). A function writing a
+# global, not one printing: $(...) would fork a subshell per window in --all mode.
+badges_for() {
+  local want want_pane want_tty entry rest
+  out=""
+  for want in "$@"; do
+    want_pane="${want%%=*}"
+    want_tty="${want#*=/dev/}"  # ps prints pts/5 (Linux) / ttys005 (macOS)
+    for entry in ${found[@]+"${found[@]}"}; do
+      case "${entry%% *}" in
+        "$want_pane" | -) ;;
+        *) continue ;;
+      esac
+      rest="${entry#* }"
+      # A crashed Claude leaves its file behind (a dead pid is on no tty), and the
+      # same pane id on another tmux server sits on another tty.
+      on_tty "${rest%% *}" "$want_tty" && out="${out:+$out }${rest#* }"
+    done
   done
-done
-[ -n "$out" ] && printf '%s ' "$out"
+  [ -n "$out" ] && out="$out "
+}
+
+# --all <socket>: ONE run per status refresh for every window of that server. It writes
+# each window's badge into the window option @badge, which window-status-format reads as
+# #{@badge}. The server then forks once per refresh instead of once per window: each fork
+# copies the server's memory (~834 MB with 38 windows and history-limit 50000), which
+# pinned a 38-window tmux server at 100% CPU (2026-09-30). Prints nothing; writes only badges
+# that changed.
+if [ "${1:-}" = "--all" ]; then
+  sock="${2:?usage: claude-badge --all <tmux socket path>}"
+  sep='|'  # not a tab (whitespace to read: an empty @badge would collapse) nor a control byte
+           # (tmux prints those escaped, as \037); no id, tty or badge holds a |
+  window="" current="" panes=()
+  flush() {
+    [ -n "$window" ] || return 0
+    badges_for ${panes[@]+"${panes[@]}"}
+    [ "$out" = "$current" ] || tmux -S "$sock" set-option -w -t "$window" @badge "$out"
+  }
+  while IFS="$sep" read -r w cur pane; do
+    if [ "$w" != "$window" ]; then
+      flush
+      window="$w" current="$cur" panes=()
+    fi
+    panes+=("$pane")
+  done < <(tmux -S "$sock" list-panes -a -F "#{window_id}${sep}#{@badge}${sep}#{pane_id}=#{pane_tty}")
+  flush
+  exit 0
+fi
+
+badges_for "$@"
+[ -n "$out" ] && printf '%s' "$out"
 exit 0

@@ -229,3 +229,37 @@ def test_no_panes_prints_nothing(tmp_path, claude_on_tty):
     result = run(tmp_path)
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
+
+
+def test_all_mode_writes_each_windows_badge_into_a_window_option(tmp_path):
+    """--all runs once per status refresh for a whole server and stores each window's badge in @badge."""
+    sock = tmp_path / "t.sock"
+    env = {k: v for k, v in os.environ.items() if k not in ("TMUX", "TMUX_PANE")}
+    env["CLAUDE_BADGE_SESSIONS_DIR"] = str(tmp_path / "sessions")
+    (tmp_path / "sessions").mkdir()
+
+    def tmux(*args):
+        return subprocess.run(["tmux", "-S", str(sock), *args], env=env, capture_output=True, text=True, check=True)
+
+    tmux("new-session", "-d", "-s", "t", "-n", "plain", "sleep 120")
+    try:
+        tmux("new-window", "-d", "-t", "t", "-n", "claude", "sleep 120")
+        panes = dict(
+            line.split(" ", 1)
+            for line in tmux("list-panes", "-a", "-F", "#{window_name} #{pane_pid}").stdout.split("\n")
+            if line
+        )
+        session = tmp_path / "sessions" / "1.json"
+
+        def run(status):
+            session.write_text(json.dumps({"pid": int(panes["claude"]), "sessionId": "abc123", "status": status}, separators=(",", ":")))
+            result = subprocess.run([str(SCRIPT), "--all", str(sock)], env=env, capture_output=True, text=True)
+            assert result.returncode == 0 and result.stdout == ""
+            names = tmux("list-windows", "-a", "-F", "#{window_name}|#{@badge}").stdout.split("\n")
+            return dict(line.split("|", 1) for line in names if line)
+
+        import sys; print(panes, tmux("list-panes","-a","-F","#{window_name} #{pane_pid} #{pane_tty}").stdout, file=sys.stderr)
+        assert run("idle") == {"plain": "", "claude": "✅ abc "}
+        assert run("waiting") == {"plain": "", "claude": "🔴 abc "}
+    finally:
+        subprocess.run(["tmux", "-S", str(sock), "kill-server"], env=env, capture_output=True)
