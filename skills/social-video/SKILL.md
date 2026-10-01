@@ -103,7 +103,9 @@ No cost figures on weights/model-card surfaces (compliance rule from the launch 
    - Two classes the audit cannot see, so never write them: `ReplacementTransform` between
      two strings (use `motion.retitle()`, a crossfade) and a dimension label outside the box
      of the element it annotates (arrows must attach to the box).
-4. Iterate per-slide on his feedback (he references slides as s0/s1/…; his s-numbers are
+4. **Feedback rounds: notes, facts, go, then change.** Never edit the scene in the turn the
+   feedback arrives: record every point, answer his questions with checked facts, wait for his
+   go (the full rule lives in the repo CLAUDE.md, "Feedback on a visual"). Then iterate per-slide on his feedback (he references slides as s0/s1/…; his s-numbers are
    1-indexed pages — confirm with content, not index math).
 5. **Final**: `-qh` (1080p60) → copy MP4 to `visuals/build/<post-stem>/` + make the GIF
    (`fps=12,scale=960`) → `make dashboard && make dashboard-deploy` (purge fires; if it
