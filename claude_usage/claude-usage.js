@@ -1250,6 +1250,10 @@ async function switchCodex(name) {
   if (!codexNames().includes(name)) throw new UsageError(`no ChatGPT account named ${name} — claude-usage add-gpt ${name}`, 'usage');
   const acct = loadCodexAccount(name);
   if (!acct.access || !acct.refresh) throw new UsageError(`${name} holds no credential — claude-usage add-gpt ${name}`, 'dead');
+  // Refresh while it is still parked: once linked only the proxy may, and only on a request, so an expired token would
+  // sit stale (its meter unreadable) until then — and a dead refresh token would make the proxy delete auth.json. A
+  // rejected refresh refuses the switch and leaves the gateway on the account that works.
+  if (name !== codexActive() && (acct.expires || 0) - Date.now() < REFRESH_AHEAD_MS) await refreshCodex(acct);
   let st = null; try { st = fs.lstatSync(CODEX_LIVE); } catch { /* absent is fine */ }
   if (st && !st.isSymbolicLink()) throw new UsageError(`${CODEX_LIVE} is a real directory, not a link — claude-usage doctor --fix migrates it first`, 'usage');
   const from = codexActive();

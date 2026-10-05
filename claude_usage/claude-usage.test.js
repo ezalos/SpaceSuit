@@ -1561,6 +1561,24 @@ test('codex switch: refuses a name it does not hold, and one with no credential'
   assert.equal(t.m.codexActive(), 'gpt-a', 'a refused switch leaves the link where it was');
 });
 
+test('codex switch: an expiring target is refreshed while still parked, and a dead one is never linked', async () => {
+  const t = fresh();
+  seedCodexAccount(t, 'gpt-a', 'a'); seedCodexAccount(t, 'gpt-b', 'b', { ms: -3600e3 }); seedCodexAccount(t, 'gpt-c', 'c', { ms: -3600e3 });
+  linkCodex(t, 'gpt-a');
+  const calls = stubCodexNet(t.m, { refreshByToken: { 'grt-b': { access_token: 'gat-b2', refresh_token: 'grt-b2', expires_in: 8 * 86400 } } });
+
+  await t.m.switchCodex('gpt-b');
+  assert.equal(t.m.codexActive(), 'gpt-b');
+  const seen = JSON.parse(fs.readFileSync(path.join(t.m.CODEX_LIVE, 'auth.json'), 'utf8'));
+  assert.equal(seen.access, 'gat-b2', 'the proxy opens a fresh token, not the expired one');
+  assert.equal(seen.refresh, 'grt-b2');
+
+  // gpt-c's refresh token is rejected: the switch refuses and the gateway stays on the account that works.
+  await assert.rejects(() => t.m.switchCodex('gpt-c'), /add-gpt/);
+  assert.equal(t.m.codexActive(), 'gpt-b');
+  assert.equal(calls.filter((c) => c.url.includes('oauth/token')).length, 2, 'one refresh per expiring target, none for the fresh one');
+});
+
 test('codex refresh: only a parked account, rotated pair written back to its own directory', async () => {
   const t = fresh();
   seedCodexAccount(t, 'gpt-a', 'a', { ms: 60e3 }); // expiring inside the refresh-ahead window
