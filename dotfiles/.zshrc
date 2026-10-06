@@ -171,8 +171,34 @@ setup_ssh() {
   # Guarded: a pristine machine (no openssh-client yet) would otherwise spray
   # "command not found: ssh-agent" on every shell start -- found via the
   # resurrection e2e test (~/42/GroundControl/resurrection/).
+  #
+  # Reuses ONE agent on a fixed socket instead of starting a fresh one per shell:
+  # every shell born without SSH_AUTH_SOCK (a new tmux pane, an agent shell) used
+  # to start its own ssh-agent that outlived it -- one host had 96 of them, all
+  # empty (2026-10-05). A pre-set SSH_AUTH_SOCK (e.g. the gcr-ssh-agent pin, see
+  # 10-ssh-auth-sock.conf) is left untouched; only a shell with none gets pointed
+  # at the shared socket.
   if (( ! ${+SSH_AUTH_SOCK} )) && (( ${+commands[ssh-agent]} )); then
-    eval "$(ssh-agent -s)" >/dev/null 2>&1
+    local sock="${XDG_RUNTIME_DIR:-/tmp}/ssh-agent.socket"
+    export SSH_AUTH_SOCK="$sock"
+    ssh-add -l >/dev/null 2>&1
+    # exit 0 (has keys) or 1 (alive, no identities) means an agent already answers
+    # at $sock -- start nothing. Only exit 2 (no agent) tries to start one.
+    if (( $? == 2 )); then
+      # Bind $sock directly first: the bind is atomic, so if another shell is
+      # racing to start the same agent right now, at most one of us succeeds and
+      # the rest are simply refused here.
+      eval "$(ssh-agent -a "$sock" 2>/dev/null)" >/dev/null 2>&1
+      ssh-add -l >/dev/null 2>&1
+      if (( $? == 2 )); then
+        # Still nothing answering, so the bind above was refused by a stale
+        # socket file (its agent is gone), not by a live one that just won the
+        # race -- this second probe is what tells the two apart. Clear it, once,
+        # only if it really is a socket we own, then bind again.
+        [[ -S "$sock" && -O "$sock" ]] && rm -f "$sock"
+        eval "$(ssh-agent -a "$sock" 2>/dev/null)" >/dev/null 2>&1
+      fi
+    fi
   fi
 
   # ZSHRC_LOCAL_SSH_KEY (set in ~/.zshrc.local) takes priority -- machine-local
