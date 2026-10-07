@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+# ABOUTME: Jump to the tmux window of the Claude Code session whose id starts with a prefix (the 🆔 on the
+# ABOUTME: status line): switches the client inside tmux, attaches outside; says where a closed session last was.
+"""
+Usage: tfind PREFIX
+
+PREFIX is the first characters of a session UUID (3 or more), as claude-session takes them.
+
+One live session matches: tmux moves to its window and pane (switch-client inside tmux, attach
+outside). Several match: they are listed with their status-line titles and nothing moves
+(exit 2); type more characters. None matches: the session is closed (exit 1); if $LANE_REGISTRY
+names a directory of lane files (<tmux-session>/<slug>.md, front matter with session,
+tmux_session, tmux_window, state), the lane that recorded this session is printed with its last
+tmux location and its file. A live session that runs outside tmux, or in a pane this tmux server
+does not have, is reported and nothing moves (exit 3). claude-session or tmux failing is exit 4.
+
+The pane comes from the session's own process (its TMUX_PANE); the session record's tmux field
+is the fallback when the process cannot be read.
+"""
+import glob
+import json
+import os
+import re
+import subprocess
+import sys
+
+CLAUDE_SESSION = os.path.join(os.path.dirname(os.path.realpath(__file__)), "claude-session")
+TMUX = os.environ.get("TFIND_TMUX") or "tmux"  # overridable for the tests, which never touch a live server
+PROC = os.environ.get("TFIND_PROC") or "/proc"
+MIN_PREFIX = 3
+SHORT_ID = 8
+EXIT_CLOSED, EXIT_AMBIGUOUS, EXIT_NO_TMUX, EXIT_BROKEN = 1, 2, 3, 4
+PANE_FORMAT = "#{pane_id}\t#{session_name}\t#{window_name}"
+FIELD = re.compile(r"^(session|session_full|title|tmux_session|tmux_window|state):[ \t]*(.*?)[ \t]*$", re.M)
+
+
+CONTROL = re.compile(r"[\x00-\x09\x0b-\x1f\x7f-\x9f]")
+
+
+def say(text, file=None, flush=False):
+    """Print with control characters removed: titles, paths and lane fields are other people's text, and an
+    escape sequence in one of them must not reach the terminal."""
+    print(CONTROL.sub("", text), file=file or sys.stdout, flush=flush)
+
+
+def live(prefix):
+    done = subprocess.run([sys.executable, CLAUDE_SESSION, "--json", prefix], capture_output=True, text=True)
+    try:
+        rows = json.loads(done.stdout)
+    except ValueError:
+        rows = None
+    if not isinstance(rows, list):
+        say(f"tfind: claude-session gave no session list (exit {done.returncode}): "
+              f"{(done.stderr or done.stdout).strip()[-200:]}", file=sys.stderr)
+        sys.exit(EXIT_BROKEN)
+    return [row for row in rows if isinstance(row, dict) and str(row.get("id", "")).lower().startswith(prefix)]
+
+
+def panes():
+    """{pane id: (session name, window name)} of the tmux server; empty when there is none."""
+    try:
+        done = subprocess.run([TMUX, "list-panes", "-a", "-F", PANE_FORMAT], capture_output=True, text=True)
+    except OSError as error:
+        say(f"tfind: cannot run {TMUX} ({error.strerror})", file=sys.stderr)
+        sys.exit(EXIT_BROKEN)
+    out = {}
+    for line in done.stdout.splitlines() if done.returncode == 0 else ():
+        parts = line.split("\t")
+        if len(parts) == len(PANE_FORMAT.split("\t")):
+            out[parts[0]] = (parts[1], parts[2])
+    return out
+
+
+def pane_of(row, known):
+    """The session's pane id on this server, or "". Its own process says where it runs (TMUX_PANE, with TMUX
+    naming the server), and that outranks the record's "name:@window.%pane", which goes stale when a window is
+    moved; a process on another tmux server is not followed. The record is used only when the process cannot
+    be read."""
+    try:
+        with open(os.path.join(PROC, str(row["pid"]), "environ"), "rb") as fh:
+            env = dict(f.split(b"=", 1) for f in fh.read().split(b"\0") if b"=" in f)
+    except OSError:
+        recorded = row.get("tmux") or ""
+        pane = recorded.rsplit(".", 1)[1] if "." in recorded else ""
+        return pane if pane in known else ""
+    pane = env.get(b"TMUX_PANE", b"").decode(errors="replace")
+    theirs = env.get(b"TMUX", b"").decode(errors="replace").split(",")[0]
+    mine = os.environ.get("TMUX", "").split(",")[0]
+    return pane if pane in known and (not mine or not theirs or mine == theirs) else ""
+
+
+def recorded(prefix):
+    """Lane files under $LANE_REGISTRY whose session starts with the prefix (or the other way round, for a
+    prefix longer than the recorded short id): [(fields, path)]."""
+    root = os.environ.get("LANE_REGISTRY") or ""
+    hits = []
+    for path in sorted(glob.glob(os.path.join(root, "*", "*.md"))) if root else ():
+        try:
+            with open(path) as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        parts = text.split("---\n", 2)
+        if len(parts) < 3 or parts[0]:
+            continue
+        fields = {key: value.strip("'\"") for key, value in FIELD.findall(parts[1])}
+        full, short = (fields.get(key, "").lower() for key in ("session_full", "session"))
+        if short == "unset":
+            continue
+        # the full id decides when the file has one; a file with only the short id matches a longer prefix too
+        if full.startswith(prefix) if full else short.startswith(prefix) or (short and prefix.startswith(short)):
+            hits.append((fields, path))
+    return hits
+
+
+def closed(prefix):
+    say(f"{prefix}: no live session (closed, or never on this machine)")
+    hits = recorded(prefix)
+    if not os.environ.get("LANE_REGISTRY"):
+        say("  no lane registry to look it up in ($LANE_REGISTRY is not set)")
+    elif not hits:
+        say("  no lane file records it")
+    home = os.path.expanduser("~")
+    for fields, path in hits:
+        where = f'{fields.get("tmux_session", "?")}:{fields.get("tmux_window", "?")}'
+        say(f'  {fields.get("session", "?")}  "{fields.get("title", "")}"  last in tmux {where}, '
+              f'lane state {fields.get("state", "?")}')
+        say(f'  lane file: {path.replace(home, "~", 1)}')
+    return EXIT_CLOSED
+
+
+def main(argv):
+    if len(argv) != 1 or argv[0].startswith("-"):
+        say(__doc__.strip(), file=sys.stderr)
+        return 2
+    prefix = argv[0].lower()
+    if len(prefix) < MIN_PREFIX or any(c not in "0123456789abcdef-" for c in prefix):
+        say(f"tfind: {argv[0]!r} is not a session id prefix ({MIN_PREFIX}+ hex characters)", file=sys.stderr)
+        return 2
+    rows = live(prefix)
+    if not rows:
+        return closed(prefix)
+    known = panes()
+    located = [(row, pane_of(row, known)) for row in rows]
+    if len(rows) > 1:
+        say(f"{prefix}: {len(rows)} live sessions match; type more characters")
+        for row, pane in located:
+            where = ":".join(known[pane]) if pane in known else "not in tmux"
+            shown = row["id"] if len({r["id"][:SHORT_ID] for r in rows}) < len(rows) else row["id"][:SHORT_ID]
+            say(f'  {shown}  {where}  💬 {row.get("title", "")}')
+        return EXIT_AMBIGUOUS
+    row, pane = located[0]
+    if pane not in known:
+        say(f'{row["id"][:SHORT_ID]} ({row.get("title", "")}) is live but not in a tmux pane of this server '
+              f'(cwd {row.get("cwd", "?")})')
+        return EXIT_NO_TMUX
+    session, window = known[pane]
+    say(f'{row["id"][:SHORT_ID]}  {session}:{window}  💬 {row.get("title", "")}', flush=True)
+    if os.environ.get("TMUX"):
+        return subprocess.run([TMUX, "switch-client", "-t", pane]).returncode
+    for step in (["select-window", "-t", pane], ["select-pane", "-t", pane]):
+        subprocess.run([TMUX, *step], check=False)
+    os.execvp(TMUX, [TMUX, "attach-session", "-t", session])
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
