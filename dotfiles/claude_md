@@ -75,17 +75,16 @@
   take, whoever the recipient is. This must be impossible, not just discouraged.
 - **Drafts with files:** the draft tools cannot carry a real attachment (the file would
   have to be typed out as base64), and no Gmail credential can draft without also being
-  able to send. So: `share-file <path>` each file (default 7d; it prints the size), then
-  end the draft body with a block I delete before sending:
+  able to send. So: `share-file <path>` each file (default 7d; it prints the size),
+  then end the draft body with a block I delete before sending:
   `--- attach before sending, then delete this block ---`, one line per file
-  `name (size)` — FILENAMES ONLY, NEVER A URL IN THE DRAFT: the Gmail connector rewrites
-  every URL in a draft body, plain or HTML, into a `google.com/url?q=` redirect, sometimes
-  corrupted, so links in a draft are unusable. The share URLs go in the chat reply instead,
-  bare, one per line, each with its size and expiry (`expires YYYY-MM-DD`, from share-file's
-  `expires:` output), then the total and whether it fits Gmail's 25 MB cap. Over 25 MB, say so
-  and propose a Drive link instead.
+  `name (size, expires YYYY-MM-DD): URL` — the expiry on EVERY line, mandatory, from
+  share-file's `expires:` output — then the total and whether it fits Gmail's 25 MB cap.
+  Over 25 MB, say so and propose a Drive link instead. The Gmail connector rewrites every
+  URL in a draft into a `google.com/url?q=` redirect; I accept that, keep the links in the
+  draft anyway, and ALSO put the same bare links in the chat reply, one per line.
   <!-- 2026-09-29: three invoice PDFs, drafts went out attachment-less; update_draft also detached a reply from its thread, so create, don't update -->
-  <!-- 2026-10-07: links in the draft block all came out as google.com redirects, every session; cause is the connector (claude-code issues 66847, 80204, 91287, 94247), so no wording fixes it -->
+  <!-- 2026-10-07: the redirects are the connector's doing (claude-code issues 66847, 80204, 91287, 94247); I tried dropping URLs from drafts and Louis prefers wrapped links to none -->
 ## Network
 - Bulk transfers (anything over ~2 GB): the machine's local file (`~/.claude/CLAUDE.local.md`)
   states the line's rules. Before starting, say what you pull, how big, and how long; if
