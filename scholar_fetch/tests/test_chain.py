@@ -319,3 +319,16 @@ def test_a_url_that_already_names_the_paper_never_searches_by_title(svc):
     b, ep, c = svc
     resolve(b + "/doi.org/10.1038/nature14539", c, ep)
     assert not any(p.startswith("/openalex/search") for p, _ in SEEN)
+
+
+def test_a_text_with_lone_surrogates_is_served_and_cached(svc, monkeypatch):
+    # 2026-10-09: the LIBERO-Plus PDF (arXiv 2510.13626) extracted to text holding lone surrogates; writing the text
+    # cache raised UnicodeEncodeError, so the most-cited paper of an audit came back with no text.
+    b, ep, c = svc
+    ROUTES["/arxiv/pdf/2510.13626"] = (200, "application/pdf", PAPER)
+    monkeypatch.setattr("scholar_fetch.chain.to_text", lambda body, ctype: ("math \ud835\udc00 and \ud835 symbol", "ok"))
+    f = resolve(b + "/arxiv.org/abs/2510.13626", c, ep)
+    assert f.served_by == "arxiv" and f.text == "math \U0001d400 and \ufffd symbol"  # a pair joins, a lone half is replaced
+    f.text.encode("utf-8")  # a served text is always encodable
+    n = len(SEEN)
+    assert resolve(b + "/arxiv.org/abs/2510.13626", c, ep).text == f.text and len(SEEN) == n

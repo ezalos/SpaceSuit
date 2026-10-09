@@ -56,6 +56,8 @@ def _fetch_text(client: Client, url: str, max_bytes: int) -> tuple[str | None, s
     pdf = is_pdf(d.body, d.content_type)
     text, outcome = to_text(d.body, d.content_type)
     if text is not None:
+        # some PDFs extract to surrogates; join valid pairs, replace only lone halves, or the cache write fails
+        text = text.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".tmp")
         tmp.write_text(json.dumps({"url": url, "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
