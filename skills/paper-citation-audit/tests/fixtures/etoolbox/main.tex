@@ -1,0 +1,10 @@
+\documentclass{article}
+\usepackage{natbib}
+\usepackage{etoolbox}
+\begin{document}
+\newrobustcmd{\priorwork}{\citet{a}}
+Our method builds on prior work \citep{b}.
+As shown by \priorwork, transformers solve robotics.
+\bibliographystyle{plainnat}
+\bibliography{refs}
+\end{document}

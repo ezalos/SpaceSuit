@@ -1,0 +1,20 @@
+\documentclass{article}
+\usepackage{natbib}
+\newcommand{\tabref}[1]{Table~\ref{#1}}
+\begin{document}
+\section{Results}
+\begin{table}[t]
+\centering
+\caption{Published success rates on LIBERO.}
+\label{tab:base}
+\begin{tabular}{lr}
+Method & Success \\
+OpenVLA & 96.8 \\
+\end{tabular}
+\end{table}
+
+We compare against strong baselines. \tabref{tab:base} gives the published success rates. They are reported by \citet{kim}. We use them as is.
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+\end{document}

@@ -1,0 +1,14 @@
+\documentclass{article}
+\usepackage{import}
+\let\pc\cite
+\newcommand{\libero}{LIBERO~\cite{ka}}
+\begin{document}
+Alpha says X \pc{ka}.
+
+We use \libero{} here.
+
+\subimport{sec/}{part}
+\nocite{kb}
+\bibliographystyle{plain}
+\bibliography{refs}
+\end{document}

@@ -1,0 +1,18 @@
+\documentclass{article}
+\usepackage{natbib}
+\newcommand{\tablenote}[1]{\par\smallskip{\footnotesize\raggedright #1\par}}
+\begin{document}
+We report our scores \citep{oth}.
+
+\begin{table}[t]
+\centering
+\caption{Published scores and ours}
+\begin{tabular}{lrr}
+Factor & Published & Ours \\
+Camera & 96.8 & 93.7 \\
+\end{tabular}
+\tablenote{Published: the scores of \citet{pub} for the model.}
+\end{table}
+\bibliographystyle{plainnat}
+\bibliography{refs}
+\end{document}
