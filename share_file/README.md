@@ -185,6 +185,31 @@ temp dir, the zip is shared, and the local copy is removed.
 
 Duration syntax: `30s`, `15m`, `1h`, `2d` (default `7d`). No combined units.
 
+## Local mode
+
+On a machine that cannot reach the share host but already serves a folder over the web (for
+example a folder behind your own login, served by a local web server), share-file can copy into
+that folder instead of using ssh/scp:
+
+```
+# ~/.config/share-file/env
+SHARE_FILE_LOCAL_ROOT=/path/to/served/share
+SHARE_FILE_BASE_URL=https://<the URL that serves that folder>
+```
+
+`share-file <path>` then copies the file to `<local_root>/<token>/<filename>` (directory 0755,
+file 0644), writes `<local_root>/<token>/.expires` the same way as remote mode, and prints
+`<base_url>/<token>/<filename>`. `--local-root DIR` does the same for one call. Setting both a
+host and a local root is refused as ambiguous.
+
+- Put an `index.html` in `<local_root>` if the web server lists directories, so the token
+  folders cannot be listed. Each `<token>/` may still list its one file; the token is the secret.
+- Expiry needs the same janitor, pointed at the folder, on a timer (every 5 min, like
+  `share-cleanup.timer`): `/usr/bin/python3 share_file/cleanup.py --root <local_root>`.
+- The web server must not serve dotfiles, or `.expires` is public (harmless, but untidy).
+- A name starting with `.` (a file, or a directory to zip) is refused: the server hides it and
+  `.expires` would collide. `.expires` is written before the copy, so a failed copy still expires.
+
 ## Security notes
 
 - 32-char URL-safe base64 token = 192 bits. A trillion guesses/sec would take ~10^36 years to find one valid link.

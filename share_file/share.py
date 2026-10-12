@@ -3,8 +3,10 @@
 # ABOUTME: Uploads via scp to TinyButMighty:/srv/share/<token>/<filename> with an .expires file
 """
 share-file <path> [--duration 7d] [--host HOST] [--remote-root /srv/share] [--base-url URL]
+share-file <path> [--duration 7d] --local-root DIR [--base-url URL]
 
-Generates a 32-char URL-safe random token, scp's the file to the remote share host,
+Generates a 32-char URL-safe random token, puts the file in <root>/<token>/ (remote mode:
+scp to the share host; local mode: a copy into a folder some web server already serves),
 writes an .expires timestamp, and prints the public URL (stdout) plus the expiry and
 the shared file's size (stderr; the size is what a mail must budget against Gmail's
 25 MB attachment cap). A directory is zipped first (<dirname>.zip, the directory itself
@@ -54,12 +56,16 @@ _load_config_env()
 DEFAULTS = {
     "host": os.environ.get("SHARE_FILE_HOST"),
     "remote_root": os.environ.get("SHARE_FILE_REMOTE_ROOT", "/srv/share"),
+    "local_root": os.environ.get("SHARE_FILE_LOCAL_ROOT"),
     "base_url": os.environ.get("SHARE_FILE_BASE_URL"),
     "duration": "7d",
 }
 
 DURATION_RE = re.compile(r"^(\d+)([smhd])$")
 UNIT_SECS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+# Local mode: the web server reading <local_root> may run as another user, so the share is world-readable.
+LOCAL_DIR_MODE = 0o755
+LOCAL_FILE_MODE = 0o644
 
 
 def parse_duration(s: str) -> int:
@@ -93,6 +99,23 @@ def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, check=True, **kw)
 
 
+def place_local(src: Path, token_dir: Path, expires_at: int) -> None:
+    """Local mode: write .expires the way the remote echo does, then copy src into token_dir.
+
+    .expires goes first so that a copy failing halfway (unreadable source, full disk) leaves a
+    token dir the janitor still reaps; cleanup.py skips any dir without one.
+    """
+    token_dir.parent.mkdir(parents=True, exist_ok=True)
+    token_dir.mkdir(mode=LOCAL_DIR_MODE)
+    token_dir.chmod(LOCAL_DIR_MODE)  # mkdir's mode is masked by the umask
+    expires = token_dir / ".expires"
+    expires.write_text(f"{expires_at}\n")
+    expires.chmod(LOCAL_FILE_MODE)
+    dest = token_dir / src.name
+    shutil.copyfile(src, dest)
+    dest.chmod(LOCAL_FILE_MODE)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     p.add_argument("path", type=Path, help="local file or directory (zipped) to share")
@@ -104,18 +127,29 @@ def main() -> int:
                    help=f"remote share root (default {DEFAULTS['remote_root']})")
     p.add_argument("--base-url", default=DEFAULTS["base_url"],
                    help=f"public base URL (default: {DEFAULTS['base_url'] or 'from SHARE_FILE_BASE_URL'})")
+    p.add_argument("--local-root", default=DEFAULTS["local_root"],
+                   help="local mode: copy into this web-served folder instead of scp "
+                        f"(default: {DEFAULTS['local_root'] or 'from SHARE_FILE_LOCAL_ROOT'})")
     args = p.parse_args()
 
-    if not args.host or not args.base_url:
+    if args.host and args.local_root:
         p.error(
-            "--host/--base-url not set and no config found; configure "
-            f"{CONFIG_ENV_PATH} (SHARE_FILE_HOST=..., SHARE_FILE_BASE_URL=...) "
-            "or pass --host/--base-url explicitly"
+            "both a host (--host/SHARE_FILE_HOST) and a local root (--local-root/SHARE_FILE_LOCAL_ROOT) "
+            f"are set; the target is ambiguous, keep only one (check {CONFIG_ENV_PATH})"
+        )
+    if not (args.host or args.local_root) or not args.base_url:
+        p.error(
+            "--host or --local-root, and --base-url, not set and no config found; configure "
+            f"{CONFIG_ENV_PATH} (SHARE_FILE_HOST=... or SHARE_FILE_LOCAL_ROOT=..., SHARE_FILE_BASE_URL=...) "
+            "or pass them explicitly"
         )
 
     src = args.path.expanduser().resolve()
     if not (src.is_file() or src.is_dir()):
         p.error(f"not a file or directory: {src}")
+    # A served folder hides dotfiles (the link would 404), and a file named .expires would overwrite the stamp.
+    if args.local_root and src.name.startswith("."):
+        p.error(f"local mode cannot share a name starting with '.': {src.name}; rename it first")
 
     duration_s = parse_duration(args.duration)
     if src.is_dir():
@@ -129,13 +163,20 @@ def upload(src: Path, args: argparse.Namespace, duration_s: int) -> int:
 
     # Filename gets URL-encoded by browsers; keep the original on disk.
     filename = src.name
-    remote_dir = f"{args.remote_root}/{token}"
     expires_at = int(time.time()) + duration_s
 
-    # Create remote dir, scp file, write .expires — three ssh round-trips.
-    run(["ssh", args.host, f"mkdir -p {shlex.quote(remote_dir)}"])
-    run(["scp", "-q", str(src), f"{args.host}:{remote_dir}/"])
-    run(["ssh", args.host, f"echo {expires_at} > {shlex.quote(remote_dir + '/.expires')}"])
+    if args.local_root:
+        try:
+            place_local(src, Path(args.local_root).expanduser() / token, expires_at)
+        except OSError as e:
+            sys.stderr.write(f"share-file: local copy failed: {e}\n")
+            return 1
+    else:
+        remote_dir = f"{args.remote_root}/{token}"
+        # Create remote dir, scp file, write .expires — three ssh round-trips.
+        run(["ssh", args.host, f"mkdir -p {shlex.quote(remote_dir)}"])
+        run(["scp", "-q", str(src), f"{args.host}:{remote_dir}/"])
+        run(["ssh", args.host, f"echo {expires_at} > {shlex.quote(remote_dir + '/.expires')}"])
 
     # Quoted so a name with spaces survives being pasted into a mail or chat as one link.
     url = f"{args.base_url}/{token}/{urllib.parse.quote(filename)}"
