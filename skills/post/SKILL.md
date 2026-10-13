@@ -37,6 +37,7 @@ Read `$SOCIAL_HOME/voice/<platform>.md` fully. Internalise format, tone, hook pa
 Internalise the bar Louis holds posts to (learned from real sessions):
 - **Value-first, depth over breadth.** A post earns attention with ONE advanced, non-obvious idea, exhausted, backed by a real number, ending in a portable mental model. Avoid the generic event-recap ("great day, AI is the future"). If a senior person in the audience already knows the point, go one level deeper.
 - **Ground every claim in what was actually taught or in a real source.** Do not attribute lessons, stats, or frameworks Louis did not actually cover. The citation gate (Step 6.5) enforces sources; this enforces honesty about provenance.
+- **Scope every fact to the entity its source sentence describes.** A lab's report often covers several things: research variants, the production model, predecessors, baselines, its overall stack. A fact about one is not a fact about the model (2026-09-30: a post said DYNA-2 "never saw a robot", true only of its research checkpoints). Research follows `$SOCIAL_HOME/docs/how-to-research-a-post.md`: save the pages, map the entities, scope every fact, search every page for what narrows an absolute, and turn any prior research into open questions, never claims to confirm.
 - **No em-dashes (`—`) and no AI tells.** Use periods, commas, colons. (Mirrors the voice rules.)
 
 **Freshness:** glob `posted/*-<platform>.md` and `drafts/*-<platform>.md`. If the angle Louis is describing was used recently, say so and offer a fresh one before drafting (he has flagged reusing a topic mid-draft).
@@ -175,6 +176,22 @@ and before saving. A draft cannot reach `status: ready` with an unresolved factu
      [1] <claim, short> — <url>
      [2] ...
      ```
+
+### Step 6.6: Fact ledger (BLOCKING for any post that states facts)
+
+Every fact the reader sees lives in `$SOCIAL_HOME/sources/<post>/facts.yaml` (format and rules:
+`docs/how-to-research-a-post.md`; research agents get `docs/templates/research-agent.md`). Every card
+cell, video field and tweet claim cites ledger fact ids: cards and videos in their data files
+(`facts: [...]`), tweets in the run record (`claims: [{tweet, text, facts}]`, `text` a verbatim slice of
+the tweet), and the run record names its inputs (`facts: {ledger, cards, videos}`). Then:
+
+```sh
+cd $SOCIAL_HOME && make facts DRAFT=drafts/<file>.md
+```
+
+It refuses a fact with no entity, a quote that is not verbatim, an absolute without a narrowing search
+(or resting on a press release alone), a cell with no fact, a fact about another model in a column,
+and a variant's fact printed without the variant's label. Fix every finding; never relabel a fact to pass.
 
 ### Step 6.75: Fresh-eyes gate (BLOCKING — do not skip)
 
@@ -335,6 +352,19 @@ token-sampling watermarks by paraphrasing. Do not run it on a draft: it rewrites
 clarity gate and `/fresh-eyes` already approved, trading Louis's voice for a mark X cannot
 read anyway.
 
+### Step 7.95: Fact audit, then the publish gate (BLOCKING — nothing is scheduled without it)
+
+1. Run `/fact-audit drafts/<file>.md`: a fresh agent with no edit rights re-reads every statement the
+   reader sees against the saved pages. Any finding fails it; fix, then run a NEW audit. It records
+   `facts_verified` in the run record.
+2. `make ready DRAFT=drafts/<file>.md` lists any gate not yet passed (fact audit, citations, fresh eyes,
+   ship check, clarity, `make facts`).
+3. `make schedule DRAFT=drafts/<file>.md WHEN="<date time zone>"` is the ONLY way to mark a post
+   scheduled; it refuses until `make ready` passes. Never write `status: scheduled` or `posted` by hand.
+
+If Louis says he has scheduled or posted something that has not passed `make ready`, say so plainly,
+in the first line of the reply, with what is missing. The dashboard shows it red until it passes.
+
 ### Step 8: Output
 
 Print:
@@ -356,6 +386,9 @@ After publishing, run /log <platform> to capture metrics.
 ## Common failure modes
 
 - **`voice/<platform>.md` missing**: stop, suggest `/audit <platform>` first
+- **A fact true of a variant, predecessor or baseline printed as the model's**: the class behind the
+  2026-09-30 DYNA-2 error. `make facts` catches the mechanical part, `/fact-audit` the rest; fixing one
+  instance without asking where else the class appears is not a fix.
 - **No `inspiration/` corpus or no keyword matches**: skip Step 3.5 silently, never block
 - **User scraps mid-iteration**: do not write a file
 - **Slug collision with existing draft**: append `-2`, `-3`, etc.

@@ -42,7 +42,9 @@ study dir that has `taxonomy.yaml` and `items/`.
    record sections and the page sections. Ask what he will want to know that is not obvious; a
    question added later costs a re-run of every record.
 2. **Contract.** Write `SCHEMA.md` with a full example record, then the `validate_item.py` rules for
-   those fields, with a test per rule. No agent runs before the validator exists.
+   those fields, with a test per rule. No agent runs before the validator exists. Set
+   `scope_required: true` in `taxonomy.yaml`: every receipt then names, in `applies_to`, the exact entity
+   its sentence describes (the item, or a variant, checkpoint, predecessor or baseline of it).
 3. **Two by hand.** Fill two items yourself, render them, look at the screenshots, fix the page.
 4. **The loop.** `workflow.mjs`: a research agent fills a record, a cheaper verifier re-opens every
    receipt with no edit rights, a fix agent repairs what it rejected. One item per workflow run, and
@@ -59,6 +61,13 @@ study dir that has `taxonomy.yaml` and `items/`.
 - The writer never verifies itself. The verifier gets no edit rights.
 - A fact with no receipt is a red `?` on the page, never a hidden gap.
 - Leads (deep-research reports, a colleague's summary) are never a citation: re-find every number.
+  Give them to research agents as open questions, never as claims to confirm.
+- **Scope every fact.** A paper or report often studies several things: variants, checkpoints, the
+  shipped model, predecessors, baselines. A receipt names which one (`applies_to`), and the verifier
+  checks that the record's item is that entity, or that the record says it is a variant. Any absolute
+  (only, zero, never, all) needs a search of the whole source for the sentence that narrows it, and a
+  press release never carries one alone. Why: `docs/postmortems/2026-10-04-dyna2-robot-data.md` in the
+  social repo, where a research checkpoint's fact shipped as the model's.
 - Downloads go through the rate-capped tools, one at a time, 50 MB/s.
 - Prose passes the clarity gate: at most 25 words a sentence, one meaning per word, no hedges.
 - No em-dash anywhere. `rip`, never `rm`.
