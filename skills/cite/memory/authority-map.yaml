@@ -22,6 +22,15 @@ tiers:
         domains: ["openai.com"]
       - name: "Mistral AI"
         domains: ["mistral.ai"]
+      - name: "Generalist AI"
+        domains: ["generalistai.com"]
+        note: "Robot foundation models (GEN-0, GEN-1, GEN-1.5). Tier 1 for claims about its own models only."
+      - name: "Skild AI"
+        domains: ["skild.ai"]
+        note: "Robot foundation models (S1). Tier 1 for claims about its own models only."
+      - name: "Dyna Robotics"
+        domains: ["dyna.co"]
+        note: "Robot foundation models (DYNA-1, DYNA-2). Tier 1 for claims about its own models only."
       - name: "INSEE"
         domains: ["insee.fr"]
       - name: "Eurostat"

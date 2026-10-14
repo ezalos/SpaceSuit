@@ -25,6 +25,9 @@ Grow this file by promoting per-run overlays (see `/cite-apply` promotion gate).
 - **Anthropic** (`anthropic.com`) — AI safety company
 - **OpenAI** (`openai.com`) — AI research and products
 - **Mistral AI** (`mistral.ai`) — European AI company
+- **Generalist AI** (`generalistai.com`) — robot foundation models (GEN-0, GEN-1, GEN-1.5); tier 1 for claims about its own models only
+- **Skild AI** (`skild.ai`) — robot foundation models (S1); tier 1 for claims about its own models only
+- **Dyna Robotics** (`dyna.co`) — robot foundation models (DYNA-1, DYNA-2); tier 1 for claims about its own models only
 - **Government statistics offices** — INSEE (`insee.fr`), Eurostat (`eurostat.ec.europa.eu`), BLS (`bls.gov`), ONS (`ons.gov.uk`)
 - **Klarna** (`klarna.com`) — company press releases
 - **L'Oréal Finance** (`loreal-finance.com`) — investor relations / annual report

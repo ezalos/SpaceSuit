@@ -32,10 +32,13 @@ output, with no way to fix what it finds.
    `facts.videos`, `visual.per_tweet`, and the ledger path `facts.ledger` (only to find the pages
    directory; the ledger itself is NOT given to the auditor).
 2. **Dispatch the auditor** with the prompt below, filled in.
-3. **Read the report.** If any finding is not SUPPORTED, the audit fails. Show Louis the findings,
+3. **Read the report.** If any finding is not SUPPORTED, the audit fails, unless Louis judged that finding
+   not material: then it may be **waived**, recorded with his words and date (`waived: [{row, reason,
+   louis}]`). A waiver is Louis's call only, never the writer's or the auditor's. Pass = no open finding. Show Louis the findings,
    most severe first; the writer fixes them; then run a NEW audit (a fresh agent), never a re-grade of the old one.
 4. **Record the verdict** in the run record with `bin/runrecord.py`:
-   `facts_verified: {date, by: "<model> fact-audit", statements: N, findings: M, pass: <M == 0>, report: <path>}`.
+   `facts_verified: {date, by: "<model> fact-audit", statements: N, findings: M, waived: W, pass: <M - W == 0>, report: <path>}`,
+   and the waivers themselves in the audit report.
    ```bash
    uv run --with pyyaml python -c "import importlib.util as u; s=u.spec_from_file_location('rr','bin/runrecord.py'); m=u.module_from_spec(s); s.loader.exec_module(m); m.set_field('runs/<stem>-run.yaml','facts_verified',{...})"
    ```
