@@ -31,32 +31,67 @@ to you.
 
 ## 2. Reply: the template
 
-Plain text, no tables (they wrap on a phone). Paths absolute. Every number carries its
-unit. Times in Louis's zone, computed with `date`. Follow his CLAUDE.md for naming other
-sessions. Any term of art a reader of the doc would not know gets a half-line
-explanation the first time, or is replaced by what it means.
+Markdown, which the terminal renders: headings, one blank line between every block, each
+decision under its own heading, options as an indented list with gains and costs on
+their own lines. Short lines; no tables (they wrap on a phone). Paths absolute. Every
+number carries its unit. Times in Louis's zone, computed with `date`. Follow his
+CLAUDE.md for naming other sessions. Any term of art a reader of the doc would not know
+gets a half-line explanation the first time, or is replaced by what it means.
 
-```
-GOAL: <one paragraph, the live goal>. Done = <checkable criterion>.
-DOCS:
-- <kind: design | plan | research | handoff | status>: <absolute path> (<date; "stale" if so>)
-PROGRESS: <k> of <n> parts done
- 1. <part>: done, took <duration> (<evidence>)
- 2. <part>: in flight, <time left> left (basis: <basis>)
- 3. <part>: not started, <estimate> (basis: <basis>)
- Waiting on you: <which decisions hold which parts, or "nothing">
- Finish: <work time left> → about <clock time, zone>, if <conditions, e.g. decisions answered by HH:MM>
-DECISIONS (<n>)
- 1. <short title>
-    Why it matters: <how this decision moves the goal>
-    What it affects: <the thing it changes, and how that thing works today>
-    Ideal: <what a perfect answer would achieve>
-    a) <option>: gains <...>; costs <...>
-    b) <option>: gains <...>; costs <...>
-    Pareto: <"a dominates b because ..." | "c takes a's X and b's Y" | "real trade-off on <axis>: no option wins both">
-    Recommend: <letter>, because <reason>.
-Reply "1a 2b", or say more on any of them.
-```
+````markdown
+## Goal
+
+<one paragraph, the live goal>
+
+**Done when:** <checkable criterion>
+
+## Docs
+
+- **<kind: design | plan | research | handoff | status>:** `<absolute path>` (<date; "stale" if so>)
+
+## Progress: <k> of <n> parts done
+
+1. ✅ **<part>**: done, took <duration> (<evidence>)
+2. ▶️ **<part>**: in flight, <time left> left
+   - basis: <basis>
+3. ⬜ **<part>**: not started, <estimate>
+   - basis: <basis>
+
+**Waiting on you:** <which decisions hold which parts, or "nothing">
+
+**Finish:** <work time left> → about <clock time, zone>, if <conditions, e.g. decisions answered by HH:MM>
+
+## Decisions (<n>)
+
+### 1. <short title>
+
+- **Why it matters:** <how this decision moves the goal>
+- **What it affects:** <the thing it changes, and how that thing works today>
+- **Ideal:** <what a perfect answer would achieve>
+
+**Options:**
+
+  - **a)** <option>
+    - gains: <...>
+    - costs: <...>
+  - **b)** <option>
+    - gains: <...>
+    - costs: <...>
+
+**Pareto:** <"a dominates b because ..." | "c takes a's X and b's Y" | "real trade-off on <axis>: no option wins both">
+
+**Recommend: <letter>**, because <reason>.
+
+---
+
+### 2. <short title>
+
+<same shape>
+
+---
+
+**Reply** `1a 2b`, or say more on any of them.
+````
 
 Slot rules:
 
@@ -91,3 +126,4 @@ Slot rules:
 | Jargon or message ids as references ("N 8 frames", "message 459") | Say what the thing is |
 | A ready-to-paste line for another session | He answers HERE, with "1a 2b" |
 | Treating a stale STATUS as the progress | Check each part against its artifact |
+| A dense plain-text block, options run into each other | The Markdown template: headings, a blank line between blocks, options indented |
