@@ -122,10 +122,11 @@
   Non-interactive shells (agent Bash, cron): `secrets run -- <cmd>`
 
 # Where things live
-- Machine/infra truth — services, network, backups, hosts: `~/42/GroundControl` (private).
-  Anything infra, backups or archived data: read its `README.md` Layout table FIRST and
-  follow it to the area's doc (backups: `backup/`, archives catalog `backup/archives.md`)
-  before searching the disk. Something real missing from those docs: add it there
+- Everything about what I own and run: `~/42/GroundControl` (private). Machines and
+  hardware I possess, network and sites, domains, services and monitoring, backups and
+  archived data, vault hygiene. Its `README.md` Layout table is the index: read it
+  FIRST and follow it to the area's doc before searching the disk or asking me.
+  Found something real that those docs miss: add it there
 - Generic dotfiles, skills, installs: `~/42/SpaceSuit` (public — nothing naming a
   machine, place, or address may land there)
 - Naming anything (machines, repos, bots, Telegram prefixes): GroundControl `docs/naming.md`
