@@ -1558,6 +1558,21 @@
             ],
             "variants": null,
             "fanout": false
+        },
+        "meetings": {
+            "alias": "meetings",
+            "main": "~/42/SevenLeagues/bin/meetings",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/meetings",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
         }
     },
     "devices": {
