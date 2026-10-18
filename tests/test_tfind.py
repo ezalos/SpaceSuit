@@ -20,6 +20,7 @@ TMUX_STUB = """#!/bin/sh
 here="$(dirname "$0")"
 echo "$@" >> "$here/tmux-calls"
 [ "$1" = list-panes ] && cat "$here/panes"
+[ "$1" = display-message ] && [ -f "$here/size" ] && cat "$here/size"
 exit 0
 """
 LANE = """---
@@ -171,7 +172,7 @@ def test_a_closed_session_no_file_records_and_a_missing_registry_are_said(tree):
 
 
 def test_a_bad_prefix_is_refused_before_anything_runs(tree):
-    for bad in (["6"], ["zzz"], [], ["61b", "61c"], ["--help"]):
+    for bad in ([""], ["zzz"], [], ["61b", "61c"], ["--help"], ["--menu"], ["--menu", ""], ["--menu", "c", "zz"]):
         assert run(tree, *bad).returncode == 2
     assert calls(tree) == [] and not (tree / "tmux-calls").exists()
 
@@ -184,3 +185,59 @@ def test_escape_sequences_in_a_title_or_a_lane_file_never_reach_the_terminal(tre
     (tree / "lanes" / "lab" / "old-lane.md").write_text(LANE.format(session="0dd5e55a").replace("An old lane", "An\x1b[31m old\x9b lane"))
     out = run(tree, "0dd5")
     assert "\x1b" not in out.stdout and "\x9b" not in out.stdout and "An[31m old lane" in out.stdout
+
+
+def menu_items(tree):
+    """The (label, key, command) items of the display-menu call, from the stand-in's log."""
+    line = next(line for line in calls(tree) if line.startswith("display-menu"))
+    return line
+
+
+def test_one_or_two_characters_are_a_prefix(tree):
+    out = run(tree, "6")
+    assert out.returncode == 0 and calls(tree) == ["switch-client -t %1"]
+    record(tree, ALSO_ALIVE, TWO, tmux="work:@2.%7")
+    out = run(tree, "61")
+    assert out.returncode == 2 and "title of 61be5e73" in out.stdout and "title of 61be0000" in out.stdout
+
+
+def test_menu_mode_switches_the_named_client_silently_on_one_match(tree):
+    out = run(tree, "--menu", "/dev/pts/9", "61b")
+    assert out.returncode == 0 and out.stdout == ""
+    assert calls(tree) == ["switch-client -c /dev/pts/9 -t %1"]
+
+
+def test_menu_mode_opens_a_menu_with_titles_newest_first_when_several_match(tree):
+    record(tree, ALSO_ALIVE, TWO, tmux="work:@2.%7")
+    rec = tree / "sessions" / f"{ALSO_ALIVE}.json"
+    rec.write_text(rec.read_text().replace("1789776000000", "1789776099000"))      # TWO was active last
+    (tree / "projects" / "-work-repo" / f"{TWO}.jsonl").write_text(json.dumps({"type": "ai-title", "aiTitle": "issue #4"}) + "\n")
+    out = run(tree, "--menu", "/dev/pts/9", "61")
+    assert out.returncode == 0
+    line = menu_items(tree)
+    assert line.startswith("display-menu -c /dev/pts/9 -T  2 sessions 61* ")
+    newest, older = line.index("61be0000  issue ##4  work:bench 1"), line.index("61be5e73  title of 61be5e73  work:paper 2")
+    assert newest < older                                                     # a # in a title is escaped for tmux
+    assert "switch-client -c '/dev/pts/9' -t '%7'" in line and "switch-client -c '/dev/pts/9' -t '%1'" in line
+
+
+def test_menu_mode_with_no_prefix_lists_every_session_and_cuts_to_the_client_height(tree):
+    (tree / "panes").write_text("".join(f"%{i}\twork\tw{i}\n" for i in range(1, 12)))
+    for i in range(2, 12):                                                   # ten more live sessions, pids shared
+        sid = f"aa{i:06d}-0000-4000-8000-000000000000"
+        (tree / "sessions" / f"x{i}.json").write_text(json.dumps({
+            "pid": ALIVE, "sessionId": sid, "cwd": "/w", "name": f"n{i}", "status": "idle", "tmux": f"work:@{i}.%{i}",
+            "updatedAt": 1_789_776_000_000 + i}))
+    (tree / "size").write_text("10 40\n")                                    # 10 rows: room for 6 lines
+    out = run(tree, "--menu", "/dev/pts/9")
+    assert out.returncode == 0
+    line = menu_items(tree)
+    assert "11 sessions" in line and line.count("switch-client") == 5 and "-6 more: type more characters" in line
+
+
+def test_menu_mode_reports_a_closed_or_untmuxed_session_as_text_with_exit_0(tree):
+    out = run(tree, "--menu", "/dev/pts/9", "fff")
+    assert out.returncode == 0 and "no live session" in out.stdout and calls(tree) == []
+    record(tree, ALIVE, ONE, tmux="")
+    out = run(tree, "--menu", "/dev/pts/9", "61b")
+    assert out.returncode == 0 and "not in a tmux pane" in out.stdout and calls(tree) == []

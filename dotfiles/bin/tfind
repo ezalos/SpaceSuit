@@ -3,8 +3,9 @@
 # ABOUTME: status line): switches the client inside tmux, attaches outside; says where a closed session last was.
 """
 Usage: tfind PREFIX
+       tfind --menu CLIENT [PREFIX]
 
-PREFIX is the first characters of a session UUID (3 or more), as claude-session takes them.
+PREFIX is the first characters of a session UUID (1 or more), as claude-session takes them.
 
 One live session matches: tmux moves to its window and pane (switch-client inside tmux, attach
 outside). Several match: they are listed with their status-line titles and nothing moves
@@ -14,6 +15,12 @@ tmux_session, tmux_window, state), the lane that recorded this session is printe
 tmux location and its file. A live session that runs outside tmux, or in a pane this tmux server
 does not have, is reported and nothing moves (exit 3). claude-session or tmux failing is exit 4.
 
+--menu CLIENT is the form a tmux key binding runs (run-shell, with #{client_name}): one match
+switches that client silently; several open a tmux menu on it, one line per session (short id,
+title, session:window), most recently active first, each with a key; no PREFIX lists every live
+session. Lines that do not fit the client's height are dropped and counted on the last line. A
+closed or untmuxed session is reported as text with exit 0, so run-shell adds no "returned" line.
+
 The pane comes from the session's own process (its TMUX_PANE); the session record's tmux field
 is the fallback when the process cannot be read.
 """
@@ -21,15 +28,18 @@ import glob
 import json
 import os
 import re
+import string
 import subprocess
 import sys
 
 CLAUDE_SESSION = os.path.join(os.path.dirname(os.path.realpath(__file__)), "claude-session")
 TMUX = os.environ.get("TFIND_TMUX") or "tmux"  # overridable for the tests, which never touch a live server
 PROC = os.environ.get("TFIND_PROC") or "/proc"
-MIN_PREFIX = 3
+MIN_PREFIX = 1
 SHORT_ID = 8
 EXIT_CLOSED, EXIT_AMBIGUOUS, EXIT_NO_TMUX, EXIT_BROKEN = 1, 2, 3, 4
+MENU_KEYS = string.digits[1:] + string.ascii_lowercase.replace("q", "")  # q closes a tmux menu
+MENU_FRAME = 4  # rows a menu spends on its border and its title, columns on its border and padding
 PANE_FORMAT = "#{pane_id}\t#{session_name}\t#{window_name}"
 FIELD = re.compile(r"^(session|session_full|title|tmux_session|tmux_window|state):[ \t]*(.*?)[ \t]*$", re.M)
 
@@ -44,7 +54,8 @@ def say(text, file=None, flush=False):
 
 
 def live(prefix):
-    done = subprocess.run([sys.executable, CLAUDE_SESSION, "--json", prefix], capture_output=True, text=True)
+    done = subprocess.run([sys.executable, CLAUDE_SESSION, "--json", *([prefix] if prefix else [])],
+                          capture_output=True, text=True)
     try:
         rows = json.loads(done.stdout)
     except ValueError:
@@ -129,19 +140,50 @@ def closed(prefix):
     return EXIT_CLOSED
 
 
+def menu(client, prefix, located, known):
+    """Open a tmux menu on the client with one line per matching session; picking one switches to it."""
+    size = subprocess.run([TMUX, "display-message", "-p", "-c", client, "#{client_height} #{client_width}"],
+                          capture_output=True, text=True).stdout.split()
+    height, width = (int(v) for v in size) if len(size) == 2 and all(v.isdigit() for v in size) else (24, 80)
+    located = sorted(located, key=lambda hit: -float(hit[0].get("updated_epoch") or 0))
+    room = max(1, height - MENU_FRAME)
+    shown = located if len(located) <= room else located[:room - 1]
+    items = []
+    for i, (row, pane) in enumerate(shown):
+        where = ":".join(known[pane]) if pane in known else "not in tmux"
+        # the title before the location: a narrow client cuts the end of the line, and the title is what you pick by
+        label = CONTROL.sub("", f'{row["id"][:SHORT_ID]}  {row.get("title", "")}  {where}')
+        label = label[:max(SHORT_ID, width - 2 * MENU_FRAME)].replace("#", "##")
+        key = MENU_KEYS[i] if i < len(MENU_KEYS) else ""
+        if pane in known:
+            items += [label, key, f"switch-client -c '{client}' -t '{pane}'"]
+        else:
+            items += [f"-{label}", "", ""]
+    if len(shown) < len(located):
+        items += [f"-{len(located) - len(shown)} more: type more characters", "", ""]
+    title = f" {len(located)} sessions {prefix + '*' if prefix else ''} "
+    return subprocess.run([TMUX, "display-menu", "-c", client, "-T", title, "-x", "C", "-y", "C", *items]).returncode
+
+
 def main(argv):
+    client = None
+    if argv[:1] == ["--menu"] and len(argv) in (2, 3) and argv[1]:
+        client, argv = argv[1], argv[2:] or [""]
     if len(argv) != 1 or argv[0].startswith("-"):
         say(__doc__.strip(), file=sys.stderr)
         return 2
-    prefix = argv[0].lower()
-    if len(prefix) < MIN_PREFIX or any(c not in "0123456789abcdef-" for c in prefix):
+    prefix = argv[0].strip().lower()
+    if (len(prefix) < MIN_PREFIX and not client) or any(c not in "0123456789abcdef-" for c in prefix):
         say(f"tfind: {argv[0]!r} is not a session id prefix ({MIN_PREFIX}+ hex characters)", file=sys.stderr)
         return 2
     rows = live(prefix)
     if not rows:
-        return closed(prefix)
+        code = closed(prefix or "*")
+        return 0 if client else code  # run-shell shows the text already; a code would add a "returned 1" line
     known = panes()
     located = [(row, pane_of(row, known)) for row in rows]
+    if client and len(rows) > 1:
+        return menu(client, prefix, located, known)
     if len(rows) > 1:
         say(f"{prefix}: {len(rows)} live sessions match; type more characters")
         for row, pane in located:
@@ -153,7 +195,9 @@ def main(argv):
     if pane not in known:
         say(f'{row["id"][:SHORT_ID]} ({row.get("title", "")}) is live but not in a tmux pane of this server '
               f'(cwd {row.get("cwd", "?")})')
-        return EXIT_NO_TMUX
+        return EXIT_NO_TMUX if not client else 0
+    if client:
+        return subprocess.run([TMUX, "switch-client", "-c", client, "-t", pane]).returncode
     session, window = known[pane]
     say(f'{row["id"][:SHORT_ID]}  {session}:{window}  💬 {row.get("title", "")}', flush=True)
     if os.environ.get("TMUX"):
