@@ -134,5 +134,10 @@
   machine, place, or address may land there)
 - Naming anything (machines, repos, bots, Telegram prefixes): GroundControl `docs/naming.md`
 - Sharing a file with me: `share-file` skill · slide decks: `deck` skill
+- NEVER hand me a claude.ai Artifact link (the Artifact tool's publish URL) as the
+  way to see something: I cannot open them. Anything for my eyes goes through
+  `share-file` (a page: `local-preview`), and when I say I will screenshot it,
+  the text itself goes in the reply <!-- 2026-10-19: a pitch-notes page published as an artifact, unseen -->.
+  Publishing an artifact is fine only as an extra, never as the only copy
 
 @~/.claude/CLAUDE.local.md
