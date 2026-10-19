@@ -282,7 +282,12 @@ async function cmdSwitch(target, opts) {
 }
 
 // ---------- the failover decision: pure, so it is testable without a network ----------
-const THRESHOLDS = { switchAt: 95, targetBelow: 85, fableCeiling: 90, sessionHot: 85, sessionWarm: 65, edfLeadMs: 7_200_000, minHoldMs: 600_000, blindAfter: 3 }; // targetBelow: the ChatGPT domain only (decideCodex); fableCeiling null = the Fable gate is off (`auto on --fable-ceiling off`)
+// switchAt / enterBelow: live leaves at 97, and an account is entered only under 96. Measured 2026-09-30 by driving one
+// account into its weekly wall: the meter lags a heavy load by ~3 points (96 for 13 min, then 99, then 100 within 80 s),
+// a request already streaming survives 100%, and only NEW requests are refused, each one a dead turn (never retried).
+// So the margin is the lag, not a guess, and the 2-point gap keeps the watcher off accounts with crumbs left — without
+// it, it handed the whole machine to an account at 99% for its last 1%. codexSwitchAt: the ChatGPT meter was not measured.
+const THRESHOLDS = { switchAt: 97, enterBelow: 96, codexSwitchAt: 95, targetBelow: 85, fableCeiling: 90, sessionHot: 85, sessionWarm: 65, edfLeadMs: 7_200_000, minHoldMs: 600_000, blindAfter: 3 }; // targetBelow: the ChatGPT domain only (decideCodex); fableCeiling null = the Fable gate is off (`auto on --fable-ceiling off`)
 // The meter is not the only evidence of a limit, and it is not always there. On 2026-09-15 perso's usage endpoint answered
 // 429 for nine ticks exactly while perso refused jobs (the granola sweep died at 18:45Z), and work2's for eleven while it
 // climbed from 65% to 100%: the meter goes blind when an account is busiest. Two answers: a refusal written by any run is
@@ -338,6 +343,9 @@ function fablePctOf(usage) {
 }
 // The Fable gate's bound, or null when the gate is off (`auto on --fable-ceiling off`: Fable is not the model in use, so
 // a spent Fable window is not a reason to leave an account). Only an absent key falls back to the default; null is a value.
+// The weekly bound a TARGET must sit under: enterBelow, never above switchAt (entering an account the hard rule leaves
+// at the next tick would be churn for nothing).
+function entryBarOf(t) { return Math.min(t.enterBelow ?? THRESHOLDS.enterBelow, t.switchAt); }
 function fableCeilingOf(t) { return t.fableCeiling === undefined ? THRESHOLDS.fableCeiling : t.fableCeiling; }
 // ---------- the EDF candidate table ----------
 // Why this account cannot take the machine, or null when it can. The 5-hour bound is the caller's: sessionHot for the
@@ -345,14 +353,17 @@ function fableCeilingOf(t) { return t.fableCeiling === undefined ? THRESHOLDS.fa
 // account that is about to go warm itself — it would go hot after a few requests and the hard rule would fire again,
 // churn for nothing). blockedFrom, given no percentage limit, still owns "did it parse" and "is it locked": a spent
 // window is a budget, a locked one is a door.
-function unusable(row, t, sessionBound) {
+// weekly: 'ceiling' (the live account, switchAt) or 'entry' (a target, enterBelow — never above switchAt, or the machine
+// would enter an account the hard rule leaves at the next tick — see entryBarOf).
+function unusable(row, t, sessionBound, weekly_ = 'ceiling') {
   const parse = blockedFrom(row, Infinity);
   if (parse) return parse;
   const u = row.usage;
   const session = pctOf(u.session), weekly = pctOf(u.weekly), fable = fablePctOf(u);
   const fableCeiling = fableCeilingOf(t);
   if (session !== null && session >= sessionBound) return `5h ${session}% ≥ ${sessionBound}% cap`;
-  if (weekly !== null && weekly >= t.switchAt) return `weekly ${weekly}% ≥ ${t.switchAt}% ceiling`;
+  const weeklyBound = weekly_ === 'entry' ? entryBarOf(t) : t.switchAt;
+  if (weekly !== null && weekly >= weeklyBound) return `weekly ${weekly}% ≥ ${weeklyBound}% ${weekly_ === 'entry' ? 'entry bar' : 'ceiling'}`;
   if (fableCeiling !== null && fable >= fableCeiling) return `Fable ${fable}% ≥ ${fableCeiling}% floor`;
   return null;
 }
@@ -389,8 +400,8 @@ function candidates({ rows, live, thresholds: t, limited = {} }) {
     resetsAt: r.usage.weekly?.resetsAt || null,
     resetsAtMs: Date.parse(r.usage.weekly?.resetsAt || '') || Infinity,
     priority: r.priority || 0,
-    blocked: refused(r.name) ? 'refused on its limit' : unusable(r, t, sessionHot),
-    warm: !refused(r.name) && !unusable(r, t, sessionWarm),
+    blocked: refused(r.name) ? 'refused on its limit' : unusable(r, t, sessionHot, 'entry'),
+    warm: !refused(r.name) && !unusable(r, t, sessionWarm, 'entry'),
   })).sort(edfCompare);
   const L = rows.find((r) => r.name === live);
   const livePriority = L?.priority || 0;
@@ -480,11 +491,12 @@ function decideCodex({ rows, active, thresholds: t, blocked = null, exhaustedSin
   // while fresh AND only as a 429: a 401 is a broken login, and switching accounts would hide that instead of fixing it.
   const rejected = !!blocked && blocked.statusCode === 429 && Date.now() - Date.parse(blocked.observedAt || '') < CODEX_BLOCKED_COOLDOWN_MS;
   const metered = ok(A) ? worstOf(A.usage) : null;
-  if (!rejected && !(metered !== null && metered >= t.switchAt)) {
+  const ceiling = t.codexSwitchAt ?? THRESHOLDS.codexSwitchAt;
+  if (!rejected && !(metered !== null && metered >= ceiling)) {
     return { action: 'none', reason: metered !== null ? `${active} ${metered}%` : `${active} unreadable (${A?.error || 'missing'})` };
   }
   const to = others.find((o) => !o.blocked);
-  const why = rejected ? `${active} was refused on a spent window` : `${active} ${metered}% >= ${t.switchAt}%`;
+  const why = rejected ? `${active} was refused on a spent window` : `${active} ${metered}% >= ${ceiling}%`;
   if (to) {
     const preferred = to.priority ? others.filter((o) => o.priority < to.priority) : [];
     const warn = preferred.length ? `${to.name} is deprioritised; ${preferred.map((o) => `${o.name} ${o.blocked}`).join(', ')} had no room` : null;
@@ -1588,7 +1600,7 @@ async function cmdAuto(sub, opts = {}) {
   if (sub === 'tick') return cmdTick(); // the timer's own entry point: cmdTick never throws
   if (!sub || sub === 'status') {
     const s = state(); const t = thresholds();
-    log(`auto: ${s.auto ? 'on' : 'off'} (${DARWIN ? 'launchd job' : 'systemd user timer'} ${watcherLoaded() ? 'active' : 'not active'}) · every ${s.interval || 60}s · hard rule: weekly ≥${t.switchAt}% · 5h ≥${t.sessionHot}% · ${fableGate(t)} · locked · rotate when a usable account leads by ≥${t.edfLeadMs / 3.6e6}h or live 5h ≥${t.sessionWarm}% · hold ${t.minHoldMs / 6e4} min`);
+    log(`auto: ${s.auto ? 'on' : 'off'} (${DARWIN ? 'launchd job' : 'systemd user timer'} ${watcherLoaded() ? 'active' : 'not active'}) · every ${s.interval || 60}s · hard rule: weekly ≥${t.switchAt}% · enter <${entryBarOf(t)}% · 5h ≥${t.sessionHot}% · ${fableGate(t)} · locked · rotate when a usable account leads by ≥${t.edfLeadMs / 3.6e6}h or live 5h ≥${t.sessionWarm}% · hold ${t.minHoldMs / 6e4} min`);
     log(`live: ${s.live || '?'} · home: ${s.home || '?'}`);
     try {
       const m = readJson(METER); const rows = Object.values(m.accounts);
@@ -1601,26 +1613,27 @@ async function cmdAuto(sub, opts = {}) {
     return;
   }
   if (sub === 'off') { setState({ auto: false }); DARWIN ? launchdOff() : systemdOff(); log('auto OFF (watcher removed)'); return; }
-  if (sub !== 'on') die('usage: claude-usage auto on [--every <s>] [--switch-at <p>] [--session-hot <p>] [--session-warm <p>] [--fable-ceiling <p>|off] [--edf-lead-hours <h>] [--min-hold-minutes <n>] [--target-below <p>] | off | status | tick');
+  if (sub !== 'on') die('usage: claude-usage auto on [--every <s>] [--switch-at <p>] [--enter-below <p>] [--session-hot <p>] [--session-warm <p>] [--fable-ceiling <p>|off] [--edf-lead-hours <h>] [--min-hold-minutes <n>] [--target-below <p>] | off | status | tick');
   const interval = Math.max(30, Number(opts.every || state().interval || 60));
   const t = { ...thresholds() };
   const pct = (v) => Math.max(1, Math.min(100, Number(v)));
-  for (const [k, f] of [['switchAt', 'switch-at'], ['targetBelow', 'target-below'], ['sessionHot', 'session-hot'], ['sessionWarm', 'session-warm']]) if (opts[f] !== undefined) t[k] = pct(opts[f]);
+  for (const [k, f] of [['switchAt', 'switch-at'], ['enterBelow', 'enter-below'], ['targetBelow', 'target-below'], ['sessionHot', 'session-hot'], ['sessionWarm', 'session-warm']]) if (opts[f] !== undefined) t[k] = pct(opts[f]);
   if (opts['fable-ceiling'] !== undefined) t.fableCeiling = String(opts['fable-ceiling']) === 'off' ? null : pct(opts['fable-ceiling']); // off: Fable is not the model in use
   if (opts['edf-lead-hours'] !== undefined) t.edfLeadMs = Math.max(0, Number(opts['edf-lead-hours'])) * 3_600_000;
   if (opts['min-hold-minutes'] !== undefined) t.minHoldMs = Math.max(0, Number(opts['min-hold-minutes'])) * 60_000;
   for (const k of ['gapThreshold', 'sessionWeight', 'tieBandPoints', 'homeBelow']) delete t[k]; // the pressure/gap era: never carried forward
   setState({ auto: true, interval, thresholds: t });
   DARWIN ? launchdOn(interval) : systemdOn(interval);
-  log(`auto ON: every ${interval}s · hard rule: weekly ≥${t.switchAt}% · 5h ≥${t.sessionHot}% · ${fableGate(t)} · rotate on a ≥${t.edfLeadMs / 3.6e6}h lead or live 5h ≥${t.sessionWarm}% · hold ${t.minHoldMs / 6e4} min · log ${AUTO_LOG}`);
+  log(`auto ON: every ${interval}s · hard rule: weekly ≥${t.switchAt}% · enter <${entryBarOf(t)}% · 5h ≥${t.sessionHot}% · ${fableGate(t)} · rotate on a ≥${t.edfLeadMs / 3.6e6}h lead or live 5h ≥${t.sessionWarm}% · hold ${t.minHoldMs / 6e4} min · log ${AUTO_LOG}`);
 }
 
 // ---------- status line ----------
 // The account THIS session spends first, then every account whose week still has room. Accounts with a red week are
 // left out: they are not room, and seven rows of "name 5h/wk!" in a status line said nothing at a glance. The full
 // table is `stats`.
-// Four levels. Red is the watcher's own hard rule — sessionHot (85) for the 5-hour cell, switchAt (95) for the weekly
-// one — so the colour and the failover agree by construction; then orange past 70 and yellow past 50, strict, as Louis
+// Four levels. Red is the watcher's own rule — sessionHot (85) for the 5-hour cell; for the weekly one switchAt (97) on
+// the current account, the entry bar (96) on a parked one, codexSwitchAt (95) on a ChatGPT row — so the colour and the
+// failover agree by construction: a parked account the watcher would refuse to enter never reads as room; then orange past 70 and yellow past 50, strict, as Louis
 // reads them. A locked window is red whatever its number - locked at 40 % shown green would be a lie. Orange has no
 // basic ANSI code, hence 256-colour.
 const LEVEL = { red: '\x1b[31m', orange: '\x1b[38;5;208m', yellow: '\x1b[33m', green: '\x1b[32m' };
@@ -1640,19 +1653,20 @@ function statuslineText(payload = null) {
   if (!cur) return 'CC: no account checked out';
   const stale = Date.now() - m.at > STALE_MS ? ` ${C.dim}(stale)${C.reset}` : '';
   const paint = (lvl, t) => (lvl ? `${LEVEL[lvl]}${t}${C.reset}` : t);
-  const hot = thresholds().sessionHot;
+  const t = thresholds(), hot = t.sessionHot;
+  const weeklyBound = (r) => (isGpt(r) ? t.codexSwitchAt ?? THRESHOLDS.codexSwitchAt : r === cur ? t.switchAt : entryBarOf(t));
   const cell = (glyph, x, bound) => (levelFor(x, bound) ? paint(levelFor(x, bound), `${glyph}${x.percent}%`) : '');
   // An account's level is its name's colour: the weekly one - the budget that decides the week - unless the 5-hour
   // window is at the wall, which is the thing that stops a session right now. An unreadable row has no level.
-  const accountLevel = (r) => (r.error ? null : levelFor(r.usage.session, hot) === 'red' ? 'red' : levelFor(r.usage.weekly));
+  const accountLevel = (r) => (r.error ? null : levelFor(r.usage.session, hot) === 'red' ? 'red' : levelFor(r.usage.weekly, weeklyBound(r)));
   // A plan without a 5-hour window (Pro Lite) simply has no ⏳ cell.
-  const one = (r) => (r.error ? `${r.name} ✗` : [paint(accountLevel(r), r.name), cell('⏳', r.usage.session, hot), cell('📅', r.usage.weekly, thresholds().switchAt)].filter(Boolean).join(' '));
+  const one = (r) => (r.error ? `${r.name} ✗` : [paint(accountLevel(r), r.name), cell('⏳', r.usage.session, hot), cell('📅', r.usage.weekly, weeklyBound(r))].filter(Boolean).join(' '));
   // Room is a matter of the week: an account whose 5-hour window is at the wall is back in a couple of hours, one
   // whose week is spent is out for days, so only a red WEEK drops an account from the line. The current account's own
   // kind first - the accounts a switch can reach - then the other kind, each most room first. An unreadable account
   // is not room and goes last in its kind, shown as ✗ rather than dropped: it exists and nobody could read it.
   const room = (r) => (r.error ? Infinity : (worstOf(r.usage) ?? Infinity));
-  const others = rows.filter((r) => r !== cur && levelFor(r.usage?.weekly) !== 'red')
+  const others = rows.filter((r) => r !== cur && levelFor(r.usage?.weekly, weeklyBound(r)) !== 'red')
     .sort((a, b) => (isGpt(a) !== isGpt(cur)) - (isGpt(b) !== isGpt(cur)) || room(a) - room(b) || a.name.localeCompare(b.name));
   return [cur, ...others].map(one).join(' | ') + stale;
 }
@@ -1745,7 +1759,7 @@ function help() {
   switch [<name>] [--failover] hand every session on this machine to <name> (no name = the other one). The live pair
                                is parked into its record, <name>'s pair goes into Claude Code's store; sessions and
                                their subagents follow at their next request. --failover leaves "home" unchanged
-  auto on [--every <s>] [--switch-at <p>] [--session-hot <p>] [--session-warm <p>] [--fable-ceiling <p>|off]
+  auto on [--every <s>] [--switch-at <p>] [--enter-below <p>] [--session-hot <p>] [--session-warm <p>] [--fable-ceiling <p>|off]
           [--edf-lead-hours <h>] [--min-hold-minutes <n>] [--target-below <p>] | off | status | tick
                                watcher (systemd user timer / launchd): meter every account. Hard rule — the live
                                account cannot serve (a locked window, 5-hour ≥85%, weekly ≥95%, Fable ≥90% or off): move
@@ -1769,7 +1783,7 @@ that should follow switches. Never share tokens; files are 0600 under ${ROOT}.`)
 // Flags that take the NEXT argv token as their value (`--session-hot 80`). A flag missing from this list parses as the
 // boolean true and its value becomes a stray positional — which is how five threshold flags shipped broken once
 // (2026-09-21): every flag `auto on` reads must be here, and a retired one must not.
-const VALUE_FLAGS = ['email', 'every', 'switch-at', 'target-below', 'fable-ceiling', 'session-hot', 'session-warm', 'edf-lead-hours', 'min-hold-minutes', 'by', 'since', 'until', 'repo', 'roots'];
+const VALUE_FLAGS = ['email', 'every', 'switch-at', 'enter-below', 'target-below', 'fable-ceiling', 'session-hot', 'session-warm', 'edf-lead-hours', 'min-hold-minutes', 'by', 'since', 'until', 'repo', 'roots'];
 function parseArgv(rest) {
   const flags = new Map(); const args = [];
   for (let i = 0; i < rest.length; i++) {

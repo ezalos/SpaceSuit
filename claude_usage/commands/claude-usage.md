@@ -121,11 +121,18 @@ Switching (Louis asks "switch to work", "use the perso account", "which account 
   request. No restart, no browser. `claude-usage switch` toggles between two stored accounts.
 - `claude-usage auto status` — live/home, the four gates, the EDF pick and why, the last decision. `auto on|off`
   controls the watcher (systemd user timer here, launchd on a Mac), every 60 s:
-  - **Hard rule** — the live account cannot serve: a locked window, 5-hour ≥ 85 % (`sessionHot`), weekly ≥ 95 %
+  - **Hard rule** — the live account cannot serve: a locked window, 5-hour ≥ 85 % (`sessionHot`), weekly ≥ 97 %
     (`switchAt`), or Fable ≥ 90 % (`fableCeiling`; `auto on --fable-ceiling off` drops that gate while Fable is not
     the model in use, `--fable-ceiling 90` restores it). It moves now, to the usable account whose weekly reset is
     soonest (EDF) — a last-resort account only when nothing preferred is usable, and the log says so. Never held back. The 5-hour
     bound sits under 100 because a switch lands at the next request: at 98 % there is no headroom to absorb that.
+  - **Entry bar** — no switch, forced or proactive, enters an account whose week is ≥ 96 % (`enterBelow`, never above
+    `switchAt`; `auto on --enter-below <p>`). That is what drains the last few % of a spent week, oldest reset first,
+    without handing the machine to an account with a crumb left. Both numbers are measured, not guessed (2026-09-30,
+    one account driven into its wall): under heavy load the weekly meter lags by ~3 points (96 for 13 min, then 99,
+    then 100 within 80 s); a request already streaming survives 100 %; a NEW request past the wall is refused as a
+    synthetic `rate_limit` turn that nothing retries, and a subagent dies on it. Do not raise `switchAt` past 97
+    without a new measurement. The ChatGPT side keeps its own 95 % (`codexSwitchAt`): its meter was not measured.
   - **Rotation** — otherwise, the EDF pick among usable accounts in the live account's tier or better (a last-resort account is
     never rotated onto), entered only when its own 5-hour window is under 65 % (`sessionWarm`), and only when it
     leads the live account's weekly reset by ≥ 2 h (`edfLeadMs`), or a preferred account has become usable while
@@ -134,7 +141,7 @@ Switching (Louis asks "switch to work", "use the perso account", "which account 
   - Why EDF: headroom left when a window resets is lost, so spend the account whose reset is soonest; the 5-hour
     window is a rate cap, not a score — it decides whether an account can take work now, never which is "better".
   - `stats` has an `edf` column: `▶` the next pick, `✓` usable, otherwise the reason (`5h 98% ≥ 85% cap`,
-    `weekly 100% ≥ 95% ceiling`, `locked`, `weekly window unreadable`). Reading it is reading the decision.
+    `weekly 96% ≥ 96% entry bar`, `locked`, `weekly window unreadable`). Reading it is reading the decision.
   - Telegram (`🖥️ [claude-usage] <host>:`) only when nothing can take the machine or a switch failed; every
     successful move, forced or proactive, is a line in `~/.claude/claude-usage/auto.log` only.
 - A switch means connector tools (`mcp__claude_ai_Gmail__*` and other claude.ai-hosted connectors) in any session

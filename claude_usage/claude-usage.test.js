@@ -591,6 +591,43 @@ test('decide: the hard rule fires per window, each on its own', () => {
   assert.equal(on({ session: { percent: 60 }, weekly: { percent: 94 }, scoped: [{ label: 'Fable', percent: 89 }] }).action, 'none', 'one under each bound (and under warm): nothing fires');
 });
 
+// ---------- the weekly entry bar: leave at switchAt, enter only under enterBelow ----------
+// Measured 2026-09-30 by driving work6 into its wall: the weekly meter lags a heavy load by ~3 points (96 for 13 min,
+// then 99, then 100 within 80 s), and with no entry bar the watcher handed the whole machine to work5 for its last 1%.
+const T97 = { ...T, switchAt: 97, enterBelow: 96 };
+test('unusable: the weekly bound is the caller\'s — the ceiling for live, the entry bar for a target', () => {
+  const t = fresh();
+  assert.equal(t.m.unusable(row('z', 0, 96), T97, T.sessionHot), null, 'live at 96 under a 97 ceiling still serves');
+  assert.match(t.m.unusable(row('z', 0, 97), T97, T.sessionHot), /weekly 97% ≥ 97% ceiling/);
+  assert.match(t.m.unusable(row('z', 0, 96), T97, T.sessionHot, 'entry'), /weekly 96% ≥ 96% entry bar/);
+  assert.equal(t.m.unusable(row('z', 0, 95), T97, T.sessionHot, 'entry'), null, '95 is under the bar: enterable');
+});
+
+test('decide: live leaves at switchAt, and a target must sit under enterBelow', () => {
+  const t = fresh();
+  const soon = new Date(Date.now() + 3_600_000).toISOString(), later = new Date(Date.now() + 5 * 86_400_000).toISOString();
+  const r = (name, five, week, resetsAt, extra = {}) => ({ name, usage: { session: { percent: five }, weekly: { percent: week, resetsAt }, scoped: [] }, ...extra });
+  const go = (liveWeek, crumbWeek) => t.m.decide({ rows: [r('live', 5, liveWeek, later, { checkedOut: true }), r('crumb', 0, crumbWeek, soon), r('fresh', 0, 20, later)], live: 'live', thresholds: T97, exhaustedSince: null, lastSwitchAt: Date.now() });
+  assert.equal(go(96, 50).action, 'none', 'live at 96 stays: the ceiling is 97');
+  const crumb = go(97, 96);
+  assert.equal(crumb.action, 'failover'); assert.equal(crumb.to, 'fresh', 'a 96% account resets soonest but is under no bar: skipped');
+  const drain = go(97, 95);
+  assert.equal(drain.to, 'crumb', 'at 95 it is under the bar, and EDF drains it first');
+});
+
+test('decide: enterBelow never exceeds switchAt — no entering an account the hard rule would leave at once', () => {
+  const t = fresh();
+  const d = t.m.decide({ rows: [row('live', 5, 91, { checkedOut: true }), row('near', 0, 92)], live: 'live', thresholds: { ...T, switchAt: 90, enterBelow: 96 }, exhaustedSince: null, lastSwitchAt: Date.now() });
+  assert.equal(d.action, 'exhausted', '92 is over a 90 ceiling, whatever enterBelow says');
+});
+
+test('decideCodex: the ChatGPT domain keeps its own 95 ceiling — the wall test measured the Anthropic meter only', () => {
+  const t = fresh();
+  const gpt = (name, u, extra = {}) => ({ name, provider: 'openai', usage: u, ...extra });
+  const d = t.m.decideCodex({ rows: [gpt('gpt-a', { session: null, weekly: { percent: 96 }, scoped: [] }, { checkedOut: true }), gpt('gpt-b', { session: null, weekly: { percent: 3 }, scoped: [] })], active: 'gpt-a', thresholds: t.m.thresholds() });
+  assert.equal(d.to, 'gpt-b');
+});
+
 test('decideCodex: a plan with no 5-hour window is still a target; one with no reading at all is not', () => {
   const t = fresh();
   const gpt = (name, u, extra = {}) => ({ name, provider: 'openai', usage: u, ...extra });
@@ -606,7 +643,7 @@ test('decideCodex: a plan with no 5-hour window is still a target; one with no r
 
 test('thresholds: defaults, overridden by state', () => {
   const t = fresh();
-  const defaults = { switchAt: 95, targetBelow: 85, fableCeiling: 90, sessionHot: 85, sessionWarm: 65, edfLeadMs: 7_200_000, minHoldMs: 600_000, blindAfter: 3 };
+  const defaults = { switchAt: 97, enterBelow: 96, codexSwitchAt: 95, targetBelow: 85, fableCeiling: 90, sessionHot: 85, sessionWarm: 65, edfLeadMs: 7_200_000, minHoldMs: 600_000, blindAfter: 3 };
   assert.deepEqual(t.m.thresholds(), defaults);
   t.m.setState({ thresholds: { switchAt: 90 } });
   assert.deepEqual(t.m.thresholds(), { ...defaults, switchAt: 90 });
@@ -615,8 +652,9 @@ test('thresholds: defaults, overridden by state', () => {
 test('cmdAuto on: the EDF thresholds are settable by flag, persist, and the retired keys are dropped', async () => {
   const t = fresh();
   t.m.setState({ thresholds: { gapThreshold: 100, sessionWeight: 1, tieBandPoints: 15, homeBelow: 50 } }); // what the interim mitigation left behind
-  await t.m.cmdAuto('on', { every: 60, 'session-hot': 80, 'session-warm': 60, 'edf-lead-hours': 3, 'min-hold-minutes': 5, 'fable-ceiling': 88 });
+  await t.m.cmdAuto('on', { every: 60, 'session-hot': 80, 'session-warm': 60, 'edf-lead-hours': 3, 'min-hold-minutes': 5, 'fable-ceiling': 88, 'enter-below': 94 });
   const th = t.m.thresholds();
+  assert.equal(th.enterBelow, 94);
   assert.equal(th.sessionHot, 80); assert.equal(th.sessionWarm, 60); assert.equal(th.edfLeadMs, 3 * 3_600_000);
   assert.equal(th.minHoldMs, 5 * 60_000); assert.equal(th.fableCeiling, 88);
   for (const dead of ['gapThreshold', 'sessionWeight', 'tieBandPoints', 'homeBelow']) assert.equal(th[dead], undefined, `${dead} is retired`);
@@ -636,7 +674,7 @@ test('cmdAuto on: --fable-ceiling off stores null and says so; a number restores
 
 test('parseArgv: every flag `auto on` reads takes a space-separated value', () => {
   const t = fresh();
-  for (const f of ['every', 'switch-at', 'target-below', 'fable-ceiling', 'session-hot', 'session-warm', 'edf-lead-hours', 'min-hold-minutes']) assert.ok(t.m.VALUE_FLAGS.includes(f), f);
+  for (const f of ['every', 'switch-at', 'enter-below', 'target-below', 'fable-ceiling', 'session-hot', 'session-warm', 'edf-lead-hours', 'min-hold-minutes']) assert.ok(t.m.VALUE_FLAGS.includes(f), f);
   for (const f of ['gap-threshold', 'session-weight', 'tie-band', 'home-below']) assert.ok(!t.m.VALUE_FLAGS.includes(f), `${f} is retired`);
   const { flags, args } = t.m.parseArgv(['on', '--session-hot', '80', '--edf-lead-hours', '3', '--fresh']);
   assert.equal(flags.get('session-hot'), '80'); assert.equal(flags.get('edf-lead-hours'), '3'); assert.equal(flags.get('fresh'), true);
@@ -667,7 +705,7 @@ test('resetsLine: names the window that is actually spent, per its own bound', (
 
 test('tick: the hard rule fails over and logs without paging; home comes back only through hysteresis', async () => {
   const t = fresh(); await machineOnPerso(t); seedTelegram(t);
-  const usageBy = { 'at-perso': usage(0, 96), 'at-work': usage(20, 12) };
+  const usageBy = { 'at-perso': usage(0, 97), 'at-work': usage(20, 12) };
   stubNet(t.m, { usageByToken: usageBy, profileByToken: { 'at-perso': profile('uuid-p', 'p@x'), 'at-work': profile('uuid-w', 'w@x') } });
   await t.m.cmdTick();
   assert.equal(t.m.state().live, 'work'); assert.equal(t.m.state().home, 'perso');
@@ -697,7 +735,7 @@ test('tick: both exhausted notifies once, and the episode ends when the live acc
 
 test('tick: a failed switch notifies once per episode and records the error', async () => {
   const t = fresh(); await machineOnPerso(t);
-  const usageBy = { 'at-perso': usage(0, 96), 'at-work': usage(20, 12) };
+  const usageBy = { 'at-perso': usage(0, 97), 'at-work': usage(20, 12) };
   stubNet(t.m, { usageByToken: usageBy, profileByToken: { 'at-perso': profile('uuid-p', 'p@x'), 'at-work': profile('uuid-w', 'w@x') } });
   fs.mkdirSync(t.m.WRITE_LOCK); t.m.LOCK_WAIT.write = 300; // a client mid-write: switchTo's own write lock never yields
   await t.m.cmdTick();
@@ -814,9 +852,18 @@ test('statusline shows the checked-out Claude account first, then every account 
 
 test('statusline always shows the current account, red or not, and only it when nothing else has room', () => {
   const t = fresh();
-  const rows = anthropicRows('perso'); rows.work.usage = { session: { percent: 0 }, weekly: { percent: 95 } };
+  const rows = anthropicRows('perso'); rows.work.usage = { session: { percent: 0 }, weekly: { percent: 96 } };
   seedMeter(t, rows);
-  assert.equal(plain(t.m.statuslineText()), 'perso ⏳96% 📅57%', '95 is the switch-at, so red, so not room');
+  assert.equal(plain(t.m.statuslineText()), 'perso ⏳96% 📅57%', '96 is the entry bar, so red, so not room');
+});
+
+test('statusline: the same 96% week is service on the current account and no room on a parked one', () => {
+  const t = fresh();
+  const rows = anthropicRows('perso'); rows.perso.usage = { session: { percent: 10 }, weekly: { percent: 96 } }; rows.work.usage = { session: { percent: 0 }, weekly: { percent: 96 } };
+  seedMeter(t, rows);
+  const line = t.m.statuslineText();
+  assert.ok(line.startsWith(`${ANSI.orange}perso${ANSI.reset}`), 'current at 96 is under the 97 ceiling: orange, still serving');
+  assert.doesNotMatch(line, /work/, 'parked at 96 is at the entry bar: the watcher will not enter it, so it is not room');
 });
 
 test('statusline colours each number on its own level and the name on the weekly one', () => {
@@ -827,12 +874,12 @@ test('statusline colours each number on its own level and the name on the weekly
   assert.equal(t.m.statuslineText(), `${ANSI.orange}work${ANSI.reset} ${ANSI.yellow}⏳51%${ANSI.reset} ${ANSI.orange}📅71%${ANSI.reset}`);
   rows.work.usage = { session: { percent: 50 }, weekly: { percent: 94 } }; seedMeter(t, rows);
   assert.equal(t.m.statuslineText(), `${ANSI.orange}work${ANSI.reset} ${ANSI.green}⏳50%${ANSI.reset} ${ANSI.orange}📅94%${ANSI.reset}`, 'thresholds are strict: 50 is green, 94 is still orange');
-  rows.work.usage = { session: { percent: 85 }, weekly: { percent: 95 } }; seedMeter(t, rows);
-  assert.equal(t.m.statuslineText(), `${ANSI.red}work${ANSI.reset} ${ANSI.red}⏳85%${ANSI.reset} ${ANSI.red}📅95%${ANSI.reset}`, 'red starts where the watcher\'s hard rule does: 85% for the 5-hour wall, 95% for the week');
+  rows.work.usage = { session: { percent: 85 }, weekly: { percent: 97 } }; seedMeter(t, rows);
+  assert.equal(t.m.statuslineText(), `${ANSI.red}work${ANSI.reset} ${ANSI.red}⏳85%${ANSI.reset} ${ANSI.red}📅97%${ANSI.reset}`, 'red starts where the watcher\'s hard rule does: 85% for the 5-hour wall, 97% for the current account\'s week');
   // The two bounds are independent: a weekly value between switch-at's old and new setting (90-95) moves colour when
   // switch-at is overridden, while the 5-hour wall — already red at its own fixed sessionHot bound — does not move.
   rows.work.usage = { session: { percent: 85 }, weekly: { percent: 92 } }; seedMeter(t, rows);
-  assert.equal(t.m.statuslineText(), `${ANSI.red}work${ANSI.reset} ${ANSI.red}⏳85%${ANSI.reset} ${ANSI.orange}📅92%${ANSI.reset}`, '92% is under switch-at (95) so the week is only orange; the 5-hour wall is already red at its own fixed bound');
+  assert.equal(t.m.statuslineText(), `${ANSI.red}work${ANSI.reset} ${ANSI.red}⏳85%${ANSI.reset} ${ANSI.orange}📅92%${ANSI.reset}`, '92% is under switch-at (97) so the week is only orange; the 5-hour wall is already red at its own fixed bound');
   t.m.setState({ thresholds: { switchAt: 90 } }); seedMeter(t, rows);
   assert.equal(t.m.statuslineText(), `${ANSI.red}work${ANSI.reset} ${ANSI.red}⏳85%${ANSI.reset} ${ANSI.red}📅92%${ANSI.reset}`, '`auto on --switch-at 90` moves the week\'s red line onto 92% (92 ≥ 90); the 5-hour wall\'s red line is sessionHot, fixed, so it does not move with it');
 });
@@ -1048,7 +1095,7 @@ test('renderRows pads the live row like the parked ones so the ● column lines 
 
 test('after a failover the status line names the new account at once, with no extra network call', async () => {
   const t = fresh(); await machineOnPerso(t);
-  const calls = stubNet(t.m, { usageByToken: { 'at-perso': usage(0, 96), 'at-work': usage(20, 12) }, profileByToken: { 'at-perso': profile('uuid-p', 'p@x'), 'at-work': profile('uuid-w', 'w@x') } });
+  const calls = stubNet(t.m, { usageByToken: { 'at-perso': usage(0, 97), 'at-work': usage(20, 12) }, profileByToken: { 'at-perso': profile('uuid-p', 'p@x'), 'at-work': profile('uuid-w', 'w@x') } });
   await t.m.cmdTick();
   const before = calls.length;
   const meter = JSON.parse(fs.readFileSync(t.m.METER, 'utf8'));
@@ -1193,7 +1240,7 @@ test('decide: a cached reading decides, one older than the cap does not', async 
 
 test('tick: a failover re-reads every account first, so the machine moves on fresh numbers', async () => {
   const t = fresh(); await machineOnPerso(t);
-  const usageByToken = { 'at-perso': usage(0, 96), 'at-work': usage(20, 12) };
+  const usageByToken = { 'at-perso': usage(0, 97), 'at-work': usage(20, 12) };
   const calls = stubNet(t.m, { usageByToken, profileByToken: { 'at-perso': profile('uuid-p', 'p@x'), 'at-work': profile('uuid-w', 'w@x') } });
   await t.m.cmdTick();
   assert.equal(t.m.state().live, 'work');
