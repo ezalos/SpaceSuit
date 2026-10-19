@@ -48,6 +48,9 @@
   that prevent failed first attempts
 - Simplicity first (YAGNI), root causes only, senior standards — no temporary fixes,
   no disabling functionality as a workaround
+- About to recommend ONE option for an important or hard-to-reverse decision (mine,
+  or one I negotiate with others): offer `/decide` in one line and carry on. I choose;
+  never run it unasked
 
 # System todo capture
 - A message starting "7:" (Telegram) or "todo:" (terminal) that concerns the
