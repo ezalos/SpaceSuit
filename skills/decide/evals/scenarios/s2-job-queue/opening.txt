@@ -1,0 +1,1 @@
+I need to pick how to run background jobs for our API service. I'm thinking Celery with Redis. Sanity check?
