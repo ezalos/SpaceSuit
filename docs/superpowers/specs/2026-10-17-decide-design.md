@@ -315,7 +315,7 @@ their queries. They search for the general fact.
 There are two eval sets.
 
 **Long-lived (in SpaceSuit):** invented scenarios only, for example a salary talk, a
-service architecture choice and a co-founder split. Each has a reference axis list and a
+service architecture choice and a role split among project maintainers. Each has a reference axis list and a
 reference option spread written for it. They draw on the abstract patterns in the "Why"
 section above, never on case details.
 

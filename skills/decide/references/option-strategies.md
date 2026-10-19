@@ -45,5 +45,6 @@ Pick at least four briefs that fit the lens. In design and negotiation decisions
    reason. Keep the clearer name.
 2. Group the survivors into **families**, by the main idea, not the details.
 3. **Diversity check.** Fewer than five families in full mode (three in quick mode), or one
-   family holding more than half of the options: dispatch the briefs not yet used, once.
+   family holding more than half of the options: dispatch the briefs not yet used, once (in
+   quick mode, apply them inline yourself).
    Then go on with what you have.

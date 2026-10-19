@@ -17,7 +17,7 @@ These are four invented scenarios, each run headless:
 |---|---|---|---|
 | S1 | `s1-salary` | negotiation | hidden leverage, unknown counterparty interests |
 | S2 | `s2-job-queue` | design | operability and idempotency axes, wide option set |
-| S3 | `s3-cofounder-split` | negotiation + design | menu not prescription, late constraint |
+| S3 | `s3-maintainer-roles` | negotiation + design | menu not prescription, late constraint |
 | S4 | `s4-lease` | choice, quick | irreversibility flagged in quick mode |
 
 ## Run
@@ -83,3 +83,30 @@ brief and a substitute-source reframe; retracted terms as revisit triggers.
 
 Known soft spot: "protected time for the work he loves" is still the axis most often left
 to the person to raise (S1, S3).
+
+## What the evals do not exercise
+
+The agent under test has no shell (`--tools`, no Bash, no Skill tool, no MCP), so the
+Bash steps are untested here: the 0700 records-dir creation, the in-repo check, and the
+`claude-log` lines. A live smoke test (2026-10-18, run from inside a repo) covered them: the
+record landed in `~/Decisions/` (mode 700), the repo stayed clean, and the log line was
+`decide [INFO] : step=calibrate; quick mode chosen`, with no decision content. The skill arm is also
+told to read SKILL.md directly, so the description's triggering is not tested either.
+
+2026-10-18: S3 was rewritten in a new setting (open-source maintainers) after review;
+the earlier S3 rows used the previous version. Its baseline and skill rows are below.
+
+| Arm | Scen | R1 | R2 | R3 | R4 | R5 | R6 | R7 | R8 | LATE |
+|---|---|---|---|---|---|---|---|---|---|---|
+| baseline | S3 (new) | fail | 8/9 | pass | fail | 5+0 | fail | fail | fail | pass |
+| skill v5 | S1 | pass | 8/9 | pass | pass | 7+0 | pass | pass | pass | n/a |
+| skill v5 | S2 | pass | 7/7 | pass | pass | 5+2 | pass | pass | pass | n/a |
+| skill v5 | S3 (new) | pass | 7/9 | pass | pass | 6+1 | pass | pass | pass | pass |
+| skill v5 | S4 | pass | 4/4 | pass | pass | 4+0 | pass | pass | pass | n/a |
+
+v4 → v5 (final review): the mode is named in the first line when Louis did not choose it;
+the records dir is resolved and checked against repos in one Bash step; a late constraint
+after agents return is applied at merge and pruning; *assumed* tags in every message, not
+just the playback. Runner: `--tools` and `--strict-mcp-config` (no Skill tool, no MCP),
+answer keys unreadable, a copy of the skill. (S1 and S4 are from the v5 run before the
+tagging edit; S2 and S3 were re-run after it.)

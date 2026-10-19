@@ -3,18 +3,18 @@
 
 # Record template
 
-Copy everything below the line into the new record. Keep the front matter keys stable,
-since a sync may read them later.
-
----
+The record's content is what sits inside the fence below, without the fence lines. Keep the
+front matter keys stable, since a sync may read them later. `lens` is one of `choice`,
+`negotiation`, `design`, or a `+` combination such as `negotiation+design`; `mode` is
+`full` or `quick`; `status` is `open`, then `decided`.
 
 ```markdown
 ---
 date: YYYY-MM-DD
 slug: <slug>
-lens: choice | negotiation | design (combinations allowed: negotiation+design)
-mode: full | quick
-status: open | decided
+lens: choice
+mode: full
+status: open
 ---
 
 # <the decision, one line>

@@ -2,7 +2,7 @@
 name: decide
 description: Use when Louis invokes /decide, says "help me decide", "what are my options", "what are the trade-offs", "should I X or Y", or faces an important or hard-to-reverse choice - a negotiation (salary, a deal, roles between people), a strategic or career move, or an engineering design choice.
 user-invocable: true
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, WebSearch, WebFetch
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, SendMessage, WebSearch, WebFetch
 ---
 <!-- ABOUTME: Objectives-first decision skill: frame, ideal per axis, catastrophes, then a -->
 <!-- ABOUTME: background option search pruned to the Pareto set with explicit trade-offs. -->
@@ -20,16 +20,20 @@ variations of one idea.
 
 - **Mode.** *Full* for an important or hard-to-reverse decision; *quick* for a small or
   reversible one, or when Louis says "quickly". Quick mode on a hard-to-reverse decision is
-  allowed, but say once, in one line, what cannot be undone.
+  allowed, but say once, in one line, what cannot be undone. When Louis did not name a
+  mode, the first line of your reply names the one you chose ("Quick mode; say 'full' to go
+  deep"). When the stakes are unclear, choose full.
 - **Lens.** *Choice* (pick among options), *negotiation* (someone else must agree), *design*
   (building something; options are combinations of sub-choices). They combine.
 - **Freshness.** Read what the context already holds (files, earlier messages, documents)
   before asking anything. Which version of each fact is current? What changed? When there
   are drafts of an agreement, compare the newest draft with the last thing actually agreed:
   an agreed term that silently disappeared is a finding, not a detail.
-- **Record.** Create `${DECIDE_DIR:-~/Decisions}/YYYY-MM-DD-<slug>.md` from
-  `references/record-template.md` (make the dir with mode 0700 if missing). Never inside any
-  repo, whatever the cwd. Say the path in chat once.
+- **Record.** Resolve the directory with one Bash call:
+  `d=${DECIDE_DIR:-$HOME/Decisions}; mkdir -p -m 0700 "$d"; git -C "$d" rev-parse 2>/dev/null && echo IN-REPO || echo "$d"`.
+  If it prints `IN-REPO`, stop and tell Louis: records never go in a repo. Otherwise create
+  `<that absolute dir>/YYYY-MM-DD-<slug>.md` from `references/record-template.md`, whatever
+  the cwd. Say the path in chat once.
 
 ## Step 1: The playback (one message, the only required round trip)
 
@@ -62,7 +66,8 @@ Rules of this message:
 - State facts you would otherwise ask about as **assumptions** Louis can correct. A question is
   allowed only if its answer could change which options win (see `references/pruning.md`,
   value of information). At most two.
-- A guessed interest of another party is always tagged *assumed* with a confidence level.
+- A guessed interest of another party is always tagged *assumed* with a confidence level, in
+  **every** message of the decision (the menu, the packages, the final output), not only here.
 - Then stop and wait. A second round only if his answer changes the frame itself.
 - The two-question budget covers the **whole decision**, not each message. After the
   playback, every remaining unknown becomes an assumption or a **Your call** statement.
@@ -80,9 +85,10 @@ that web searches use the general fact, never names or details from the record.
 Merge, deduplicate, and run the diversity check from that file. If the survivors cluster
 around one idea, dispatch the missing strategies once more.
 
-**A constraint Louis adds while agents run:** append it to the record's constraint log with a
-timestamp, send it to the running agents (SendMessage), and apply it at the merge. Never
-restart the search for it.
+**A constraint Louis adds after the playback:** append it to the record's constraint log with a
+timestamp. Agents still running get it by SendMessage. Agents that already returned don't:
+apply it at the merge and pruning. If the output was already given, re-prune and give the
+output again. Never redo the framing or restart the search for it.
 
 ## Step 3: Consequences and pruning (background)
 

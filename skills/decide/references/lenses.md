@@ -32,7 +32,7 @@ side little and are worth a lot to the other.
 **Walk-away:** <his BATNA, one line> · **Their likely BATNA:** <…> (*assumed*)
 
 **Menu** (each option is a whole package):
-1. **<name>**: he gets <…> · they get <…> · breaks if <…>
+1. **<name>**: he gets <…> · they get <…> (*assumed* unless they said so) · breaks if <…>
 2. …  (2–4 packages; presenting 2–3 at once (MESOs) shows what they value)
    Plus **reference rows:** accept as is · walk away to the BATNA, each with what it gives up
 

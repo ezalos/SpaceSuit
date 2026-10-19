@@ -5,15 +5,22 @@ set -euo pipefail
 
 arm=$1 scen=$(realpath "$2") out=$(realpath -m "$3")
 here=$(cd "$(dirname "$0")" && pwd)
-skill="$(dirname "$here")/SKILL.md"
 model=${EVAL_MODEL:-claude-opus-5-5}
 sim_model=${EVAL_SIM_MODEL:-claude-sonnet-5-5}
 mkdir -p "$out/work" "$out/records"
 cd "$out/work"
 
-# No shell for the agent under test: Write creates the records dir, and host settings
-# pre-approve Bash, so it must be denied explicitly rather than just left off the list.
-tools="Agent Read Glob Grep Write Edit WebSearch WebFetch"
+# The agent under test gets a copy of the skill, so the path it is told about does not
+# sit next to the scenarios' answer keys; reads of the real evals dir are denied too.
+cp -r "$(dirname "$here")/SKILL.md" "$(dirname "$here")/references" "$out/work/"
+skill="$out/work/SKILL.md"
+evals_real=$(realpath "$here")
+# Read rules cover every file-reading tool (Glob and Grep included).
+deny=(Bash "Read(/$evals_real/**)" "Read(/$HOME/.claude/skills/decide/evals/**)")
+
+# --tools is the whole tool set: no shell, no Skill tool (the deployed decide skill would
+# contaminate the baseline) and, with --strict-mcp-config, no MCP connectors.
+tools=(Agent Read Glob Grep Write Edit WebSearch WebFetch)
 opening=$(cat "$scen/opening.txt")
 if [[ $arm == skill ]]; then
   first="Use the decide skill: read $skill (and its references when it says so) and follow it exactly. Write decision records under $out/records instead of ~/Decisions.
@@ -28,7 +35,8 @@ agent() { # agent <json-out> <prompt> [session]
   [[ -n ${3:-} ]] && resume=(--resume "$3")
   printf '%s' "$2" | DECIDE_DIR="$out/records" claude -p --model "$model" \
     --output-format json --permission-mode acceptEdits "${resume[@]}" \
-    --disallowedTools Bash --allowedTools $tools > "$1"
+    --add-dir "$out/records" --strict-mcp-config --disallowedTools "${deny[@]}" \
+    --tools "${tools[@]}" > "$1"
 }
 
 sim() { # sim <agent-reply> -> answer on stdout
