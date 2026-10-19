@@ -56,3 +56,16 @@ Baseline pattern (2026-10-18): never frames the decision or names the principal;
 3–10 questions up front; gives one recommendation with a thin option spread; states
 counterparty interests as fact; misses the middle options (a break clause, a 2-year
 term, packages offered side by side).
+
+| skill v1 | S1 | pass | 8/9 | pass | pass | 5+0 | pass | pass | fail | n/a |
+| skill v1 | S2 | pass | 7/7 | pass | pass | 5+0 | pass | pass | pass | n/a |
+| skill v1 | S3 | pass | 7/9 | pass | pass | 5+0 | pass | pass | fail | pass |
+| skill v1 | S4 | pass | 4/4 | fail | pass | 3+0 | pass | pass | pass | n/a |
+| skill v2 | S1 | pass | 8/9 | pass | pass | 7+1 | pass | pass | pass | n/a |
+| skill v2 | S4 | pass | 4/4 | pass | pass | 3+0 | pass | pass | pass | n/a |
+| skill v3 | S3 | pass | 8/9 | pass | pass | 6+0 | pass | pass | pass | pass |
+
+v1 → v2: "Your call" items written as statements with a lean, not questions; the quick
+template gets a *Their side* line; the stakeholder pass names those not in the room;
+negotiation menus carry the accept-as-is and walk-away reference rows; a "his own role"
+axis. v2 → v3: the two-question budget covers the whole decision.
