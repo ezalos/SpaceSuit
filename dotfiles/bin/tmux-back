@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# ABOUTME: Pane history for tmux, across sessions: the hooks record every move, C-a b pops one step back.
+# ABOUTME: Popping walks the history backwards (A, B, C, D: b goes to C, then B, then A) instead of flipping two.
+#
+# Usage (from .tmux.conf):
+#   tmux-back moved PANE ATTACHED   a hook saw PANE become current in a session with ATTACHED clients
+#   tmux-back pop CLIENT PANE       go back from PANE to the last pane before it that still exists
+# State lives in three global tmux options: @back_here (the current pane), @back_stack (earlier panes, newest
+# first, each pane once) and @back_popping (set while a pop's own move is in flight, so it is not recorded).
+set -uo pipefail
+
+DEPTH=50  # panes kept in the history
+
+opt() { tmux show-options -gqv "$1"; }
+
+without() {  # the words of $1 except $2 and $3
+  local p out=""
+  for p in $1; do
+    [ "$p" = "$2" ] || [ "$p" = "$3" ] || out="$out $p"
+  done
+  echo "${out# }"
+}
+
+moved() {
+  local pane=$1 attached=$2 here stack
+  [ "${attached:-0}" -gt 0 ] || exit 0  # a script moving windows in a background session is not a move
+  here=$(opt @back_here)
+  [ "$pane" = "$here" ] && exit 0
+  if [ "$(opt @back_popping)" = 1 ]; then
+    tmux set-option -g @back_popping 0
+  elif [ -n "$here" ]; then
+    stack=$(without "$(opt @back_stack)" "$here" "$pane")
+    stack=$(echo "$here $stack" | cut -d' ' -f1-"$DEPTH")
+    tmux set-option -g @back_stack "$stack"
+  fi
+  tmux set-option -g @back_here "$pane"
+}
+
+pop() {
+  local client=$1 pane=$2 stack p live
+  stack=$(opt @back_stack)
+  live=" $(tmux list-panes -a -F '#{pane_id}' | tr '\n' ' ')"  # display -t on a closed pane's id still succeeds
+  for p in $stack; do
+    stack=$(without "$stack" "$p" "")
+    [ "$p" = "$pane" ] && continue
+    case "$live" in *" $p "*) ;; *) continue ;; esac  # a pane closed since
+    tmux set-option -g @back_stack "$stack"
+    tmux set-option -g @back_popping 1
+    tmux switch-client -c "$client" -t "$p" || tmux set-option -g @back_popping 0
+    exit 0
+  done
+  tmux set-option -g @back_stack ""
+  tmux display-message -c "$client" "no earlier pane in the history"
+}
+
+case "${1:-}" in
+  moved) moved "${2:?pane}" "${3:-0}" ;;
+  pop) pop "${2:?client}" "${3:?pane}" ;;
+  *) sed -n '5,9p' "$0" >&2; exit 2 ;;
+esac

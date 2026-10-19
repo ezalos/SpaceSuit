@@ -1626,6 +1626,27 @@
             "only_devices": null,
             "variants": null,
             "fanout": false
+        },
+        "tmux-back": {
+            "alias": "tmux-back",
+            "main": "dotfiles/bin/tmux-back",
+            "deploy": {
+                "lighthouse.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/tmux-back",
+                    "backups": []
+                },
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/tmux-back",
+                    "backups": []
+                },
+                "Louiss.MacBook.Pro.3.local.ezalos": {
+                    "deploy_path": "/Users/ezalos/.local/bin/tmux-back",
+                    "backups": []
+                }
+            },
+            "only_devices": null,
+            "variants": null,
+            "fanout": false
         }
     },
     "devices": {
