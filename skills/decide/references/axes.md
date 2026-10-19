@@ -9,7 +9,8 @@ that axis, with feasibility ignored (TRIZ's Ideal Final Result). Feasibility com
 ## Pass 1: his words
 
 Take every axis he named or implied, including the ones only visible in how he phrased the
-problem ("they want an answer by Friday" implies a timing axis).
+problem ("they want an answer by Friday" implies a timing axis). Include the extras he
+would love to have and the things he never wants involved: hard exclusions become MUSTs.
 
 ## Pass 2: the why-ladder
 
@@ -26,12 +27,13 @@ Walk the whole list. Keep an axis only if it plausibly applies, but walk all of 
 |---|---|
 | Money | total value, not just the headline number; cash now against later |
 | Time and effort | his hours, the calendar, the attention it eats |
-| Reversibility, option value | what can be undone; which doors this closes or keeps open |
-| Leverage and timing | when his bargaining power peaks or drops; what deadline is real |
-| Relationships | with each party, after the decision, not just during it |
+| Reversibility, option value | what can be undone; which doors this closes or keeps open; dependence on one party who controls something vital, and the exit plan if it goes wrong |
+| Leverage and timing | when his bargaining power peaks or drops; what deadline is real; the order in which people hear what |
+| Relationships | with each party, after the decision, not just during it; new ones it creates or prevents |
+| Disclosure | what each recipient learns, and what they could do with it |
 | Reputation | how it reads to people whose opinion matters later |
 | Learning, growth | what he gets better at, or stops doing |
-| His own role | time on the work he most wants to do; what he would have to give up |
+| His own role | time on the work he most wants to do; what he would have to give up; how visible a failure on what he owns would be |
 | Freedom on the side | side work, other projects, the right to say no later |
 | Legal, status, compliance | contracts, IP clauses, permits, anything a document could endanger |
 | Truthful against persuasive | claims he can stand behind if questioned |
@@ -47,8 +49,13 @@ migrate away later.
 ## The stakeholder pass
 
 List everyone who will read, sign, judge or agree to the result, including those not in the
-room whose view shapes it (investors, a board, a reviewer, family, a regulator). For each one, write their
-likely ideal on the axes they care about. Each item is either *stated* (they said it) or
+room whose view shapes it (investors, a board, a reviewer, family, a regulator), and those
+who must produce something without negotiating (a signature, a letter, an approval). For
+each one, write their likely ideal on the axes they care about, and what the decision costs
+them (effort, risk, reputation).
+
+When one document serves several audiences (one judges it, another is bound by it), check
+each part of it against each audience: what helps one can hurt the other. Each item is either *stated* (they said it) or
 *assumed, low|medium|high*. An assumed interest is never written as a fact. The assumed
 interests that could change the answer are the best questions Louis can ask **them**, often
 as his opening move.

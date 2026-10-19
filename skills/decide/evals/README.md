@@ -69,3 +69,17 @@ v1 → v2: "Your call" items written as statements with a lean, not questions; t
 template gets a *Their side* line; the stakeholder pass names those not in the room;
 negotiation menus carry the accept-as-is and walk-away reference rows; a "his own role"
 axis. v2 → v3: the two-question budget covers the whole decision.
+| skill v4 | S1 | pass | 7/9 | pass | pass | 7+0 | pass | pass | pass | n/a |
+| skill v4 | S2 | pass | 7/7 | pass | pass | 5+1 | pass | pass | pass | n/a |
+| skill v4 | S3 | pass | 8/9 | pass | pass | 6+0 | pass | pass | pass | pass |
+| skill v4 | S4 | pass | 4/4 | pass | pass | 5+0 | pass | pass | pass | n/a |
+
+v3 → v4 (generic gaps from a development-only replay of real sessions; no case material kept):
+drafts compared against the last agreement; every sub-agent and later reviewer told the
+principal and the MUSTs; extras and hard exclusions in pass 1; disclosure, dependence and
+the order-of-conversations in the checklist; non-negotiating gatekeepers, cost to the
+person asked, and one-document-several-audiences in the stakeholder pass; a partition
+brief and a substitute-source reframe; retracted terms as revisit triggers.
+
+Known soft spot: "protected time for the work he loves" is still the axis most often left
+to the person to raise (S1, S3).

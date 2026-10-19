@@ -4,7 +4,8 @@
 # Lenses and output templates
 
 Every template is phone-readable: lead with the decision, keep the reasoning short, bold
-the key words, and separate anything to paste. Each lens has its own template; the
+the key words, and separate anything to paste. Plain words: a label you coin (a package
+name, a shorthand) gets its plain meaning next to it the first time. Each lens has its own template; the
 always-ending sections come after it (see SKILL.md step 4).
 
 ## Choice: pick among options
@@ -35,12 +36,13 @@ side little and are worth a lot to the other.
 2. …  (2–4 packages; presenting 2–3 at once (MESOs) shows what they value)
    Plus **reference rows:** accept as is · walk away to the BATNA, each with what it gives up
 
-**Every package keeps:** <invariant> · <invariant>
+**Every package keeps:** <invariant> · <invariant> · everything already agreed in writing
 **Open with:** <which package or question first, and why>
 **Ask them:** <the question that resolves the most important assumed interest>
 ```
 
-Never a single "the answer" while another party has a say.
+Never a single "the answer" while another party has a say. A term the other side retracts,
+or a stance that shifts, is evidence: put it in **Revisit if**, and re-check their BATNA.
 
 ## Design: building something
 

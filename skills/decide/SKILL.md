@@ -24,7 +24,9 @@ variations of one idea.
 - **Lens.** *Choice* (pick among options), *negotiation* (someone else must agree), *design*
   (building something; options are combinations of sub-choices). They combine.
 - **Freshness.** Read what the context already holds (files, earlier messages, documents)
-  before asking anything. Which version of each fact is current? What changed?
+  before asking anything. Which version of each fact is current? What changed? When there
+  are drafts of an agreement, compare the newest draft with the last thing actually agreed:
+  an agreed term that silently disappeared is a finding, not a detail.
 - **Record.** Create `${DECIDE_DIR:-~/Decisions}/YYYY-MM-DD-<slug>.md` from
   `references/record-template.md` (make the dir with mode 0700 if missing). Never inside any
   repo, whatever the cwd. Say the path in chat once.
@@ -72,8 +74,8 @@ Quick mode compresses this into the quick output below and does not wait.
 Write the confirmed frame, axes, MUSTs and assumptions into the record. Then dispatch the
 option sub-agents **in parallel**, one per strategy brief in `references/option-strategies.md`
 that fits the lens (at least four). Each gets the record path, reads the record itself, and
-returns options only. Tell each: web searches use the general fact, never names or details
-from the record.
+returns options only. Tell each whose interests it serves (the principal from the record) and
+that web searches use the general fact, never names or details from the record.
 
 Merge, deduplicate, and run the diversity check from that file. If the survivors cluster
 around one idea, dispatch the missing strategies once more.
@@ -124,6 +126,10 @@ The same quick check fits micro-decisions (a wording, a claim): true? can this p
 sign it? consistent with everything else? which axis loses?
 
 ## After the skill: MUSTs stay in force
+
+Any sub-agent or reviewer spawned later for this decision (a drafter, a red-team, a
+"make it stronger" pass) is told the principal and the `## Never` list in its prompt. A
+reviewer optimising for an audience, at the principal's expense, is the failure this prevents.
 
 For the rest of the session, re-read the record's `## Never` section:
 
