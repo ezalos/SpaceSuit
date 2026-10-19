@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+# ABOUTME: Deliver a message to a Claude Code session on another machine, by its session UUID prefix, as a native
+# ABOUTME: cross-session peer message: ssh in, resolve the session, and let a headless relay there call SendMessage.
+"""
+Usage: session-tell [--dry-run] HOST SESSION_PREFIX [TEXT ...]     (no TEXT: read it from stdin)
+
+SendMessage only reaches sessions on the same machine (or Remote Control sessions of the same claude.ai
+account), so a session on another host — no Remote Control, an account that switches — is unreachable from here.
+This closes the gap with the one path Claude Code itself trusts: on HOST, a short-lived headless `claude -p`
+relay calls SendMessage to the target's own messaging socket. The target receives an ordinary
+<cross-session-message>: queued while it is busy, read when it goes idle, framed by Claude Code as a peer's
+request that cannot grant escalation. Nothing is installed on HOST; the script below travels over ssh stdin
+and needs only `claude` and python3 there. HOST `local` runs it here, without ssh.
+
+Resolution on HOST reads Claude Code's own ~/.claude/sessions/<pid>.json. A prefix matching several DIFFERENT
+sessions is refused (exit 2, candidates listed). One session id held by several processes (a conversation
+resumed twice) is one conversation: the message goes to the process updated most recently.
+
+The relay runs in the default permission mode, the least privileged one, so the recipient's permission-mode
+parity check never holds the message. It is named after this host (its cwd is ~/.cache/session-tell/<host>),
+and the message opens with a header naming this host and the sending session.
+"""
+import base64
+import glob
+import json
+import os
+import socket
+import subprocess
+import sys
+
+SESSIONS = os.environ.get("CLAUDE_SESSION_SESSIONS_DIR") or os.path.expanduser("~/.claude/sessions")
+RELAY_MODEL = "claude-haiku-4-5-20251001"  # the relay only makes one tool call; the cheapest model does it
+
+# Runs on HOST under `bash -s` (no rc files: the seat's rc re-execs zsh and an interactive-only PATH would lie).
+REMOTE = r'''
+set -u
+export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+PREFIX=$(printf %s "$B64_PREFIX" | base64 -d); FROM=$(printf %s "$B64_FROM" | base64 -d)
+MSG=$(printf %s "$B64_MSG" | base64 -d)
+target=$(PREFIX="$PREFIX" python3 - <<'PY'
+import glob, json, os, sys
+rows = []
+for p in glob.glob(os.path.expanduser("~/.claude/sessions/*.json")):
+    try:
+        r = json.load(open(p))
+    except (OSError, ValueError):
+        continue
+    pid, sid = r.get("pid"), r.get("sessionId") or ""
+    if not (isinstance(pid, int) and sid.startswith(os.environ["PREFIX"]) and r.get("messagingSocketPath")):
+        continue
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        continue
+    except PermissionError:
+        pass
+    rows.append(r)
+if not rows:
+    print("no live session matches " + os.environ["PREFIX"], file=sys.stderr); sys.exit(3)
+ids = sorted({r["sessionId"] for r in rows})
+if len(ids) > 1:
+    print("ambiguous prefix, %d sessions:" % len(ids), file=sys.stderr)
+    for r in rows:
+        print("  %s  %s  %s  %s" % (r["sessionId"][:8], r.get("name"), r.get("status"), r.get("cwd")), file=sys.stderr)
+    sys.exit(2)
+# One conversation held by several processes: the live-est one is the one being used.
+r = max(rows, key=lambda r: r.get("statusUpdatedAt") or r.get("updatedAt") or 0)
+print("%s\t%s\t%s\t%s\t%s" % (r["messagingSocketPath"], r.get("name"), r.get("pid"), r.get("status"), len(rows)))
+PY
+) || exit $?
+IFS=$'\t' read -r sock name pid status copies <<<"$target"
+echo "target: $name (pid $pid, $status${copies:+, $copies process(es) on this session})" >&2
+[ -n "${DRY_RUN:-}" ] && { echo "dry run: not sent" >&2; exit 0; }
+dir="$HOME/.cache/session-tell/$FROM"; mkdir -p "$dir" && cd "$dir" || exit 1
+prompt="Call the SendMessage tool exactly once, with to=\"uds:$sock\" and message equal to the text between the two marker lines below, byte for byte: do not summarise, reword, translate or add anything. Then reply with the tool result verbatim and stop.
+-----BEGIN MESSAGE-----
+$MSG
+-----END MESSAGE-----"
+printf '%s' "$prompt" | timeout 180 claude -p --model "$RELAY_MODEL" \
+  --disallowedTools "Bash Edit Write Read Glob Grep WebFetch WebSearch Agent NotebookEdit"
+'''
+
+
+def b64(s):
+    return base64.b64encode(s.encode()).decode()
+
+
+def own_session():
+    """The session this command runs under, from the nearest ancestor with a sessions file, or None."""
+    pid = os.getppid()
+    while pid > 1:
+        path = os.path.join(SESSIONS, "%d.json" % pid)
+        if os.path.exists(path):
+            try:
+                return json.load(open(path))
+            except (OSError, ValueError):
+                return None
+        try:
+            with open("/proc/%d/stat" % pid) as fh:
+                pid = int(fh.read().rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            return None
+    return None
+
+
+def main(argv):
+    dry = "--dry-run" in argv
+    args = [a for a in argv if a != "--dry-run"]
+    if len(args) < 2 or args[0] in ("-h", "--help"):
+        print(__doc__.strip(), file=sys.stderr)
+        return 64
+    host, prefix, words = args[0], args[1], args[2:]
+    text = " ".join(words) if words else sys.stdin.read()
+    if not text.strip():
+        print("session-tell: empty message", file=sys.stderr)
+        return 64
+    here = socket.gethostname().split(".")[0]
+    me = own_session()
+    sender = "session %s (%s)" % (me["sessionId"][:8], me.get("name")) if me else "a shell, not a Claude session"
+    header = "[session-tell from %s, %s]" % (here, sender)
+    env = {"B64_PREFIX": b64(prefix), "B64_FROM": b64(here.lower()), "B64_MSG": b64(header + "\n" + text.strip()),
+           "RELAY_MODEL": RELAY_MODEL, "DRY_RUN": "1" if dry else ""}
+    script = "".join("export %s=%s\n" % (k, v if v else "''") for k, v in env.items()) + REMOTE
+    cmd = ["bash", "--noprofile", "--norc", "-s"] if host == "local" else \
+          ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host, "bash --noprofile --norc -s"]
+    return subprocess.run(cmd, input=script, text=True).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
