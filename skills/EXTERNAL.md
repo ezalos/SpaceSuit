@@ -14,3 +14,4 @@ run `python -m src_dotfiles deploy skills`).
 | `research`, `research-add-fields`, `research-add-items`, `research-deep`, `research-report` | https://github.com/Weizhena/Deep-Research-skills | MIT | Copied in; still contains the upstream author's hardcoded `/home/weizhena/…` path |
 | `hegelian-dialectic-skill` | https://github.com/KyleAMathews/hegelian-dialectic-skill | commit `77d69b4` (2026-04-08) | Has its own `.git` |
 | `concept-to-video` | https://www.claudepluginhub.com/skills/mathews-tom-armory/concept-to-video | — | From Claude Plugin Hub (author `mathews-tom-armory`) |
+| `writing-for-agents` | https://github.com/mattpocock/skills, `skills/productivity/writing-for-agents/` (SKILL.md, SKILL-MECHANICS.md) | MIT, commit `49dd158` (2026-10-18) | Required by `doc-update`; copy both files into `~/.claude/skills/writing-for-agents/` |
