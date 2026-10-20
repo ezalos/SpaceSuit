@@ -12,6 +12,9 @@ relay calls SendMessage to the target's own messaging socket. The target receive
 request that cannot grant escalation. Nothing is installed on HOST; the script below travels over ssh stdin
 and needs only `claude` and python3 there. HOST `local` runs it here, without ssh.
 
+Exit codes: 0 delivered (SendMessage said "success":true), 2 ambiguous prefix, 3 no live session, 4 the relay
+ran but did not confirm delivery (e.g. every account on HOST out of quota), 255 ssh failed.
+
 Resolution on HOST reads Claude Code's own ~/.claude/sessions/<pid>.json. A prefix matching several DIFFERENT
 sessions is refused (exit 2, candidates listed). One session id held by several processes (a conversation
 resumed twice) is one conversation: the message goes to the process updated most recently.
@@ -76,8 +79,13 @@ prompt="Call the SendMessage tool exactly once, with to=\"uds:$sock\" and messag
 -----BEGIN MESSAGE-----
 $MSG
 -----END MESSAGE-----"
-printf '%s' "$prompt" | timeout 180 claude -p --model "$RELAY_MODEL" \
-  --disallowedTools "Bash Edit Write Read Glob Grep WebFetch WebSearch Agent NotebookEdit"
+out=$(printf '%s' "$prompt" | timeout 180 claude -p --model "$RELAY_MODEL" \
+  --disallowedTools "Bash Edit Write Read Glob Grep WebFetch WebSearch Agent NotebookEdit" 2>&1)
+rc=$?; printf '%s\n' "$out"
+# The relay's own exit code is not proof: a model that hit a usage limit, or a SendMessage that failed, can still
+# exit 0 with prose. Only the tool's own success field counts as delivered.
+case "$out" in *'"success":true'*) exit 0 ;; esac
+echo "relay did not confirm delivery (exit $rc)" >&2; exit 4
 '''
 
 
