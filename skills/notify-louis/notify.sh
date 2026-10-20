@@ -88,7 +88,8 @@ get_project() {
 
 load_chat_id() {
   if [ ! -f "$ACCESS_FILE" ]; then
-    printf 'telegram allowlist empty — run /telegram:access pair\n' >&2
+    # No Telegram channel plugin is paired on this machine (a cloud seat pairs its chat with its own notifier).
+    printf 'telegram allowlist missing (%s): this machine has no paired Telegram channel; use its own notifier (on a seat: bin/seat-notify "<text>"), or pair with /telegram:access pair\n' "$ACCESS_FILE" >&2
     return 3
   fi
   local chat_id

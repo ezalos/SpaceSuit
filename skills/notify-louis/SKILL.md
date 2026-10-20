@@ -82,7 +82,7 @@ The script exits non-zero if Telegram is misconfigured or the API call fails:
 |------|---------|
 | 1    | bad/missing args |
 | 2    | telegram not configured (no `.env` or token unset) — run `/telegram:configure` |
-| 3    | empty allowlist — run `/telegram:access pair` |
+| 3    | no allowlist (no paired Telegram channel on this machine) — on a cloud seat use its own notifier (`bin/seat-notify "<text>"`); on a workstation run `/telegram:access pair` |
 | 4    | Telegram API error (full JSON on stderr) |
 | 5    | `jq` missing |
 | 6    | no valid session id — run the `jq` line the error prints, rerun with `--session <id>` |
