@@ -50,9 +50,13 @@ ChatGPT accounts (Louis asks "add my other ChatGPT", "which OpenAI account am I 
   Then an account whose lease is held shows `◐` in stats (`"leased": true` in `--json`): it is metered with its
   current token only, never refreshed here (a 401 reads "served by a leased proxy, it refreshes it"), and never a
   switch or failover target. A refresh of any lease-dir account holds that same flock across the token POST and the
-  write, so a lessee starting meanwhile is refused ("lease held") instead of racing. Needs util-linux `flock`; without
-  it (stock macOS) an account in a configured lease dir is treated as leased and never refreshed here. With no lease
-  dir configured nothing changes and `flock` is never run.
+  write, so a lessee starting meanwhile is refused ("lease held") instead of racing. `codex-lease-dir add` needs
+  util-linux `flock` (to take a lease) and `/proc/locks` (to see one without taking it), and refuses on a machine
+  without them (stock macOS): there a lease dir would leave EVERY ChatGPT account unrefreshable and unswitchable. With
+  no lease dir configured nothing changes and `flock` is never run.
+- **Two refreshers.** If the account the gateway itself serves (`●`) has its lease held, a lessee is running on the
+  gateway's own account: stats prints a red `⚠ … two proxies refresh one rotating token` line (`"leaseConflict": true`
+  in `--json`) and `doctor` fails a check. Stop the lessee, or switch the gateway to another account.
 - Failover is two domains that never cross: a spent ChatGPT account moves to another ChatGPT account, a spent Claude
   account to another Claude account. Swapping a Claude credential does nothing for Astra. When every ChatGPT account
   is spent nothing reroutes — the alert names the Claude model at the same tier (Astra → Fable) and Louis switches

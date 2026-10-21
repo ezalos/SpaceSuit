@@ -1225,38 +1225,57 @@ function parseCodexUsage(d) {
 // parked, and a parked account is ours to refresh — so without this, a meter read near its expiry spends the rotating
 // refresh token under a live proxy, which then gets a rejected refresh and deletes auth.json mid-run.
 // The lease dirs are configuration (`claude-usage codex-lease-dir add <dir>`), none by default: with none configured
-// nothing below runs and no flock(1) is ever spawned, so a machine without such programs (or without flock: macOS)
-// behaves exactly as before.
+// nothing below runs and no flock(1) is ever spawned, so a machine without such programs behaves exactly as before.
+// Adding one needs flock(1) (to take a lease) and /proc/locks (to see one without taking it): stock macOS has neither,
+// and there a lease dir would make EVERY ChatGPT account unrefreshable and unswitchable, so `add` refuses.
 // Two halves. leaseState() is a READ for display and decisions, and must not take the lock: a probe that took it, even
 // for a millisecond, would make a proxy starting at that instant exit "lease held". Correctness rests on the other
 // half: takeLeases() holds the same exclusive flock across every refresh POST and its write (and across a gateway
 // switch onto the account), so a proxy starting meanwhile is refused instead of racing — a check alone cannot do that.
 const LEASE_TAKE_MS = 10e3; // flock(1) -n answers at once; past this the child is wedged, and the lease counts as not taken
+const LEASE_IO = { flock: 'flock', procLocks: '/proc/locks' }; // where the two tools live; tests point them at nothing
 function codexLeaseDirs() { const d = state().codexLeaseDirs; return Array.isArray(d) ? d : []; }
 const leaseFiles = (name) => codexLeaseDirs().map((d) => path.join(d, `${name}.lease`));
-// The inodes /proc/locks lists under an flock(2) holder ("1: FLOCK ADVISORY WRITE <pid> <maj>:<min>:<ino> 0 EOF";
-// a blocked waiter's line reads "1: -> FLOCK" and holds nothing, so the anchored pattern skips it). Matched on the inode
-// alone: overlay filesystems can report a different device here than stat() does, and a false "held" only costs a
-// refresh we skip, where a false "free" would be caught by takeLeases() anyway. null: not Linux, or unreadable.
-function flockedInodes() {
+// What this machine lacks for leases, or null. Both are needed: see the header above.
+function leaseSupportMissing() {
+  const miss = [];
+  if (spawnSync(LEASE_IO.flock, ['--version'], { timeout: LEASE_TAKE_MS }).status !== 0) miss.push('flock(1) (util-linux), to take a lease');
+  try { fs.accessSync(LEASE_IO.procLocks, fs.constants.R_OK); } catch { miss.push(`${LEASE_IO.procLocks}, to see a lease without taking it`); }
+  return miss.length ? miss : null;
+}
+// The <maj>:<min>:<ino> keys /proc/locks lists under an flock(2) holder ("1: FLOCK ADVISORY WRITE <pid> 08:10:<ino> 0
+// EOF", the device in hex); a blocked waiter's line reads "1: -> FLOCK" and holds nothing, so the anchored pattern skips
+// it. Keyed on device AND inode: inode numbers repeat across filesystems, and this file lists every flock on the
+// machine. Two blind spots, both caught by takeLeases() before any POST or relink: an overlay filesystem can list the
+// lower device rather than the one stat() reports, and a holder in another pid namespace is not listed at all — such a
+// lease reads "free" here, so a failover may pick it and then be refused at the switch. null: unreadable (not Linux).
+function flockedKeys() {
   try {
     const out = new Set();
-    for (const l of fs.readFileSync('/proc/locks', 'utf8').split('\n')) { const m = l.match(/^\d+:\s+FLOCK\s+\S+\s+\S+\s+\d+\s+[0-9a-f]+:[0-9a-f]+:(\d+)\s/i); if (m) out.add(m[1]); }
+    for (const l of fs.readFileSync(LEASE_IO.procLocks, 'utf8').split('\n')) {
+      const m = l.match(/^\d+:\s+FLOCK\s+\S+\s+\S+\s+\d+\s+([0-9a-f]+):([0-9a-f]+):(\d+)\s/i);
+      if (m) out.add(`${parseInt(m[1], 16)}:${parseInt(m[2], 16)}:${m[3]}`);
+    }
     return out;
   } catch { return null; }
 }
-// null: no lease dir configured, the account is ours as before. 'held': some process holds its lease. 'unknown': no
-// /proc/locks and no flock(1) to ask (macOS with a lease dir set) — treated as held everywhere, never refreshed here.
+// st_dev as glibc encodes it (major: bits 8-19 and 32-43; minor: bits 0-7 and 20-31), the way /proc/locks prints it.
+function lockKey(st) {
+  const d = st.dev;
+  const major = ((d >> 8n) & 0xfffn) | ((d >> 32n) & ~0xfffn), minor = (d & 0xffn) | ((d >> 12n) & ~0xffn);
+  return `${major}:${minor}:${st.ino}`;
+}
+// null: no lease dir configured, the account is ours as before. 'held': some process holds its lease. 'unknown':
+// /proc/locks unreadable (a lease dir set before `add` refused, or by hand) — treated as held everywhere, never
+// refreshed here. There is deliberately no flock(1) probe for that case: it would take the lock it is asking about.
 function leaseState(name) {
   const files = leaseFiles(name);
   if (!files.length) return null;
-  const locked = flockedInodes();
+  const locked = flockedKeys();
   for (const f of files) {
-    let ino; try { ino = fs.statSync(f, { bigint: true }).ino.toString(); } catch { continue; } // no file: never leased in that dir
-    if (locked) { if (locked.has(ino)) return 'held'; continue; }
-    const r = spawnSync('flock', ['--nonblock', '--shared', f, 'true'], { timeout: LEASE_TAKE_MS }); // shared: two probes never refuse each other
-    if (r.error) return 'unknown';
-    if (r.status !== 0) return 'held';
+    let st; try { st = fs.statSync(f, { bigint: true }); } catch { continue; } // no file: never leased in that dir
+    if (!locked) return 'unknown';
+    if (locked.has(lockKey(st))) return 'held';
   }
   return 'free';
 }
@@ -1269,14 +1288,17 @@ function takeLease(file) {
   return new Promise((resolve) => {
     try { fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 }); fs.closeSync(fs.openSync(file, fs.constants.O_RDWR | fs.constants.O_CREAT, 0o600)); }
     catch (e) { resolve({ why: `cannot open ${tildify(file)}: ${e.code || e.message}` }); return; }
-    const child = spawn('flock', ['--nonblock', '--exclusive', file, 'sh', '-c', 'echo held; exec cat >/dev/null'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(LEASE_IO.flock, ['--nonblock', '--exclusive', file, 'sh', '-c', 'echo held; exec cat >/dev/null'], { stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '', err = '', done = false;
     const finish = (v) => { if (done) return; done = true; clearTimeout(timer); resolve(v); };
     const timer = setTimeout(() => { child.kill(); finish({ why: `flock(1) did not answer within ${LEASE_TAKE_MS / 1000}s` }); }, LEASE_TAKE_MS);
-    const release = () => new Promise((r) => { if (child.exitCode !== null || child.signalCode !== null) return r(); child.once('exit', () => r()); child.stdin.end(); });
+    // Once held, the child must not keep this process alive: a lease some path forgot to release ends with the process
+    // (the pipe closes) instead of hanging it. release() re-refs it so the wait for its exit is not cut short.
+    const handles = () => [child, child.stdin, child.stdout, child.stderr];
+    const release = () => new Promise((r) => { if (child.exitCode !== null || child.signalCode !== null) return r(); for (const h of handles()) h.ref(); child.once('exit', () => r()); child.stdin.end(); });
     child.on('error', (e) => finish({ why: e.code === 'ENOENT' ? 'flock(1) is not installed' : e.message }));
     child.stderr.on('data', (d) => { err += d; });
-    child.stdout.on('data', (d) => { out += d; if (out.includes('held\n')) finish({ release }); });
+    child.stdout.on('data', (d) => { out += d; if (out.includes('held\n')) { for (const h of handles()) h.unref(); finish({ release }); } });
     child.on('exit', (code) => finish({ why: code === 1 && !err.trim() ? `${tildify(file)} is held by another process` : `flock exited ${code}${err.trim() ? `: ${err.trim()}` : ''}` }));
   });
 }
@@ -1395,6 +1417,8 @@ function cmdCodexLeaseDir(sub, dir) {
   }
   if (!['add', 'remove'].includes(sub) || !dir) die('usage: claude-usage codex-lease-dir [add <dir> | remove <dir>]');
   const abs = path.resolve(dir === '~' ? HOME : dir.startsWith('~/') ? path.join(HOME, dir.slice(2)) : dir);
+  const missing = sub === 'add' && leaseSupportMissing();
+  if (missing) die(`cannot honour leases on this machine: it lacks ${missing.join(' and ')}. With a lease dir set, no ChatGPT account could be refreshed or switched to here — nothing changed`);
   const next = sub === 'add' ? [...new Set([...dirs, abs])] : dirs.filter((d) => d !== abs);
   if (sub === 'remove' && next.length === dirs.length) die(`${tildify(abs)} is not a lease dir (have: ${dirs.map(tildify).join(', ') || 'none'})`);
   setState({ codexLeaseDirs: next });
@@ -1505,7 +1529,11 @@ async function collect({ includeLive = true, force = false, fresh = null } = {})
   for (const a of accounts) { // sequential: the token endpoint rate-limits bursts
     const checkedOut = a.provider === 'openai' ? a.name === codexActive() : isCheckedOut(a);
     if (a.provider === 'openai' && !checkedOut) { const ls = leaseState(a.name); a.leased = ls === 'held' || ls === 'unknown'; }
-    const row = { name: a.name, provider: a.provider || 'anthropic', priority: a.priority || 0, live: !!a.live, checkedOut, home: a.name === state().home, email: a.email || '?', plan: planLabel(a), tier: a.tier || '', accountUuid: a.accountUuid || null, refreshTokenExpiresAt: a.refreshTokenExpiresAt || null };
+    // The gateway's own account with its lease held: a lessee runs on the account the gateway's proxy refreshes — two
+    // refreshers on one rotating token, the failure this whole section exists to prevent. Nothing here can stop either
+    // proxy, so the row says it loudly (stats, doctor) for a person to stop one.
+    if (a.provider === 'openai' && checkedOut && leaseState(a.name) === 'held') a.leaseConflict = true;
+    const row = { ...(a.leaseConflict ? { leaseConflict: true } : {}), name: a.name, provider: a.provider || 'anthropic', priority: a.priority || 0, live: !!a.live, checkedOut, home: a.name === state().home, email: a.email || '?', plan: planLabel(a), tier: a.tier || '', accountUuid: a.accountUuid || null, refreshTokenExpiresAt: a.refreshTokenExpiresAt || null };
     if (a.provider === 'openai') { row.plan = a.plan; row.email = a.email; }
     const cached = prev[a.name]?.usage?.at ? prev[a.name].usage : null;
     const age = cached ? Date.now() - cached.at : Infinity;
@@ -1557,7 +1585,9 @@ function renderRows(rows) {
     const age = u.at ? Date.now() - u.at : 0;
     return [name, { t: r.email.length > 28 ? r.email.slice(0, 27) + '…' : r.email }, { t: r.plan }, cellWindow(u.session, age), cellWindow(u.weekly), cellScoped(u.scoped), cellEdf(r, edf), cellExtra(u.extra)];
   }));
+  for (const r of rows.filter((x) => x.leaseConflict)) log(paint(`\n⚠ ${twoRefreshers(r.name)}`, 'red'));
 }
+const twoRefreshers = (name) => `${name}: the gateway serves it AND another process holds its lease — two proxies refresh one rotating token, and the loser's auth.json is deleted. Stop the lessee, or \`claude-usage switch <other>\` the gateway`;
 async function cmdStats({ json = false, quiet = false, includeLive = true, fresh = null } = {}) {
   const rows = await collect({ includeLive, fresh });
   if (quiet) { const bad = rows.filter((r) => r.error); if (bad.length) console.error(bad.map((r) => `${r.name}: ${r.error}`).join('\n')); return rows; }
@@ -1858,6 +1888,8 @@ async function cmdDoctor({ fix = false } = {}) {
   // meters nothing, the watcher decides `none` forever and nobody is told. This is the check that fails on it.
   const ln = state().live;
   check(!ln || (names().includes(ln) && isCheckedOut(loadAccount(ln))), `state.live (${ln || 'unset'}) names a checked-out record${ln && !names().includes(ln) ? ' — no such record' : ''}`);
+  const gw = codexActive();
+  if (gw && leaseFiles(gw).length) { const held = leaseState(gw) === 'held'; check(!held, held ? twoRefreshers(gw) : `${gw}: the gateway's ChatGPT account has no lessee`); }
   check(!state().auto || watcherLoaded(), `watcher ${state().auto ? 'active' : 'off (fine)'}`);
   check(fs.existsSync(ROOT) && (fs.statSync(ROOT).mode & 0o077) === 0, `${ROOT} is 0700`);
   for (const n of names()) {
@@ -1987,4 +2019,4 @@ async function main() {
   }
 }
 if (require.main === module) main().catch((e) => die(e.message));
-else module.exports = { freshArg, LIST_FLAGS, leaseState, takeLeases, codexLeaseDirs, cmdCodexLeaseDir, LEASE_TAKE_MS, extractLogin, cleanupLogin, parseUsage, parseCodexUsage, cmdAddGpt, cmdAuto, parseArgv, VALUE_FLAGS, cmdCost, cmdPrices, attribute, whereFromSession, claudeProcs, paneForPid, codexCulprit, transcriptFor, readCodexBlocked, actOnCodex, codexNames, codexActive, loadCodexAccount, refreshCodex, codexUsageForAccount, switchCodex, decideCodex, codexMigrate, CODEX_STORE, CODEX_LIVE, CODEX_BLOCKED, CODEX_TIER_FALLBACK, h8, keychainService, acctLock, SWITCH_TRACE, renderRows, addBlockedBy, deadRemedy, liveLogin, net, DARWIN, CFG, CREDS_FILE, CLAUDE_JSON, REFRESH_LOCK, WRITE_LOCK, AUTO_LOG, METER, state, setState, names, loadAccount, saveAccount, liveStoreRead, liveStoreWrite, takeLock, LOCK_WAIT, sleepSync, usageFor, collect, hasTokens, isCheckedOut, inTransition, stripTokens, parkPair, pairFromRecord, claudeJsonAccount, profileOf, liveIdentity, reconcile, adoptLive, writeClaudeJsonAccount, switchTo, refresh, THRESHOLDS, thresholds, worstOf, fablePctOf, unusable, edfCompare, candidates, decide, limitRefusals, notify, resetsLine, cmdTick, TAG, systemdUnits, statuslineText, cmdStatusline, USER_SETTINGS, STATUSLINE_SH, cmdDoctor };
+else module.exports = { cmdStats, LEASE_IO, lockKey, leaseSupportMissing, freshArg, LIST_FLAGS, leaseState, takeLeases, codexLeaseDirs, cmdCodexLeaseDir, LEASE_TAKE_MS, extractLogin, cleanupLogin, parseUsage, parseCodexUsage, cmdAddGpt, cmdAuto, parseArgv, VALUE_FLAGS, cmdCost, cmdPrices, attribute, whereFromSession, claudeProcs, paneForPid, codexCulprit, transcriptFor, readCodexBlocked, actOnCodex, codexNames, codexActive, loadCodexAccount, refreshCodex, codexUsageForAccount, switchCodex, decideCodex, codexMigrate, CODEX_STORE, CODEX_LIVE, CODEX_BLOCKED, CODEX_TIER_FALLBACK, h8, keychainService, acctLock, SWITCH_TRACE, renderRows, addBlockedBy, deadRemedy, liveLogin, net, DARWIN, CFG, CREDS_FILE, CLAUDE_JSON, REFRESH_LOCK, WRITE_LOCK, AUTO_LOG, METER, state, setState, names, loadAccount, saveAccount, liveStoreRead, liveStoreWrite, takeLock, LOCK_WAIT, sleepSync, usageFor, collect, hasTokens, isCheckedOut, inTransition, stripTokens, parkPair, pairFromRecord, claudeJsonAccount, profileOf, liveIdentity, reconcile, adoptLive, writeClaudeJsonAccount, switchTo, refresh, THRESHOLDS, thresholds, worstOf, fablePctOf, unusable, edfCompare, candidates, decide, limitRefusals, notify, resetsLine, cmdTick, TAG, systemdUnits, statuslineText, cmdStatusline, USER_SETTINGS, STATUSLINE_SH, cmdDoctor };

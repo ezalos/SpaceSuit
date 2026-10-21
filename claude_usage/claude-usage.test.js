@@ -1993,7 +1993,9 @@ test('cost: the human report flags a scope that is missing work allocated elsewh
 // kernel's lock, not a stand-in. MUST-FAIL shape: every "no POST" assertion fails on the pre-lease code, which refreshed
 // any parked account inside REFRESH_AHEAD_MS.
 const { spawn: spawnChild, spawnSync: spawnSyncChild } = require('child_process');
-const HAS_FLOCK = spawnSyncChild('flock', ['--version']).status === 0;
+const HAS_FLOCK = spawnSyncChild('flock', ['--version']).status === 0 && fs.existsSync('/proc/locks');
+// A lease leaked by the code under test must FAIL its test rather than hang the suite: each lease test is bounded.
+const LEASE_TEST = { skip: !HAS_FLOCK, timeout: 30e3 };
 function leaseDir(t) { const d = path.join(t.home, '.local', 'state', 'lessee', 'leases'); fs.mkdirSync(d, { recursive: true, mode: 0o700 }); return d; }
 function holdLease(file) { // resolves once the child holds it; .release() ends it and waits for the exit
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -2015,7 +2017,7 @@ function leaseMachine(t, { bMs = 60e3, configure = true } = {}) {
   return path.join(dir, 'gpt-b.lease');
 }
 
-test('lease: a held lease means no token POST from stats; the row is metered with its token and marked leased', { skip: !HAS_FLOCK }, async () => {
+test('lease: a held lease means no token POST from stats; the row is metered with its token and marked leased', LEASE_TEST, async () => {
   const t = fresh(); const file = leaseMachine(t);
   const holder = await holdLease(file);
   try {
@@ -2036,7 +2038,7 @@ test('lease: a held lease means no token POST from stats; the row is metered wit
   } finally { await holder.release(); }
 });
 
-test('lease: an expired token under a held lease is not even read, and not refreshed', { skip: !HAS_FLOCK }, async () => {
+test('lease: an expired token under a held lease is not even read, and not refreshed', LEASE_TEST, async () => {
   const t = fresh(); const file = leaseMachine(t, { bMs: -60e3 });
   const holder = await holdLease(file);
   try {
@@ -2047,7 +2049,7 @@ test('lease: an expired token under a held lease is not even read, and not refre
   } finally { await holder.release(); }
 });
 
-test('lease: a lease taken after the probe still stops the refresh, and the read falls back to leased metering', { skip: !HAS_FLOCK }, async () => {
+test('lease: a lease taken after the probe still stops the refresh, and the read falls back to leased metering', LEASE_TEST, async () => {
   const t = fresh(); const file = leaseMachine(t);
   const holder = await holdLease(file);
   try {
@@ -2060,7 +2062,7 @@ test('lease: a lease taken after the probe still stops the refresh, and the read
   } finally { await holder.release(); }
 });
 
-test('lease: the auto tick never refreshes nor fails over onto a leased account', { skip: !HAS_FLOCK }, async () => {
+test('lease: the auto tick never refreshes nor fails over onto a leased account', LEASE_TEST, async () => {
   const t = fresh(); const file = leaseMachine(t);
   const holder = await holdLease(file);
   try {
@@ -2072,7 +2074,7 @@ test('lease: the auto tick never refreshes nor fails over onto a leased account'
   } finally { await holder.release(); }
 });
 
-test('lease: a switch onto a leased account is refused before any POST, and the link stays', { skip: !HAS_FLOCK }, async () => {
+test('lease: a switch onto a leased account is refused before any POST, and the link stays', LEASE_TEST, async () => {
   const t = fresh(); const file = leaseMachine(t);
   const holder = await holdLease(file);
   try {
@@ -2082,7 +2084,7 @@ test('lease: a switch onto a leased account is refused before any POST, and the 
   } finally { await holder.release(); }
 });
 
-test('lease: a free lease is held by claude-usage across the refresh POST, and released after', { skip: !HAS_FLOCK }, async () => {
+test('lease: a free lease is held by claude-usage across the refresh POST, and released after', LEASE_TEST, async () => {
   const t = fresh(); const file = leaseMachine(t);
   const calls = stubCodexNet(t.m, { whamByToken: { 'gat-a': whamDoc(12), 'gat-b2': whamDoc(30) }, refreshByToken: rotated });
   const inner = t.m.net.http; const midPost = [];
@@ -2105,7 +2107,7 @@ test('lease: a free lease is held by claude-usage across the refresh POST, and r
   assert.equal(tryLock(cFile), 0);
 });
 
-test('lease: under the lease the pair on disk wins — a rotation the lessee saved is adopted, never re-spent', { skip: !HAS_FLOCK }, async () => {
+test('lease: under the lease the pair on disk wins — a rotation the lessee saved is adopted, never re-spent', LEASE_TEST, async () => {
   const t = fresh(); leaseMachine(t);
   const acct = t.m.loadCodexAccount('gpt-b'); // in memory: grt-b, expiring
   fs.writeFileSync(path.join(t.m.CODEX_STORE, 'gpt-b', 'auth.json'), JSON.stringify(codexPair('b9', 8 * 864e5))); // the lessee rotated it on its way out
@@ -2113,6 +2115,83 @@ test('lease: under the lease the pair on disk wins — a rotation the lessee sav
   await t.m.refreshCodex(acct);
   assert.equal(tokenPosts(calls).length, 0, 'the spent grt-b is never posted');
   assert.equal(acct.refresh, 'grt-b9');
+});
+
+test('lease: a refresh the token endpoint rejects still releases the lease', LEASE_TEST, async () => {
+  const t = fresh(); const file = leaseMachine(t);
+  const calls = stubCodexNet(t.m, { refreshByToken: {} }); // grt-b answered 400 invalid_grant
+  await assert.rejects(() => t.m.refreshCodex(t.m.loadCodexAccount('gpt-b')), (e) => e.kind === 'dead');
+  assert.equal(tokenPosts(calls).length, 1, 'it did POST, under the lease');
+  assert.equal(tryLock(file), 0, 'and the lease is free after the rejection');
+});
+
+test('lease: /proc/locks is matched on device AND inode; a waiter line holds nothing', LEASE_TEST, async () => {
+  const t = fresh(); const file = leaseMachine(t);
+  const holder = await holdLease(file);
+  let real;
+  try { real = fs.readFileSync('/proc/locks', 'utf8'); } finally { await holder.release(); }
+  const ino = String(fs.statSync(file).ino);
+  const line = real.split('\n').find((l) => / FLOCK /.test(l) && l.includes(`:${ino} `));
+  assert.ok(line, 'the kernel listed our holder');
+  const fake = path.join(t.home, 'locks');
+  t.m.LEASE_IO.procLocks = fake;
+  fs.writeFileSync(fake, `${line}\n`);
+  assert.equal(t.m.leaseState('gpt-b'), 'held', "the kernel's own line matches the file's stat()");
+  fs.writeFileSync(fake, `${line.replace(/ ([0-9a-f]+):([0-9a-f]+):(\d+) /, (m, a, b, i) => ` ${(parseInt(a, 16) + 1).toString(16)}:${b}:${i} `)}\n`);
+  assert.equal(t.m.leaseState('gpt-b'), 'free', 'same inode on another device is another file');
+  fs.writeFileSync(fake, `${line.replace(/^(\d+:)\s+FLOCK/, '$1 -> FLOCK')}\n`);
+  assert.equal(t.m.leaseState('gpt-b'), 'free', 'a blocked waiter holds nothing');
+});
+
+test('lease: without /proc/locks the state is unknown, and no probe takes the lock to find out', LEASE_TEST, async () => {
+  const t = fresh(); const file = leaseMachine(t);
+  fs.writeFileSync(file, ''); // a free lease file exists
+  t.m.LEASE_IO.procLocks = path.join(t.home, 'no-proc-locks');
+  const seen = path.join(t.home, 'flock-calls'); const fakeFlock = path.join(t.home, 'flock');
+  fs.writeFileSync(fakeFlock, `#!/bin/sh\necho "$@" >> '${seen}'\nexit 0\n`, { mode: 0o755 });
+  t.m.LEASE_IO.flock = fakeFlock;
+  assert.equal(t.m.leaseState('gpt-b'), 'unknown');
+  assert.equal(fs.existsSync(seen), false, 'flock(1) was never asked: asking takes the lock');
+});
+
+test('codex-lease-dir add refuses on a machine without flock(1) or /proc/locks, and changes nothing', () => {
+  const t = fresh(); const dir = leaseDir(t);
+  const died = []; const exit = process.exit; const err = console.error;
+  process.exit = (c) => { throw Object.assign(new Error('exit'), { code: c }); }; console.error = (m) => died.push(String(m));
+  try {
+    t.m.LEASE_IO.flock = path.join(t.home, 'no-such-flock');
+    assert.throws(() => t.m.cmdCodexLeaseDir('add', dir), /exit/);
+    assert.match(died.pop(), /lacks flock\(1\).*nothing changed/);
+    t.m.LEASE_IO.flock = 'flock'; t.m.LEASE_IO.procLocks = path.join(t.home, 'no-proc-locks');
+    assert.throws(() => t.m.cmdCodexLeaseDir('add', dir), /exit/);
+    assert.match(died.pop(), /no-proc-locks, to see a lease without taking it/);
+    assert.deepEqual(t.m.codexLeaseDirs(), [], 'nothing stored');
+  } finally { process.exit = exit; console.error = err; }
+});
+
+test('lease: the gateway\'s own account with its lease held is flagged in stats and fails doctor', LEASE_TEST, async () => {
+  const t = fresh(); leaseMachine(t);
+  const holder = await holdLease(path.join(leaseDir(t), 'gpt-a.lease'));
+  const lines = [];
+  try {
+    stubCodexNet(t.m, { whamByToken: { 'gat-a': whamDoc(12), 'gat-b': whamDoc(30) }, refreshByToken: rotated });
+    console.log = (s) => lines.push(String(s));
+    const rows = await t.m.cmdStats({ includeLive: false });
+    assert.equal(rows.find((r) => r.name === 'gpt-a').leaseConflict, true);
+    assert.ok(lines.some((l) => /gpt-a: the gateway serves it AND another process holds its lease/.test(l)));
+    lines.length = 0;
+    await t.m.cmdDoctor();
+    assert.ok(lines.some((l) => /^FAIL .*gpt-a: the gateway serves it AND/.test(l)), 'doctor fails on it');
+  } finally { console.log = () => {}; process.exitCode = 0; await holder.release(); }
+  // released: no warning, and doctor's check passes
+  lines.length = 0; console.log = (s) => lines.push(String(s));
+  try {
+    const rows = await t.m.cmdStats({ includeLive: false, fresh: true });
+    assert.equal(rows.find((r) => r.name === 'gpt-a').leaseConflict, undefined);
+    assert.ok(!lines.some((l) => /two proxies/.test(l)));
+    await t.m.cmdDoctor();
+    assert.ok(lines.some((l) => /^PASS .*gpt-a: the gateway's ChatGPT account has no lessee/.test(l)));
+  } finally { console.log = () => {}; process.exitCode = 0; }
 });
 
 test('lease: with no lease dir configured nothing changes and no lease file is ever made', async () => {
@@ -2150,7 +2229,7 @@ test('codex-lease-dir: add expands ~ and dedups, remove refuses an unknown dir, 
 test('parseArgv: --fresh is bare, valued, comma-listed or repeated, and never eats --json', () => {
   const t = fresh();
   let p = t.m.parseArgv(['--fresh', '--json']); assert.equal(p.flags.get('fresh'), true); assert.equal(p.flags.get('json'), true);
-  p = t.m.parseArgv(['--fresh', 'gpt1', '--json']); assert.equal(p.flags.get('fresh'), 'gpt1'); assert.ok(p.flags.has('json'));
+  p = t.m.parseArgv(['--fresh', 'gpt-b', '--json']); assert.equal(p.flags.get('fresh'), 'gpt-b'); assert.ok(p.flags.has('json'));
   p = t.m.parseArgv(['--fresh', 'a', '--fresh', 'b', '--fresh']); assert.equal(p.flags.get('fresh'), 'a,b');
   p = t.m.parseArgv(['--fresh=a,b']); assert.equal(p.flags.get('fresh'), 'a,b');
   assert.equal(t.m.freshArg(undefined), null); assert.equal(t.m.freshArg(true), true);
