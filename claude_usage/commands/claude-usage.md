@@ -1,6 +1,6 @@
 ---
 description: Family Claude accounts: usage meters of every account in one table, switch the whole machine to another account without a browser, and the failover watcher (claude-usage tool)
-argument-hint: [stats] | switch [<name>] | adopt <name> | list | add <name> [--email <addr>] | remove <name> | add-gpt <name> | remove-gpt <name> | priority <name> [<n>] | cost [--by model|session|repo|day] [--roots <ids>] | prices [--refresh] | auto on|off|status | statusline install | doctor [--fix]
+argument-hint: [stats [--fresh [<name>,...]]] | switch [<name>] | adopt <name> | list | add <name> [--email <addr>] | remove <name> | add-gpt <name> | remove-gpt <name> | codex-lease-dir [add|remove <dir>] | priority <name> [<n>] | cost [--by model|session|repo|day] [--roots <ids>] | prices [--refresh] | auto on|off|status | statusline install | doctor [--fix]
 ---
 Run the local tool and report its output verbatim (it is a short table):
 
@@ -25,8 +25,12 @@ What the rows mean:
   `perso` and `gpt-perso` are 0 since 2026-09-27 (Louis lifted their last-resort status; `priority <name> 1` restores it).
 - `4m old` on a window means that reading came from the meter, not from a fresh call: the usage endpoint has a
   request budget and the tool reuses a reading rather than spend one (45 s checked out, 5 min parked, and longer
-  while an account is backed off after a 429). It is the real number, just not this second's. `stats --fresh`
-  spends the requests and asks anyway — worth it before a decision, not for a glance.
+  while an account is backed off after a 429). It is the real number, just not this second's. `stats --fresh <name>`
+  spends a request on that account and asks anyway — worth it before a decision, not for a glance. Name the accounts
+  you need (`--fresh a,b` or `--fresh a --fresh b`); bare `--fresh` re-reads every account, ~one request each. Either
+  way an account backed off after a 429 is NOT asked again: its row comes from the last reading, marked rate-limited
+  (`"rateLimited": true, "cached": true` in `--json`). A poller that ignored the back-off kept the bucket drained and
+  lengthened the back-off the watcher reads for the same account.
 
 ChatGPT accounts (Louis asks "add my other ChatGPT", "which OpenAI account am I on", "Astra says I hit the limit"):
 - `claude-usage add-gpt <name>` — device login for another ChatGPT subscription. Needs a TTY, so tell Louis to paste
@@ -39,6 +43,16 @@ ChatGPT accounts (Louis asks "add my other ChatGPT", "which OpenAI account am I 
 - **Never hand-copy an `auth.json`.** The refresh token rotates on every use, and on a 401 the proxy DELETES the file
   and forces a browser re-login. The store points at credentials, it never copies them. The active account is
   refreshed by the proxy alone; parked ones by this tool alone.
+- **Leased accounts.** A program may run its OWN proxy on a parked account (a private HOME whose
+  `.config/claude-code-proxy/codex` links to `~/.claude/claude-usage/codex/<name>`), holding an exclusive flock on
+  `<lease dir>/<name>.lease` while it runs. Register each such lease dir once:
+  `claude-usage codex-lease-dir add <dir>` (`codex-lease-dir` lists them, `remove <dir>` drops one; none by default).
+  Then an account whose lease is held shows `◐` in stats (`"leased": true` in `--json`): it is metered with its
+  current token only, never refreshed here (a 401 reads "served by a leased proxy, it refreshes it"), and never a
+  switch or failover target. A refresh of any lease-dir account holds that same flock across the token POST and the
+  write, so a lessee starting meanwhile is refused ("lease held") instead of racing. Needs util-linux `flock`; without
+  it (stock macOS) an account in a configured lease dir is treated as leased and never refreshed here. With no lease
+  dir configured nothing changes and `flock` is never run.
 - Failover is two domains that never cross: a spent ChatGPT account moves to another ChatGPT account, a spent Claude
   account to another Claude account. Swapping a Claude credential does nothing for Astra. When every ChatGPT account
   is spent nothing reroutes — the alert names the Claude model at the same tier (Astra → Fable) and Louis switches

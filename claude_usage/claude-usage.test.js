@@ -1988,4 +1988,200 @@ test('cost: the human report flags a scope that is missing work allocated elsewh
   assert.doesNotMatch(costText(t, {}), /outside the selected scope/i, 'a whole scope says nothing about coverage');
 });
 
+// ---------- leases: a parked ChatGPT account another program's own proxy is serving ----------
+// A real `flock` child holds each lease here, exactly as a lessee's proxy wrapper does: the code under test must see the
+// kernel's lock, not a stand-in. MUST-FAIL shape: every "no POST" assertion fails on the pre-lease code, which refreshed
+// any parked account inside REFRESH_AHEAD_MS.
+const { spawn: spawnChild, spawnSync: spawnSyncChild } = require('child_process');
+const HAS_FLOCK = spawnSyncChild('flock', ['--version']).status === 0;
+function leaseDir(t) { const d = path.join(t.home, '.local', 'state', 'lessee', 'leases'); fs.mkdirSync(d, { recursive: true, mode: 0o700 }); return d; }
+function holdLease(file) { // resolves once the child holds it; .release() ends it and waits for the exit
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const child = spawnChild('flock', ['--nonblock', '--exclusive', file, 'sh', '-c', 'echo held; exec cat >/dev/null'], { stdio: ['pipe', 'pipe', 'ignore'] });
+  return new Promise((resolve, reject) => {
+    let out = '';
+    child.stdout.on('data', (d) => { out += d; if (out.includes('held\n')) resolve({ release: () => new Promise((r) => { child.once('exit', () => r()); child.stdin.end(); }) }); });
+    child.on('exit', (c) => reject(new Error(`lease holder exited ${c}`)));
+  });
+}
+const tryLock = (file) => spawnSyncChild('flock', ['--nonblock', '--exclusive', file, 'true']).status; // 0 = was free
+const tokenPosts = (calls) => calls.filter((c) => c.method === 'POST' && c.url.includes('auth.openai.com/oauth/token'));
+const rotated = { 'grt-b': { access_token: 'gat-b2', refresh_token: 'grt-b2', expires_in: 8 * 86400 } };
+// gpt-a is the gateway's; gpt-b is parked, expiring inside REFRESH_AHEAD_MS, and leasable from one configured dir.
+function leaseMachine(t, { bMs = 60e3, configure = true } = {}) {
+  seedCodexAccount(t, 'gpt-a', 'a'); seedCodexAccount(t, 'gpt-b', 'b', { ms: bMs }); linkCodex(t, 'gpt-a');
+  const dir = leaseDir(t);
+  if (configure) t.m.setState({ codexLeaseDirs: [dir] });
+  return path.join(dir, 'gpt-b.lease');
+}
+
+test('lease: a held lease means no token POST from stats; the row is metered with its token and marked leased', { skip: !HAS_FLOCK }, async () => {
+  const t = fresh(); const file = leaseMachine(t);
+  const holder = await holdLease(file);
+  try {
+    const calls = stubCodexNet(t.m, { whamByToken: { 'gat-a': whamDoc(12), 'gat-b': whamDoc(30) }, refreshByToken: rotated });
+    assert.equal(t.m.leaseState('gpt-b'), 'held', 'read from /proc/locks without taking the lock');
+    const rows = await t.m.collect({ includeLive: false, fresh: true });
+    const b = rows.find((r) => r.name === 'gpt-b');
+    assert.equal(tokenPosts(calls).length, 0, 'never refresh under a live lessee');
+    assert.equal(b.leased, true); assert.equal(b.checkedOut, false, 'leased is not the gateway\'s ●');
+    assert.equal(b.usage.weekly.percent, 30, 'metered with its current token');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(t.m.CODEX_STORE, 'gpt-b', 'auth.json'), 'utf8')).refresh, 'grt-b', 'the credential is untouched');
+    const lines = []; console.log = (s) => lines.push(String(s)); t.m.renderRows(rows); console.log = () => {};
+    assert.match(lines.find((l) => l.includes('gpt-b')), /◐ gpt-b/);
+    // a stale token under a lessee: say who refreshes it, never ask for a re-login
+    stubCodexNet(t.m, { whamByToken: {}, refreshByToken: rotated });
+    const r401 = (await t.m.collect({ includeLive: false, fresh: new Set(['gpt-b']) })).find((r) => r.name === 'gpt-b');
+    assert.match(r401.error, /served by a leased proxy, it refreshes it/);
+  } finally { await holder.release(); }
+});
+
+test('lease: an expired token under a held lease is not even read, and not refreshed', { skip: !HAS_FLOCK }, async () => {
+  const t = fresh(); const file = leaseMachine(t, { bMs: -60e3 });
+  const holder = await holdLease(file);
+  try {
+    const calls = stubCodexNet(t.m, { whamByToken: { 'gat-a': whamDoc(12), 'gat-b': whamDoc(30) }, refreshByToken: rotated });
+    const b = (await t.m.collect({ includeLive: false })).find((r) => r.name === 'gpt-b');
+    assert.match(b.error, /expired — served by a leased proxy/);
+    assert.equal(calls.filter((c) => c.tok === 'gat-b' || tokenPosts([c]).length).length, 0);
+  } finally { await holder.release(); }
+});
+
+test('lease: a lease taken after the probe still stops the refresh, and the read falls back to leased metering', { skip: !HAS_FLOCK }, async () => {
+  const t = fresh(); const file = leaseMachine(t);
+  const holder = await holdLease(file);
+  try {
+    const calls = stubCodexNet(t.m, { whamByToken: { 'gat-b': whamDoc(30) }, refreshByToken: rotated });
+    const acct = t.m.loadCodexAccount('gpt-b'); // no acct.leased: as if collect's probe had read "free" a moment earlier
+    await assert.rejects(() => t.m.refreshCodex(t.m.loadCodexAccount('gpt-b')), (e) => e.kind === 'leased' && /held by another process/.test(e.message));
+    const g = await t.m.codexUsageForAccount(acct);
+    assert.equal(g.usage.weekly.percent, 30); assert.equal(acct.leased, true);
+    assert.equal(tokenPosts(calls).length, 0);
+  } finally { await holder.release(); }
+});
+
+test('lease: the auto tick never refreshes nor fails over onto a leased account', { skip: !HAS_FLOCK }, async () => {
+  const t = fresh(); const file = leaseMachine(t);
+  const holder = await holdLease(file);
+  try {
+    const calls = stubCodexNet(t.m, { whamByToken: { 'gat-a': whamDoc(99), 'gat-b': whamDoc(3) }, refreshByToken: rotated });
+    await t.m.cmdTick();
+    assert.equal(tokenPosts(calls).length, 0, 'no refresh POST from the tick');
+    assert.equal(t.m.codexActive(), 'gpt-a', 'the emptiest account is leased: not a target');
+    assert.equal(t.m.state().codexLastDecision.action, 'exhausted');
+  } finally { await holder.release(); }
+});
+
+test('lease: a switch onto a leased account is refused before any POST, and the link stays', { skip: !HAS_FLOCK }, async () => {
+  const t = fresh(); const file = leaseMachine(t);
+  const holder = await holdLease(file);
+  try {
+    const calls = stubCodexNet(t.m, { refreshByToken: rotated });
+    await assert.rejects(() => t.m.switchCodex('gpt-b'), (e) => e.kind === 'leased' && /two refreshers/.test(e.message));
+    assert.equal(tokenPosts(calls).length, 0); assert.equal(t.m.codexActive(), 'gpt-a');
+  } finally { await holder.release(); }
+});
+
+test('lease: a free lease is held by claude-usage across the refresh POST, and released after', { skip: !HAS_FLOCK }, async () => {
+  const t = fresh(); const file = leaseMachine(t);
+  const calls = stubCodexNet(t.m, { whamByToken: { 'gat-a': whamDoc(12), 'gat-b2': whamDoc(30) }, refreshByToken: rotated });
+  const inner = t.m.net.http; const midPost = [];
+  t.m.net.http = async (method, url, opts) => { if (url.includes('auth.openai.com')) midPost.push(tryLock(file)); return inner(method, url, opts); };
+  assert.equal(t.m.leaseState('gpt-b'), 'free');
+  const b = (await t.m.collect({ includeLive: false })).find((r) => r.name === 'gpt-b');
+  assert.equal(tokenPosts(calls).length, 1, 'a free lease: refreshed as before');
+  assert.deepEqual(midPost, [1], 'a lessee starting during the POST is refused');
+  assert.equal(tryLock(file), 0, 'released once the rotated pair is written');
+  assert.equal(b.leased, undefined); assert.equal(b.usage.weekly.percent, 30);
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600, 'created the way the lessees create it');
+  // and the switch holds it across refresh + relink
+  seedCodexAccount(t, 'gpt-c', 'c', { ms: 60e3 });
+  const cFile = path.join(path.dirname(file), 'gpt-c.lease'), midSwitch = [];
+  stubCodexNet(t.m, { refreshByToken: { 'grt-c': { access_token: 'gat-c2', refresh_token: 'grt-c2', expires_in: 86400 } } });
+  const cStub = t.m.net.http;
+  t.m.net.http = async (method, url, opts) => { if (url.includes('auth.openai.com')) midSwitch.push(tryLock(cFile)); return cStub(method, url, opts); };
+  await t.m.switchCodex('gpt-c');
+  assert.deepEqual(midSwitch, [1]); assert.equal(t.m.codexActive(), 'gpt-c');
+  assert.equal(tryLock(cFile), 0);
+});
+
+test('lease: under the lease the pair on disk wins — a rotation the lessee saved is adopted, never re-spent', { skip: !HAS_FLOCK }, async () => {
+  const t = fresh(); leaseMachine(t);
+  const acct = t.m.loadCodexAccount('gpt-b'); // in memory: grt-b, expiring
+  fs.writeFileSync(path.join(t.m.CODEX_STORE, 'gpt-b', 'auth.json'), JSON.stringify(codexPair('b9', 8 * 864e5))); // the lessee rotated it on its way out
+  const calls = stubCodexNet(t.m, { refreshByToken: rotated });
+  await t.m.refreshCodex(acct);
+  assert.equal(tokenPosts(calls).length, 0, 'the spent grt-b is never posted');
+  assert.equal(acct.refresh, 'grt-b9');
+});
+
+test('lease: with no lease dir configured nothing changes and no lease file is ever made', async () => {
+  const t = fresh(); const file = leaseMachine(t, { configure: false });
+  const calls = stubCodexNet(t.m, { whamByToken: { 'gat-a': whamDoc(12), 'gat-b2': whamDoc(30) }, refreshByToken: rotated });
+  assert.equal(t.m.leaseState('gpt-b'), null);
+  const b = (await t.m.collect({ includeLive: false })).find((r) => r.name === 'gpt-b');
+  assert.equal(tokenPosts(calls).length, 1); assert.equal(b.usage.weekly.percent, 30); assert.equal(b.leased, undefined);
+  assert.equal(fs.existsSync(file), false, 'no flock machinery ran');
+});
+
+test('decideCodex: a leased row is never a failover target, however empty', () => {
+  const t = fresh();
+  const gpt = (name, pct, extra = {}) => ({ name, provider: 'openai', usage: { session: null, weekly: { percent: pct }, scoped: [] }, ...extra });
+  const d = t.m.decideCodex({ rows: [gpt('gpt-a', 99, { checkedOut: true }), gpt('gpt-b', 1, { leased: true }), gpt('gpt-c', 40)], active: 'gpt-a', thresholds: T });
+  assert.equal(d.action, 'failover'); assert.equal(d.to, 'gpt-c');
+  const d2 = t.m.decideCodex({ rows: [gpt('gpt-a', 99, { checkedOut: true }), gpt('gpt-b', 1, { leased: true })], active: 'gpt-a', thresholds: T });
+  assert.equal(d2.action, 'exhausted');
+});
+
+test('codex-lease-dir: add expands ~ and dedups, remove refuses an unknown dir, the list is ~-form', () => {
+  const t = fresh(); const lines = []; console.log = (s) => lines.push(String(s));
+  try {
+    t.m.cmdCodexLeaseDir('add', '~/.local/state/lessee/leases'); t.m.cmdCodexLeaseDir('add', path.join(t.home, '.local/state/lessee/leases'));
+    t.m.cmdCodexLeaseDir('add', '/srv/other-leases');
+    assert.deepEqual(t.m.codexLeaseDirs(), [path.join(t.home, '.local/state/lessee/leases'), '/srv/other-leases']);
+    lines.length = 0; t.m.cmdCodexLeaseDir();
+    assert.deepEqual(lines, ['~/.local/state/lessee/leases\n/srv/other-leases']);
+    t.m.cmdCodexLeaseDir('remove', '/srv/other-leases');
+    assert.deepEqual(t.m.codexLeaseDirs(), [path.join(t.home, '.local/state/lessee/leases')]);
+  } finally { console.log = () => {}; }
+});
+
+// ---------- stats --fresh [<name>,...]: past the TTL, never past a 429 hold ----------
+test('parseArgv: --fresh is bare, valued, comma-listed or repeated, and never eats --json', () => {
+  const t = fresh();
+  let p = t.m.parseArgv(['--fresh', '--json']); assert.equal(p.flags.get('fresh'), true); assert.equal(p.flags.get('json'), true);
+  p = t.m.parseArgv(['--fresh', 'gpt1', '--json']); assert.equal(p.flags.get('fresh'), 'gpt1'); assert.ok(p.flags.has('json'));
+  p = t.m.parseArgv(['--fresh', 'a', '--fresh', 'b', '--fresh']); assert.equal(p.flags.get('fresh'), 'a,b');
+  p = t.m.parseArgv(['--fresh=a,b']); assert.equal(p.flags.get('fresh'), 'a,b');
+  assert.equal(t.m.freshArg(undefined), null); assert.equal(t.m.freshArg(true), true);
+  assert.deepEqual([...t.m.freshArg('a, b,,')], ['a', 'b']);
+});
+
+test('collect --fresh <name>: only that account is re-read, the rest come from the meter', async () => {
+  const t = fresh(); await machineOnPerso(t);
+  const calls = stubNet(t.m, { usageByToken: { 'at-perso': usage(40, 10), 'at-work': usage(5, 5) } });
+  await t.m.collect();
+  const rows = await t.m.collect({ fresh: new Set(['work']) });
+  assert.deepEqual(calls.slice(2).map((c) => c.tok), ['at-work']);
+  assert.ok(rows.find((r) => r.name === 'perso').cached); assert.ok(!rows.find((r) => r.name === 'work').cached);
+  await assert.rejects(() => t.m.collect({ fresh: new Set(['nope']) }), /no account named nope/);
+});
+
+test('collect --fresh honours the 429 hold, named or bare; only the watcher\'s force passes it', async () => {
+  const t = fresh(); await machineOnPerso(t);
+  const calls = stubNet(t.m, { usageByToken: { 'at-perso': usage(40, 10), 'at-work': usage(5, 5) } });
+  await t.m.collect();
+  t.m.setState({ rateLimited: { perso: { tries: 1, until: Date.now() + 60e3 } } });
+  for (const fresh of [new Set(['perso']), true]) {
+    const before = calls.length;
+    const p = (await t.m.collect({ fresh })).find((r) => r.name === 'perso');
+    assert.equal(calls.filter((c) => c.tok === 'at-perso').length, 1, 'a held account is not asked again');
+    assert.ok(p.cached && p.rateLimited); assert.equal(p.usage.session.percent, 40);
+    if (fresh === true) assert.deepEqual(calls.slice(before).map((c) => c.tok), ['at-work'], 'bare --fresh still re-reads the rest');
+  }
+  assert.equal(t.m.state().rateLimited.perso.tries, 1, 'and the back-off is not escalated by a poller');
+  await t.m.collect({ force: true });
+  assert.equal(calls.filter((c) => c.tok === 'at-perso').length, 2, 'force (the pre-switch re-read) still passes the hold');
+});
+
 // No module.exports here on purpose: requiring this file runs the whole suite and silences console.log — a trap, not a seam.

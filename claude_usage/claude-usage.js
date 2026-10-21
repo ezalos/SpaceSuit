@@ -16,7 +16,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const HOME = os.homedir();
 const ROOT = path.join(HOME, '.claude', 'claude-usage');
@@ -486,7 +486,8 @@ function decideCodex({ rows, active, thresholds: t, blocked = null, exhaustedSin
   const ok = (r) => r && !r.error && r.usage && (!r.usage.at || Date.now() - r.usage.at <= DECIDE_MAX_AGE_MS) && worstOf(r.usage) !== null;
   if (!active) return { action: 'none', reason: gpt.length ? 'no active ChatGPT account' : 'no ChatGPT accounts' };
   const A = gpt.find((r) => r.name === active);
-  const others = gpt.filter((r) => r.name !== active && ok(r)).map((r) => ({ name: r.name, worst: worstOf(r.usage), priority: r.priority || 0, blocked: blockedFrom(r, t.targetBelow) })).sort((a, b) => a.priority - b.priority || a.worst - b.worst);
+  // A leased row is another proxy's active account: switching the gateway onto it would make two refreshers.
+  const others = gpt.filter((r) => r.name !== active && !r.leased && ok(r)).map((r) => ({ name: r.name, worst: worstOf(r.usage), priority: r.priority || 0, blocked: blockedFrom(r, t.targetBelow) })).sort((a, b) => a.priority - b.priority || a.worst - b.worst);
   // The blocked file is written on 401/403/429 and stays until the plugin's setup clears it, so it is evidence only
   // while fresh AND only as a 429: a 401 is a broken login, and switching accounts would hide that instead of fixing it.
   const rejected = !!blocked && blocked.statusCode === 429 && Date.now() - Date.parse(blocked.observedAt || '') < CODEX_BLOCKED_COOLDOWN_MS;
@@ -1217,14 +1218,102 @@ function parseCodexUsage(d) {
   const extra = { enabled: !!(c.has_credits || c.unlimited), percent: null, currency: null, usedMinor: null, limitMinor: null, exponent: 2, balance: c.balance ?? null, unlimited: !!c.unlimited };
   return { session: byLen(CODEX_FIVE_HOUR_S), weekly: byLen(CODEX_WEEK_S), scoped, extra, breakdown: null, at: Date.now() };
 }
+// ---------- leases: a parked ChatGPT account that ANOTHER program's own proxy is serving ----------
+// The gateway's symlink is not the only reader of the store. A program that wants a ChatGPT account to itself runs its
+// own claude-code-proxy under a private HOME whose .config/claude-code-proxy/codex links to <store>/<name>, and holds an
+// exclusive flock(2) on <lease dir>/<name>.lease for that proxy's whole life. To the symlink test that account looks
+// parked, and a parked account is ours to refresh — so without this, a meter read near its expiry spends the rotating
+// refresh token under a live proxy, which then gets a rejected refresh and deletes auth.json mid-run.
+// The lease dirs are configuration (`claude-usage codex-lease-dir add <dir>`), none by default: with none configured
+// nothing below runs and no flock(1) is ever spawned, so a machine without such programs (or without flock: macOS)
+// behaves exactly as before.
+// Two halves. leaseState() is a READ for display and decisions, and must not take the lock: a probe that took it, even
+// for a millisecond, would make a proxy starting at that instant exit "lease held". Correctness rests on the other
+// half: takeLeases() holds the same exclusive flock across every refresh POST and its write (and across a gateway
+// switch onto the account), so a proxy starting meanwhile is refused instead of racing — a check alone cannot do that.
+const LEASE_TAKE_MS = 10e3; // flock(1) -n answers at once; past this the child is wedged, and the lease counts as not taken
+function codexLeaseDirs() { const d = state().codexLeaseDirs; return Array.isArray(d) ? d : []; }
+const leaseFiles = (name) => codexLeaseDirs().map((d) => path.join(d, `${name}.lease`));
+// The inodes /proc/locks lists under an flock(2) holder ("1: FLOCK ADVISORY WRITE <pid> <maj>:<min>:<ino> 0 EOF";
+// a blocked waiter's line reads "1: -> FLOCK" and holds nothing, so the anchored pattern skips it). Matched on the inode
+// alone: overlay filesystems can report a different device here than stat() does, and a false "held" only costs a
+// refresh we skip, where a false "free" would be caught by takeLeases() anyway. null: not Linux, or unreadable.
+function flockedInodes() {
+  try {
+    const out = new Set();
+    for (const l of fs.readFileSync('/proc/locks', 'utf8').split('\n')) { const m = l.match(/^\d+:\s+FLOCK\s+\S+\s+\S+\s+\d+\s+[0-9a-f]+:[0-9a-f]+:(\d+)\s/i); if (m) out.add(m[1]); }
+    return out;
+  } catch { return null; }
+}
+// null: no lease dir configured, the account is ours as before. 'held': some process holds its lease. 'unknown': no
+// /proc/locks and no flock(1) to ask (macOS with a lease dir set) — treated as held everywhere, never refreshed here.
+function leaseState(name) {
+  const files = leaseFiles(name);
+  if (!files.length) return null;
+  const locked = flockedInodes();
+  for (const f of files) {
+    let ino; try { ino = fs.statSync(f, { bigint: true }).ino.toString(); } catch { continue; } // no file: never leased in that dir
+    if (locked) { if (locked.has(ino)) return 'held'; continue; }
+    const r = spawnSync('flock', ['--nonblock', '--shared', f, 'true'], { timeout: LEASE_TAKE_MS }); // shared: two probes never refuse each other
+    if (r.error) return 'unknown';
+    if (r.status !== 0) return 'held';
+  }
+  return 'free';
+}
+// One lease file, held by a child `flock` for as long as its stdin stays open: Node has no flock(2), and a child is the
+// one holder that dies with us — if this process is killed, the pipe closes, cat sees EOF and flock exits, releasing
+// it. "held" on stdout is the child's proof it has the lock; exiting before saying it means it never had it (with -n
+// and no message, someone else holds it). The file is created 0600 the way the lessees create it, so we never leave a
+// world-readable one behind and flock(1) never has to.
+function takeLease(file) {
+  return new Promise((resolve) => {
+    try { fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 }); fs.closeSync(fs.openSync(file, fs.constants.O_RDWR | fs.constants.O_CREAT, 0o600)); }
+    catch (e) { resolve({ why: `cannot open ${tildify(file)}: ${e.code || e.message}` }); return; }
+    const child = spawn('flock', ['--nonblock', '--exclusive', file, 'sh', '-c', 'echo held; exec cat >/dev/null'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let out = '', err = '', done = false;
+    const finish = (v) => { if (done) return; done = true; clearTimeout(timer); resolve(v); };
+    const timer = setTimeout(() => { child.kill(); finish({ why: `flock(1) did not answer within ${LEASE_TAKE_MS / 1000}s` }); }, LEASE_TAKE_MS);
+    const release = () => new Promise((r) => { if (child.exitCode !== null || child.signalCode !== null) return r(); child.once('exit', () => r()); child.stdin.end(); });
+    child.on('error', (e) => finish({ why: e.code === 'ENOENT' ? 'flock(1) is not installed' : e.message }));
+    child.stderr.on('data', (d) => { err += d; });
+    child.stdout.on('data', (d) => { out += d; if (out.includes('held\n')) finish({ release }); });
+    child.on('exit', (code) => finish({ why: code === 1 && !err.trim() ? `${tildify(file)} is held by another process` : `flock exited ${code}${err.trim() ? `: ${err.trim()}` : ''}` }));
+  });
+}
+// Every configured dir's lease, or none: a program may lease from any of them. All-or-nothing, released in reverse.
+async function takeLeases(name) {
+  const held = [];
+  const release = async () => { for (const r of held.reverse()) await r(); };
+  for (const f of leaseFiles(name)) {
+    const got = await takeLease(f);
+    if (!got.release) { await release(); return { refused: got.why }; }
+    held.push(got.release);
+  }
+  return { release };
+}
+const LEASED_MSG = 'served by a leased proxy, it refreshes it';
+
 // The ownership rule, inherited from the Claude side with the proxy in Claude Code's seat: the ACTIVE account is
 // refreshed by the proxy alone, parked ones by this tool alone. Two refreshers spending one rotating token is what
 // revoked a grant on the Claude side, and here the loser is deleted outright.
-async function refreshCodex(acct) {
+// A leased account is a parked one with a proxy in it: refreshed only while we hold its lease (`leaseHeld`: the caller
+// already does, switchCodex), and from the pair on disk under it — the proxy that held the lease until now saved its
+// own rotations there, through its link, so our in-memory copy may already be spent.
+async function refreshCodex(acct, { leaseHeld = false } = {}) {
   if (acct.name === codexActive()) throw new UsageError(`${acct.name} is the active gateway account — the proxy refreshes it, never this tool`, 'usage');
   if (!acct.refresh) throw new UsageError(`${acct.name} holds no credential — claude-usage add-gpt ${acct.name}`, 'dead');
   const release = takeLock(codexRefreshLock(acct.name), ACCT_LOCK_STALE, LOCK_WAIT.account);
+  let lease = null;
   try {
+    if (!leaseHeld && leaseFiles(acct.name).length) {
+      lease = await takeLeases(acct.name);
+      if (!lease.release) throw new UsageError(`${acct.name}: ${LEASED_MSG} (${lease.refused})`, 'leased');
+    }
+    const disk = loadCodexAccount(acct.name);
+    if (disk.refresh && disk.refresh !== acct.refresh) { // rotated under us: never POST a spent refresh token
+      Object.assign(acct, { access: disk.access, refresh: disk.refresh, expires: disk.expires });
+      if ((disk.expires || 0) - Date.now() >= REFRESH_AHEAD_MS) return acct;
+    }
     const body = new URLSearchParams({ client_id: CODEX_CLIENT_ID, grant_type: 'refresh_token', refresh_token: acct.refresh }).toString();
     const r = await net.http('POST', CODEX_TOKEN_URL, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
     if (r.status !== 200 || !r.data?.access_token) {
@@ -1240,16 +1329,22 @@ async function refreshCodex(acct) {
     saveCodexMeta(acct.name, { dead: null });
     Object.assign(acct, { access: next.access, refresh: next.refresh, expires: next.expires, dead: null });
     return acct;
-  } finally { release(); }
+  } finally { if (lease?.release) await lease.release(); release(); }
 }
+// acct.leased: collect's leaseState() reading. A lease that refreshCodex finds taken (a proxy started since) turns the
+// account leased for this read too.
 async function codexUsageForAccount(acct) {
   if (acct.dead) throw new UsageError(acct.dead, 'dead');
   if (!acct.access) throw new UsageError(`no credential — claude-usage add-gpt ${acct.name}`, 'dead');
   const active = acct.name === codexActive();
   // A parked token we may refresh; the active one we may not, so if it has gone stale we say so and let the proxy fix it.
-  if (!active && (acct.expires || 0) - Date.now() < REFRESH_AHEAD_MS) await refreshCodex(acct);
+  // A leased one is the active one of another proxy: the same rule.
+  if (!active && !acct.leased && (acct.expires || 0) - Date.now() < REFRESH_AHEAD_MS) {
+    try { await refreshCodex(acct); } catch (e) { if (e.kind !== 'leased') throw e; acct.leased = true; }
+  }
+  if (acct.leased && (acct.expires || 0) <= Date.now()) throw new UsageError(`token expired — ${LEASED_MSG}`, 'idle');
   const r = await getCodexUsage(acct);
-  if (r.status === 401) throw new UsageError(active ? 'token stale — the proxy refreshes it on its next request' : 'login expired — claude-usage add-gpt ' + acct.name, 'idle');
+  if (r.status === 401) throw new UsageError(active ? 'token stale — the proxy refreshes it on its next request' : acct.leased ? LEASED_MSG : 'login expired — claude-usage add-gpt ' + acct.name, 'idle');
   if (r.status === 429) throw new UsageError('usage endpoint rate-limited', 'rate_limited');
   if (r.status !== 200) throw new UsageError(`usage HTTP ${r.status}: ${(r.data?.detail || r.text || '').slice(0, 80)}`, 'http');
   const d = r.data || {};
@@ -1265,22 +1360,45 @@ async function switchCodex(name) {
   // Refresh while it is still parked: once linked only the proxy may, and only on a request, so an expired token would
   // sit stale (its meter unreadable) until then — and a dead refresh token would make the proxy delete auth.json. A
   // rejected refresh refuses the switch and leaves the gateway on the account that works.
-  if (name !== codexActive() && (acct.expires || 0) - Date.now() < REFRESH_AHEAD_MS) await refreshCodex(acct);
-  let st = null; try { st = fs.lstatSync(CODEX_LIVE); } catch { /* absent is fine */ }
-  if (st && !st.isSymbolicLink()) throw new UsageError(`${CODEX_LIVE} is a real directory, not a link — claude-usage doctor --fix migrates it first`, 'usage');
-  const from = codexActive();
-  const release = takeLock(CODEX_SWITCH_LOCK, 600e3, LOCK_WAIT.switch);
+  // A leased account is refused outright: linked, the gateway's proxy would refresh it beside the lessee's — two
+  // refreshers. Its lease is held across the refresh AND the relink, so no lessee can start on it in between.
+  let lease = null;
+  if (name !== codexActive() && leaseFiles(name).length) {
+    lease = await takeLeases(name);
+    if (!lease.release) throw new UsageError(`${name} is ${LEASED_MSG}; the gateway switching onto it would make two refreshers (${lease.refused})`, 'leased');
+  }
   try {
-    fs.mkdirSync(path.dirname(CODEX_LIVE), { recursive: true });
-    const tmp = `${CODEX_LIVE}.switching-${process.pid}`;
-    try { fs.unlinkSync(tmp); } catch { /* none */ }
-    fs.symlinkSync(codexDir(name), tmp);
-    fs.renameSync(tmp, CODEX_LIVE);
-    // Prove it through the path the proxy actually opens, not through the store.
-    let seen = null; try { seen = readJson(path.join(CODEX_LIVE, 'auth.json')); } catch { /* reported below */ }
-    if (!seen?.access) throw new UsageError(`${name} is linked but its credential is unreadable through ${CODEX_LIVE}`, 'none');
-    return { from, to: name };
-  } finally { release(); }
+    if (name !== codexActive() && (acct.expires || 0) - Date.now() < REFRESH_AHEAD_MS) await refreshCodex(acct, { leaseHeld: !!lease });
+    let st = null; try { st = fs.lstatSync(CODEX_LIVE); } catch { /* absent is fine */ }
+    if (st && !st.isSymbolicLink()) throw new UsageError(`${CODEX_LIVE} is a real directory, not a link — claude-usage doctor --fix migrates it first`, 'usage');
+    const from = codexActive();
+    const release = takeLock(CODEX_SWITCH_LOCK, 600e3, LOCK_WAIT.switch);
+    try {
+      fs.mkdirSync(path.dirname(CODEX_LIVE), { recursive: true });
+      const tmp = `${CODEX_LIVE}.switching-${process.pid}`;
+      try { fs.unlinkSync(tmp); } catch { /* none */ }
+      fs.symlinkSync(codexDir(name), tmp);
+      fs.renameSync(tmp, CODEX_LIVE);
+      // Prove it through the path the proxy actually opens, not through the store.
+      let seen = null; try { seen = readJson(path.join(CODEX_LIVE, 'auth.json')); } catch { /* reported below */ }
+      if (!seen?.access) throw new UsageError(`${name} is linked but its credential is unreadable through ${CODEX_LIVE}`, 'none');
+      return { from, to: name };
+    } finally { release(); }
+  } finally { if (lease?.release) await lease.release(); }
+}
+// The lease dirs live in state.json with the thresholds. Stored absolute, so a `~` typed here means this HOME.
+function cmdCodexLeaseDir(sub, dir) {
+  const dirs = codexLeaseDirs();
+  if (!sub) {
+    log(dirs.length ? dirs.map(tildify).join('\n') : 'no lease dir: every parked ChatGPT account is refreshed here when it nears expiry');
+    return;
+  }
+  if (!['add', 'remove'].includes(sub) || !dir) die('usage: claude-usage codex-lease-dir [add <dir> | remove <dir>]');
+  const abs = path.resolve(dir === '~' ? HOME : dir.startsWith('~/') ? path.join(HOME, dir.slice(2)) : dir);
+  const next = sub === 'add' ? [...new Set([...dirs, abs])] : dirs.filter((d) => d !== abs);
+  if (sub === 'remove' && next.length === dirs.length) die(`${tildify(abs)} is not a lease dir (have: ${dirs.map(tildify).join(', ') || 'none'})`);
+  setState({ codexLeaseDirs: next });
+  log(`lease dirs: ${next.map(tildify).join(', ') || 'none'}`);
 }
 
 // ---------- the live login when it is not (yet) a stored account: read-only, shown as "live" ----------
@@ -1363,7 +1481,12 @@ function clearBackoff(name) {
   const { [name]: _gone, ...rest } = rl;
   setState({ rateLimited: rest });
 }
-async function collect({ includeLive = true, force = false } = {}) {
+// force: the watcher's re-read before it moves the machine — every account, past the TTL AND the 429 hold (a decision
+// is never made on a cached number). fresh (`stats --fresh [<name>,...]`): past the TTL only, for every account (true)
+// or the named ones (a Set); an account held after a 429 still answers from its cached reading, marked rateLimited.
+// A caller polling `--fresh` used to take force's path: each call re-read every account whatever its hold, and each
+// 429 it drew escalated that account's back-off — which the watcher reads too, so a poller blinded the watcher's live row.
+async function collect({ includeLive = true, force = false, fresh = null } = {}) {
   const accounts = names().map(loadAccount);
   const live = includeLive ? liveLogin() : null;
   if (live && !accounts.some((a) => a.accountUuid && a.accountUuid === live.accountUuid)) accounts.push(live);
@@ -1371,17 +1494,24 @@ async function collect({ includeLive = true, force = false } = {}) {
   // grants, so they come from their own store rather than accounts/ — and `provider` is what keeps them out of
   // decide()'s failover candidates, which can only ever check out a Claude grant.
   for (const name of codexNames()) accounts.push(loadCodexAccount(name));
+  if (fresh instanceof Set) {
+    const unknown = [...fresh].filter((n) => !accounts.some((a) => a.name === n));
+    if (unknown.length) throw new UsageError(`--fresh: no account named ${unknown.join(', ')} (have: ${accounts.map((a) => a.name).join(', ') || 'none'})`, 'usage');
+  }
+  const freshFor = (n) => fresh === true || (fresh instanceof Set && fresh.has(n));
   const out = [];
   const prev = meterRows();
   const cooling = state().rateLimited || {};
   for (const a of accounts) { // sequential: the token endpoint rate-limits bursts
     const checkedOut = a.provider === 'openai' ? a.name === codexActive() : isCheckedOut(a);
+    if (a.provider === 'openai' && !checkedOut) { const ls = leaseState(a.name); a.leased = ls === 'held' || ls === 'unknown'; }
     const row = { name: a.name, provider: a.provider || 'anthropic', priority: a.priority || 0, live: !!a.live, checkedOut, home: a.name === state().home, email: a.email || '?', plan: planLabel(a), tier: a.tier || '', accountUuid: a.accountUuid || null, refreshTokenExpiresAt: a.refreshTokenExpiresAt || null };
     if (a.provider === 'openai') { row.plan = a.plan; row.email = a.email; }
     const cached = prev[a.name]?.usage?.at ? prev[a.name].usage : null;
     const age = cached ? Date.now() - cached.at : Infinity;
     const until = cooling[a.name]?.until || 0;
     const held = until > Date.now();
+    if (a.leased) row.leased = true;
     // The hold comes first, cached reading or not: an account we have never read is exactly the one whose bucket is
     // emptiest, and asking it every tick is what kept it there.
     if (held && !force) {
@@ -1390,7 +1520,8 @@ async function collect({ includeLive = true, force = false } = {}) {
       else { row.error = `usage endpoint rate-limited; asking again at ${new Date(until).toLocaleTimeString()}`; row.errorKind = 'rate_limited'; }
       out.push(row); continue;
     }
-    if (cached && !force && age < (checkedOut ? METER_TTL.checkedOut : METER_TTL.parked)) {
+    // A leased account is being spent by its proxy, so its numbers move like the checked-out one's.
+    if (cached && !force && !freshFor(a.name) && age < (checkedOut || a.leased ? METER_TTL.checkedOut : METER_TTL.parked)) {
       row.usage = cached; row.cached = true;
       out.push(row); continue;
     }
@@ -1405,6 +1536,7 @@ async function collect({ includeLive = true, force = false } = {}) {
       if (e.kind === 'rate_limited' && cached) { row.usage = cached; row.cached = true; row.rateLimited = true; }
       else { row.error = e.message; row.errorKind = e.kind || 'error'; }
     }
+    if (a.leased) row.leased = true; // refreshCodex may have found the lease taken only now
     out.push(row);
   }
   // A row that failed keeps the last reading we had for it in the file (not on the rendered row, which stays ✗): without
@@ -1419,19 +1551,19 @@ function renderRows(rows) {
   const edf = candidates({ rows, live, thresholds: thresholds(), limited: state().limited || {} });
   const head = ['account', 'email', 'plan', '5-hour window', 'weekly (all models)', 'weekly per model', 'edf', 'extra'];
   table(head, rows.map((r) => {
-    const name = { t: `${r.checkedOut ? '● ' : '  '}${r.name}${r.home ? ' ⌂' : ''}${r.live ? ' (this terminal, not stored)' : ''}`, c: r.live ? 'dim' : r.checkedOut ? 'bold' : null };
+    const name = { t: `${r.checkedOut ? '● ' : r.leased ? '◐ ' : '  '}${r.name}${r.home ? ' ⌂' : ''}${r.live ? ' (this terminal, not stored)' : ''}`, c: r.live ? 'dim' : r.checkedOut ? 'bold' : null };
     if (r.error) return [name, { t: r.email }, { t: r.plan }, { t: `✗ ${r.error}`, c: 'red' }];
     const u = r.usage;
     const age = u.at ? Date.now() - u.at : 0;
     return [name, { t: r.email.length > 28 ? r.email.slice(0, 27) + '…' : r.email }, { t: r.plan }, cellWindow(u.session, age), cellWindow(u.weekly), cellScoped(u.scoped), cellEdf(r, edf), cellExtra(u.extra)];
   }));
 }
-async function cmdStats({ json = false, quiet = false, includeLive = true, force = false } = {}) {
-  const rows = await collect({ includeLive, force });
+async function cmdStats({ json = false, quiet = false, includeLive = true, fresh = null } = {}) {
+  const rows = await collect({ includeLive, fresh });
   if (quiet) { const bad = rows.filter((r) => r.error); if (bad.length) console.error(bad.map((r) => `${r.name}: ${r.error}`).join('\n')); return rows; }
   if (json) { log(JSON.stringify({ at: new Date().toISOString(), accounts: rows }, null, 2)); return rows; }
   renderRows(rows);
-  log(paint(`\n${new Date().toLocaleTimeString()} · ↻ = resets in · ● = checked out into Claude Code · ⌂ = home · meters = api.anthropic.com/api/oauth/usage (what /usage shows) and, for chatgpt, chatgpt.com/backend-api/wham/usage (the gateway's login)`, 'dim'));
+  log(paint(`\n${new Date().toLocaleTimeString()} · ↻ = resets in · ● = checked out into Claude Code (chatgpt: the gateway's account) · ◐ = served by a leased proxy, never refreshed or switched to here · ⌂ = home · meters = api.anthropic.com/api/oauth/usage (what /usage shows) and, for chatgpt, chatgpt.com/backend-api/wham/usage (the gateway's login)`, 'dim'));
   return rows;
 }
 async function cmdWatch(every) {
@@ -1748,7 +1880,13 @@ async function cmdDoctor({ fix = false } = {}) {
 function help() {
   log(`claude-usage — every family Claude account's rate-limit meter in one table
 
-  stats [--json] [--no-live]   (default) 5-hour window, weekly window, per-model weekly, extra usage — per account
+  stats [--json] [--no-live] [--fresh [<name>,...]]
+                               (default) 5-hour window, weekly window, per-model weekly, extra usage — per account.
+                               --fresh re-reads past the meter's TTL: every account, or only the named ones (repeatable
+                               or comma list); an account backed off after a 429 still answers from its last reading
+  codex-lease-dir [add <dir> | remove <dir>]
+                               dirs where other programs hold <name>.lease (an exclusive flock) while their own proxy
+                               serves that ChatGPT account: such an account is never refreshed or switched to here
   watch [--every <s>]          same table, refreshed in place (default 120 s)
   list                         stored accounts and grant expiry, no network
   add <name|email> [--email]   store an account: Claude Code's own \`auth login\` in a private config dir, then the
@@ -1783,22 +1921,37 @@ that should follow switches. Never share tokens; files are 0600 under ${ROOT}.`)
 // Flags that take the NEXT argv token as their value (`--session-hot 80`). A flag missing from this list parses as the
 // boolean true and its value becomes a stray positional — which is how five threshold flags shipped broken once
 // (2026-09-21): every flag `auto on` reads must be here, and a retired one must not.
-const VALUE_FLAGS = ['email', 'every', 'switch-at', 'enter-below', 'target-below', 'fable-ceiling', 'session-hot', 'session-warm', 'edf-lead-hours', 'min-hold-minutes', 'by', 'since', 'until', 'repo', 'roots'];
+const VALUE_FLAGS = ['fresh', 'email', 'every', 'switch-at', 'enter-below', 'target-below', 'fable-ceiling', 'session-hot', 'session-warm', 'edf-lead-hours', 'min-hold-minutes', 'by', 'since', 'until', 'repo', 'roots'];
+// A LIST flag may repeat, its values joined with commas (`--fresh a --fresh b` = `--fresh a,b`); bare, it is true —
+// unless a value was already given, which a bare repeat must not erase.
+const LIST_FLAGS = ['fresh'];
 function parseArgv(rest) {
   const flags = new Map(); const args = [];
+  const set = (k, v) => {
+    const prev = flags.get(k);
+    if (LIST_FLAGS.includes(k) && typeof prev === 'string') flags.set(k, v === true ? prev : `${prev},${v}`);
+    else flags.set(k, v);
+  };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
-    if (a.startsWith('--')) { const [k, v] = a.slice(2).split('='); if (v !== undefined) flags.set(k, v); else if (VALUE_FLAGS.includes(k) && rest[i + 1] && !rest[i + 1].startsWith('--')) flags.set(k, rest[++i]); else flags.set(k, true); }
+    if (a.startsWith('--')) { const [k, v] = a.slice(2).split('='); if (v !== undefined) set(k, v); else if (VALUE_FLAGS.includes(k) && rest[i + 1] && !rest[i + 1].startsWith('--')) set(k, rest[++i]); else set(k, true); }
     else args.push(a);
   }
   return { flags, args };
+}
+// `--fresh` → true (every account), `--fresh a,b` → Set {a, b}, absent → null.
+function freshArg(v) {
+  if (v === undefined || v === false) return null;
+  if (v === true) return true;
+  const set = new Set(String(v).split(',').map((x) => x.trim()).filter(Boolean));
+  return set.size ? set : true;
 }
 
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const { flags, args } = parseArgv(rest);
   switch (cmd) {
-    case undefined: case 'stats': case 'usage': case 'status': await cmdStats({ json: flags.has('json'), quiet: flags.has('quiet'), includeLive: !flags.has('no-live'), force: flags.has('fresh') }); break;
+    case undefined: case 'stats': case 'usage': case 'status': await cmdStats({ json: flags.has('json'), quiet: flags.has('quiet'), includeLive: !flags.has('no-live'), fresh: freshArg(flags.get('fresh')) }); break;
     case 'watch': await cmdWatch(flags.get('every')); break;
     case 'list': case 'ls': cmdList(); break;
     case 'add': await cmdAdd(args[0], { email: flags.get('email'), force: flags.has('force') }); break;
@@ -1815,6 +1968,7 @@ async function main() {
     }
     case 'cost': cmdCost({ by: flags.get('by'), since: flags.get('since'), until: flags.get('until'), repo: flags.get('repo'), roots: flags.get('roots'), json: flags.has('json'), verbose: flags.has('verbose') }); break;
     case 'remove-gpt': cmdRemoveGpt(args[0]); break;
+    case 'codex-lease-dir': cmdCodexLeaseDir(args[0], args[1]); break;
     case 'migrate-gpt': { const r = codexMigrate(args[0] || 'gpt-default'); log(`${r.action}: ${r.reason || r.to}`); break; }
     case 'switch': {
       // One namespace: the name itself says which domain to move. A ChatGPT switch is a symlink, a Claude switch is
@@ -1833,4 +1987,4 @@ async function main() {
   }
 }
 if (require.main === module) main().catch((e) => die(e.message));
-else module.exports = { extractLogin, cleanupLogin, parseUsage, parseCodexUsage, cmdAddGpt, cmdAuto, parseArgv, VALUE_FLAGS, cmdCost, cmdPrices, attribute, whereFromSession, claudeProcs, paneForPid, codexCulprit, transcriptFor, readCodexBlocked, actOnCodex, codexNames, codexActive, loadCodexAccount, refreshCodex, codexUsageForAccount, switchCodex, decideCodex, codexMigrate, CODEX_STORE, CODEX_LIVE, CODEX_BLOCKED, CODEX_TIER_FALLBACK, h8, keychainService, acctLock, SWITCH_TRACE, renderRows, addBlockedBy, deadRemedy, liveLogin, net, DARWIN, CFG, CREDS_FILE, CLAUDE_JSON, REFRESH_LOCK, WRITE_LOCK, AUTO_LOG, METER, state, setState, names, loadAccount, saveAccount, liveStoreRead, liveStoreWrite, takeLock, LOCK_WAIT, sleepSync, usageFor, collect, hasTokens, isCheckedOut, inTransition, stripTokens, parkPair, pairFromRecord, claudeJsonAccount, profileOf, liveIdentity, reconcile, adoptLive, writeClaudeJsonAccount, switchTo, refresh, THRESHOLDS, thresholds, worstOf, fablePctOf, unusable, edfCompare, candidates, decide, limitRefusals, notify, resetsLine, cmdTick, TAG, systemdUnits, statuslineText, cmdStatusline, USER_SETTINGS, STATUSLINE_SH, cmdDoctor };
+else module.exports = { freshArg, LIST_FLAGS, leaseState, takeLeases, codexLeaseDirs, cmdCodexLeaseDir, LEASE_TAKE_MS, extractLogin, cleanupLogin, parseUsage, parseCodexUsage, cmdAddGpt, cmdAuto, parseArgv, VALUE_FLAGS, cmdCost, cmdPrices, attribute, whereFromSession, claudeProcs, paneForPid, codexCulprit, transcriptFor, readCodexBlocked, actOnCodex, codexNames, codexActive, loadCodexAccount, refreshCodex, codexUsageForAccount, switchCodex, decideCodex, codexMigrate, CODEX_STORE, CODEX_LIVE, CODEX_BLOCKED, CODEX_TIER_FALLBACK, h8, keychainService, acctLock, SWITCH_TRACE, renderRows, addBlockedBy, deadRemedy, liveLogin, net, DARWIN, CFG, CREDS_FILE, CLAUDE_JSON, REFRESH_LOCK, WRITE_LOCK, AUTO_LOG, METER, state, setState, names, loadAccount, saveAccount, liveStoreRead, liveStoreWrite, takeLock, LOCK_WAIT, sleepSync, usageFor, collect, hasTokens, isCheckedOut, inTransition, stripTokens, parkPair, pairFromRecord, claudeJsonAccount, profileOf, liveIdentity, reconcile, adoptLive, writeClaudeJsonAccount, switchTo, refresh, THRESHOLDS, thresholds, worstOf, fablePctOf, unusable, edfCompare, candidates, decide, limitRefusals, notify, resetsLine, cmdTick, TAG, systemdUnits, statuslineText, cmdStatusline, USER_SETTINGS, STATUSLINE_SH, cmdDoctor };
