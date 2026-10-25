@@ -1054,7 +1054,9 @@ class Runner:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         self.emit_event({"type": "netwatch_start", "interval_s": self.args.interval,
                          "wan_targets": self.args.wan_targets})
-        last_rotate = 0.0
+        # monotonic() counts from boot: starting at 0 would skip rotation for the
+        # first hour after every reboot.
+        last_rotate = float("-inf")
         while not self.stop:
             started = time.monotonic()
             try:
