@@ -597,6 +597,68 @@ def test_undeliverable_alert():
             _u.urlopen = real_open
 
 
+def _write_samples(path, samples):
+    with path.open("w") as fh:
+        for s in samples:
+            fh.write(json.dumps(s) + "\n")
+
+
+def test_rotation_of_a_live_file():
+    print("sample rotation:")
+    import gzip
+    with tempfile.TemporaryDirectory() as tmp:
+        nw.SAMPLES = Path(tmp) / "samples.jsonl"
+        yesterday = nw.now() - timedelta(days=1)
+        stamp = yesterday.strftime("%Y%m%d")
+        # The daemon appends every cycle, so the live file's mtime is always
+        # today; only its first sample says which day it started.
+        _write_samples(nw.SAMPLES, [sample(ts=nw.iso(yesterday)), sample()])
+        nw.rotate_samples(keep_days=14)
+        archive = Path(tmp) / f"samples-{stamp}.jsonl.gz"
+        check("a file started yesterday rotates", archive.exists(), True)
+        check("live file is gone after rotation", nw.SAMPLES.exists(), False)
+
+        # A second rotation onto the same stamp must add to the archive,
+        # never overwrite what it already holds.
+        _write_samples(nw.SAMPLES, [sample(ts=nw.iso(yesterday))])
+        nw.rotate_samples(keep_days=14)
+        with gzip.open(archive, "rt") as fh:
+            check("same-day rotation appends", len(fh.readlines()), 3)
+
+        _write_samples(nw.SAMPLES, [sample()])
+        nw.rotate_samples(keep_days=14)
+        check("a file started today stays live", nw.SAMPLES.exists(), True)
+
+
+def test_summary_reads_only_its_window():
+    print("summary window:")
+    import gzip
+    import os
+    with tempfile.TemporaryDirectory() as tmp:
+        nw.STATE_DIR = Path(tmp)
+        nw.EVENTS = Path(tmp) / "events.jsonl"
+        nw.SAMPLES = Path(tmp) / "samples.jsonl"
+        try:
+            old = nw.now() - timedelta(days=10)
+            # An archive named for a day long past but touched today (what the
+            # first rotation of an unrotated monolith produces) is out of range.
+            arch = Path(tmp) / f"samples-{old.strftime('%Y%m%d')}.jsonl.gz"
+            with gzip.open(arch, "wt") as fh:
+                fh.write(json.dumps(sample(ts=nw.iso(nw.now()), peer={"p": 1})) + "\n")
+            os.utime(arch, None)
+            _write_samples(nw.SAMPLES, [
+                sample(ts=nw.iso(old), vendor={"model": "stale-box"}),
+                sample(),
+            ])
+            out = nw.summarize(days=1)
+            check("out-of-window sample does not feed the summary",
+                  out["router"]["model"], None)
+            check("archive dated before the window is not read", out["peer"], None)
+            check("in-window sample is the latest", out["link"]["iface"], "eth0")
+        finally:
+            nw.STATE_DIR = _real_state_dir
+
+
 def test_human_dur():
     print("duration formatting:")
     check("seconds", nw.human_dur(42), "42s")
@@ -613,7 +675,8 @@ def main():
               test_bad_neighbour_needs_perceptible_harm,
               test_bloat_grade_is_the_only_judge,
               test_public_ip_probe_validation, test_public_ip_change,
-              test_undeliverable_alert, test_human_dur):
+              test_undeliverable_alert, test_rotation_of_a_live_file,
+              test_summary_reads_only_its_window, test_human_dur):
         t()
     print()
     if FAILURES:

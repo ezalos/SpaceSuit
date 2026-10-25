@@ -34,6 +34,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -521,15 +522,29 @@ def telegram_send(text: str) -> bool:
 
 # ------------------------------------------------------------------ rotation
 
+def _first_sample_day(path: Path) -> str | None:
+    """Local YYYYMMDD of the file's first sample: the day the file started."""
+    try:
+        with path.open() as fh:
+            t = _ts(json.loads(fh.readline()).get("ts"))
+    except Exception:
+        return None
+    return time.strftime("%Y%m%d", time.localtime(t)) if t is not None else None
+
+
 def rotate_samples(keep_days: int = KEEP_DAYS) -> None:
     if not SAMPLES.exists():
         return
-    stamp = time.strftime("%Y%m%d", time.localtime(SAMPLES.stat().st_mtime))
-    if stamp == time.strftime("%Y%m%d"):
+    # Dated by its first sample, never its mtime: the daemon appends every
+    # cycle, so the mtime is always today and the file never rotated
+    # (569 MB on a 4 GB Pi by 2026-10-25, and `publish` loaded all of it).
+    stamp = _first_sample_day(SAMPLES)
+    if stamp is None or stamp == time.strftime("%Y%m%d"):
         return
     archive = SAMPLES.with_name(f"samples-{stamp}.jsonl.gz")
     try:
-        with SAMPLES.open("rb") as src, gzip.open(archive, "wb") as dst:
+        # Append: a same-day archive already there keeps what it holds.
+        with SAMPLES.open("rb") as src, gzip.open(archive, "ab") as dst:
             shutil.copyfileobj(src, dst)
         SAMPLES.unlink()
     except Exception:
@@ -1136,8 +1151,30 @@ def summarize(days: int = 7) -> dict:
     all_events = list(read_jsonl(EVENTS))
     events = [e for e in all_events if (_ts(e.get("ts")) or 0) >= since]
 
-    samples = list(load_samples(days))
-    life = [_ts(e.get("ts")) for e in all_events] + [_ts(s.get("ts")) for s in samples]
+    # Streamed, never listed: a week of 5 s samples is ~120k dicts, which is
+    # what ran a 4 GB Pi out of memory once rotation had silently stopped.
+    life = [_ts(e.get("ts")) for e in all_events]
+    latest: dict = {}
+    recent: deque = deque(maxlen=720)
+    vendor: dict = {}
+    natpmp_epoch_s = None
+    peer = None
+    for s in load_samples(days):
+        t = _ts(s.get("ts"))
+        if t is None or t < since:
+            continue
+        life.append(t)
+        latest = s
+        recent.append(s)
+        if s.get("vendor"):
+            vendor = s["vendor"]
+        pm = ((s.get("router") or {}).get("natpmp") or {})
+        if pm.get("ok"):
+            natpmp_epoch_s = pm.get("epoch_s")
+        # The peer probe only runs every PEER_EVERY cycles, so keep the last
+        # sample that carried one rather than the newest sample's (usually none).
+        if s.get("peer"):
+            peer = s["peer"]
     observed, gaps = coverage(life, since, until)
 
     def of(kind):
@@ -1154,23 +1191,9 @@ def summarize(days: int = 7) -> dict:
         b["count"] += 1
         b["total_s"] = round(b["total_s"] + o.get("duration_s", 0), 1)
 
-    latest = samples[-1] if samples else {}
-    rtts = [r["rtt_ms"] for s in samples[-720:]
+    rtts = [r["rtt_ms"] for s in recent
             for r in (s.get("wan") or {}).values()
             if r.get("up") and r.get("rtt_ms") is not None]
-
-    vendor = {}
-    for s in reversed(samples):
-        if s.get("vendor"):
-            vendor = s["vendor"]
-            break
-
-    natpmp_epoch_s = None
-    for s in reversed(samples):
-        pm = ((s.get("router") or {}).get("natpmp") or {})
-        if pm.get("ok"):
-            natpmp_epoch_s = pm.get("epoch_s")
-            break
 
     ip_state = {}
     try:
@@ -1229,10 +1252,10 @@ def summarize(days: int = 7) -> dict:
             "since": ip_state.get("since"),
             "changes": len(of("public_ip_change")),
         },
-        # Scan back for the last sample that actually carried a peer probe: it
-        # only runs every PEER_EVERY cycles, so reading it off the newest sample
-        # would report the other recorder as unknown about 11 times in 12.
-        "peer": next((s["peer"] for s in reversed(samples) if s.get("peer")), None),
+        # The last sample that actually carried a peer probe: it only runs
+        # every PEER_EVERY cycles, so reading it off the newest sample would
+        # report the other recorder as unknown about 11 times in 12.
+        "peer": peer,
         "bad_neighbour": len(of("bad_neighbour")),
         "marks": [{"ts": m["ts"], "label": m.get("label")} for m in of("mark")[-5:]],
     }
@@ -1443,10 +1466,12 @@ def cmd_report(args) -> int:
 
 def load_samples(days: int):
     """Yield samples from the live file plus any rotated archives in range."""
-    cutoff = time.time() - days * 86400
+    cutoff = time.strftime("%Y%m%d", time.localtime(time.time() - days * 86400))
     paths = sorted(SAMPLES.parent.glob("samples-*.jsonl.gz")) if SAMPLES.parent.exists() else []
     for arch in paths:
-        if arch.stat().st_mtime < cutoff - 86400:
+        # By the day in its name, not its mtime: rotation touches the archive
+        # long after the day it holds.
+        if arch.name[len("samples-"):-len(".jsonl.gz")] < cutoff:
             continue
         try:
             with gzip.open(arch, "rt") as fh:
