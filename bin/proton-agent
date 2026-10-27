@@ -40,8 +40,9 @@ ORIG_ARGS=("$@")
 rerun_with_live_keyring() {
   [ -z "${PROTON_AGENT_LIVE_KEYRING:-}" ] && command -v systemd-run >/dev/null 2>&1 || return 1
   rmdir "$LOCK" 2>/dev/null || true; trap - EXIT
+  # names only: systemd-run copies each value from our env, so no value (a resolved secret) reaches argv
   local envargs=() kv
-  while IFS= read -r -d '' kv; do envargs+=(-E "$kv"); done < <(env -0)
+  while IFS= read -r -d '' kv; do envargs+=(-E "${kv%%=*}"); done < <(env -0)
   exec systemd-run --user --pipe --wait --quiet --same-dir "${envargs[@]}" \
     -E PROTON_AGENT_LIVE_KEYRING=1 "$0" "${ORIG_ARGS[@]}"
 }

@@ -96,7 +96,7 @@ FAKE_SYSTEMD_RUN = r"""#!/usr/bin/env bash
 echo x >> "$FAKE_DIR/reruns"
 vars=()
 while [ $# -gt 0 ]; do
-  case "$1" in -E) vars+=("$2"); shift 2 ;; -*) shift ;; *) break ;; esac
+  case "$1" in -E) case "$2" in *=*) vars+=("$2") ;; *) vars+=("$2=${!2}") ;; esac; shift 2 ;; -*) shift ;; *) break ;; esac
 done
 exec env -i "${vars[@]}" "$@"
 """
