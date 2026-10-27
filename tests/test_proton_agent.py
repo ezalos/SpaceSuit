@@ -81,12 +81,12 @@ def test_expired_session_logs_in_once_then_retries(env):
     assert len(calls(fake, "item")) == 2
 
 
-def test_a_locked_keyring_is_named_not_blamed_on_the_token(env):
+def test_a_keyring_failure_is_named_not_blamed_on_the_token(env):
     e, fake, _ = env
     (fake / "keyring-locked").touch()
     r = run(e, "item", "view", "pass://s/a/f")
     assert r.returncode != 0
-    assert "keyring is locked" in r.stderr and "token expired" not in r.stderr
+    assert "OS keyring" in r.stderr and "token expired" not in r.stderr
     assert "fake-token" not in r.stderr  # pass-cli's raw output is never echoed
 
 
