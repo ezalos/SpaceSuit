@@ -18,6 +18,7 @@ echo "$*" >> "$FAKE_DIR/calls"
 case "$1" in
   info) [ -f "$FAKE_DIR/session" ] ;;
   login)
+    [ -f "$FAKE_DIR/keyring-revoked" ] && [ -z "$PROTON_AGENT_LIVE_KEYRING" ] && { echo "Error accessing credential: NoStorageAccess(KeyRevoked)" >&2; exit 1; }
     [ -f "$FAKE_DIR/keyring-locked" ] && { echo "Could not get local key from keyring $PROTON_PASS_PERSONAL_ACCESS_TOKEN" >&2; exit 1; }
     sleep 0.3; touch "$FAKE_DIR/session"; echo x >> "$FAKE_DIR/logins" ;;
   item)
@@ -88,6 +89,29 @@ def test_a_keyring_failure_is_named_not_blamed_on_the_token(env):
     assert r.returncode != 0
     assert "OS keyring" in r.stderr and "token expired" not in r.stderr
     assert "fake-token" not in r.stderr  # pass-cli's raw output is never echoed
+
+
+FAKE_SYSTEMD_RUN = r"""#!/usr/bin/env bash
+# options in, then the command: apply every -E, ignore the rest, like a fresh unit would
+echo x >> "$FAKE_DIR/reruns"
+vars=()
+while [ $# -gt 0 ]; do
+  case "$1" in -E) vars+=("$2"); shift 2 ;; -*) shift ;; *) break ;; esac
+done
+exec env -i "${vars[@]}" "$@"
+"""
+
+
+def test_a_revoked_session_keyring_reruns_from_the_user_manager_without_quarantine(env):
+    e, fake, _ = env
+    sr = Path(e["PATH"].split(":")[0]) / "systemd-run"
+    sr.write_text(FAKE_SYSTEMD_RUN)
+    sr.chmod(sr.stat().st_mode | stat.S_IEXEC)
+    (fake / "keyring-revoked").touch()
+    r = run(e, "item", "view", "pass://s/a/f")
+    assert r.returncode == 0 and r.stdout.strip() == "VALUE-for-pass://s/a/f", r.stderr
+    assert len((fake / "reruns").read_text().splitlines()) == 1
+    assert not list(Path(e["PROTON_PASS_SESSION_DIR"]).glob(".session.stale-*"))
 
 
 def test_concurrent_callers_share_one_login(env):

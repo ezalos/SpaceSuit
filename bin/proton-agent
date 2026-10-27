@@ -30,6 +30,21 @@ if [ ! -r "$PAT_FILE" ]; then
   exit 1
 fi
 mkdir -p "$PROTON_PASS_SESSION_DIR" && chmod 700 "$PROTON_PASS_SESSION_DIR"
+ORIG_ARGS=("$@")
+
+# --- a revoked session keyring: rerun from the user manager -------------------------------------------
+# pass-cli keeps its local key in the Linux kernel session keyring. When the login that started tmux ends,
+# that keyring is revoked, yet every process under the tmux server keeps it: each login then fails with
+# NoStorageAccess(KeyRevoked), whatever the token (2026-10-27: 264 sessions quarantined for nothing).
+# The fix is a process whose keyring is alive: the systemd user manager's. Same command, same env.
+rerun_with_live_keyring() {
+  [ -z "${PROTON_AGENT_LIVE_KEYRING:-}" ] && command -v systemd-run >/dev/null 2>&1 || return 1
+  rmdir "$LOCK" 2>/dev/null || true; trap - EXIT
+  local envargs=() kv
+  while IFS= read -r -d '' kv; do envargs+=(-E "$kv"); done < <(env -0)
+  exec systemd-run --user --pipe --wait --quiet --same-dir "${envargs[@]}" \
+    -E PROTON_AGENT_LIVE_KEYRING=1 "$0" "${ORIG_ARGS[@]}"
+}
 
 # --- login: ONE process logs in, the others wait and reuse its session --------------------------------
 # Without the lock, every caller that found the session expired logged in at once: a login storm that got
@@ -46,7 +61,14 @@ login_locked() {
   trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
   # someone else may have logged in while we waited
   if pass-cli info >/dev/null 2>&1; then rmdir "$LOCK"; trap - EXIT; return 0; fi
-  if ! PROTON_PASS_PERSONAL_ACCESS_TOKEN="$(cat "$PAT_FILE")" pass-cli login >/dev/null 2>&1; then
+  if ! login_err="$(PROTON_PASS_PERSONAL_ACCESS_TOKEN="$(cat "$PAT_FILE")" pass-cli login 2>&1 >/dev/null)"; then
+    # not the session store's fault: never quarantine a good store for a dead keyring
+    if printf '%s' "$login_err" | grep -q 'KeyRevoked'; then
+      rerun_with_live_keyring
+      echo "proton-agent: this process's kernel session keyring is revoked and systemd-run is unavailable (context '$CTX')" >&2
+      rmdir "$LOCK" 2>/dev/null || true; trap - EXIT
+      return 1
+    fi
     # A stale/corrupt session store poisons even fresh PAT logins -- seen at
     # ~09:00 on 2026-08-16 AND -17; both times moving .session aside fixed it
     # instantly while the token was fine. Quarantine (never delete: forensics)
