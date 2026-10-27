@@ -56,9 +56,13 @@ login_locked() {
          "$PROTON_PASS_SESSION_DIR/.session.stale-$(date +%Y%m%d-%H%M%S)"
       echo "proton-agent: login failed with the existing session store; quarantined it and retrying (context '$CTX')" >&2
     fi
-    if ! PROTON_PASS_PERSONAL_ACCESS_TOKEN="$(cat "$PAT_FILE")" pass-cli login >/dev/null 2>&1; then
+    if ! login_err="$(PROTON_PASS_PERSONAL_ACCESS_TOKEN="$(cat "$PAT_FILE")" pass-cli login 2>&1 >/dev/null)"; then
+      # A locked OS keyring fails every login with a fine token (2026-10-27:
+      # "Could not get local key from keyring"). Name it; never echo pass-cli's raw output.
+      if printf '%s' "$login_err" | grep -qi 'keyring'; then
+        echo "proton-agent: the OS keyring is locked or unreachable, not the token (context '$CTX'); unlock it: gnome-keyring-daemon --unlock (password on stdin)" >&2
       # curl, not getent: must behave the same on macOS (BSD) and Linux
-      if ! curl -sf -m 3 -o /dev/null https://proton.me 2>/dev/null; then
+      elif ! curl -sf -m 3 -o /dev/null https://proton.me 2>/dev/null; then
         echo "proton-agent: cannot reach Proton (offline?) for context '$CTX'" >&2
       else
         echo "proton-agent: login failed for context '$CTX' (token expired or revoked?)" >&2

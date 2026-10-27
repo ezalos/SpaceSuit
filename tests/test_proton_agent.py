@@ -17,7 +17,9 @@ FAKE_PASS_CLI = r"""#!/usr/bin/env bash
 echo "$*" >> "$FAKE_DIR/calls"
 case "$1" in
   info) [ -f "$FAKE_DIR/session" ] ;;
-  login) sleep 0.3; touch "$FAKE_DIR/session"; echo x >> "$FAKE_DIR/logins" ;;
+  login)
+    [ -f "$FAKE_DIR/keyring-locked" ] && { echo "Could not get local key from keyring $PROTON_PASS_PERSONAL_ACCESS_TOKEN" >&2; exit 1; }
+    sleep 0.3; touch "$FAKE_DIR/session"; echo x >> "$FAKE_DIR/logins" ;;
   item)
     [ -f "$FAKE_DIR/session" ] || { echo "not logged in" >&2; exit 1; }
     case "$3" in *missing*) echo "Error finding item" >&2; exit 1 ;; esac
@@ -77,6 +79,15 @@ def test_expired_session_logs_in_once_then_retries(env):
     assert r.returncode == 0 and r.stdout.strip() == "VALUE-for-pass://s/a/f"
     assert len(calls(fake, "login")) == 1
     assert len(calls(fake, "item")) == 2
+
+
+def test_a_locked_keyring_is_named_not_blamed_on_the_token(env):
+    e, fake, _ = env
+    (fake / "keyring-locked").touch()
+    r = run(e, "item", "view", "pass://s/a/f")
+    assert r.returncode != 0
+    assert "keyring is locked" in r.stderr and "token expired" not in r.stderr
+    assert "fake-token" not in r.stderr  # pass-cli's raw output is never echoed
 
 
 def test_concurrent_callers_share_one_login(env):
