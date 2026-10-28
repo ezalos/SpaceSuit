@@ -1124,6 +1124,28 @@ function ageMeter(t, byName) {
   fs.writeFileSync(t.m.METER, JSON.stringify(m));
 }
 
+test('collect: a parked record with no tokens is dead with its remedy, never a stale reading under a 429 hold', async () => {
+  // 2026-10-23: work5's live login vanished while it was checked out; failover parked it with no tokens. Every read then
+  // failed and was booked as a 429 (747 back-offs in 5 days), so stats kept its 5-day-old 54% with a blank edf column
+  // and the exhausted alert said "work5 54%": Louis read it as room the watcher refused to use.
+  const t = fresh(); await machineOnPerso(t);
+  const calls = stubNet(t.m, { usageByToken: { 'at-perso': usage(40, 10), 'at-work': usage(5, 5) } });
+  await t.m.collect();
+  const w = t.m.loadAccount('work'); t.m.stripTokens(w); t.m.saveAccount(w);
+  t.m.setState({ rateLimited: { work: { tries: 747, until: Date.now() + 36e5 } } });
+  const before = calls.length;
+  const rows = await t.m.collect();
+  const work = rows.find((r) => r.name === 'work');
+  assert.equal(work.errorKind, 'dead');
+  assert.match(work.error, /holds no tokens — re-add: claude-usage add work --force/);
+  assert.equal(work.usage, undefined, 'no stale reading on the rendered row');
+  assert.equal(calls.slice(before).filter((c) => !c.tok).length, 0, 'no request is made without a token');
+  assert.equal(t.m.state().rateLimited?.work, undefined, 'its back-off is cleared: it was never a rate limit');
+  const edf = t.m.candidates({ rows, live: 'perso', thresholds: T });
+  assert.equal(edf.parked.find((p) => p.name === 'work'), undefined, 'never a failover candidate');
+  assert.match(t.m.resetsLine(rows, T), /work holds no tokens \(re-add\)/, 'the exhausted alert names it and why');
+});
+
 test('collect: a second run inside the TTL is served from the meter, without a request', async () => {
   const t = fresh(); await machineOnPerso(t);
   const calls = stubNet(t.m, { usageByToken: { 'at-perso': usage(40, 10), 'at-work': usage(5, 5) } });

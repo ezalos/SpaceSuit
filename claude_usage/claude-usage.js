@@ -894,7 +894,7 @@ function resetsLine(rows, t) {
     const soon = spent.map(([w]) => w.resetsAt).filter(Boolean).sort()[0];
     const worst = worstOf(u);
     return soon ? `${r.name} resets in ${until(soon)}` : `${r.name} ${worst === null ? 'unreadable' : `${worst}%`}`;
-  }).join(', ');
+  }).concat(rows.filter((r) => r.errorKind === 'dead').map((r) => `${r.name} ${r.error.split(' — ')[0]} (re-add)`)).join(', '); // a dead grant is the one a person can fix: never drop it from the alert
 }
 // exhaustedSince/switchFailedSince/tickFailedSince are three independent episodes (both accounts tapped out, a switch that
 // keeps failing, this function itself throwing); whichever ones this iteration proves over, it clears — never left stale
@@ -1540,6 +1540,13 @@ async function collect({ includeLive = true, force = false, fresh = null } = {})
     const until = cooling[a.name]?.until || 0;
     const held = until > Date.now();
     if (a.leased) row.leased = true;
+    // A parked Claude record with no pair cannot be read or switched to: it is dead until re-added. Without this check
+    // every read failed, was booked as a 429, and the hold below kept showing a days-old reading as if it were room
+    // (work5, 2026-10-23..28: 747 back-offs, "54%" in stats and in the exhausted alert).
+    if ((a.provider || 'anthropic') === 'anthropic' && !a.live && !checkedOut && !hasTokens(a)) {
+      row.error = a.dead || `holds no tokens — ${deadRemedy(a.name)}`; row.errorKind = 'dead';
+      clearBackoff(a.name); out.push(row); continue;
+    }
     // The hold comes first, cached reading or not: an account we have never read is exactly the one whose bucket is
     // emptiest, and asking it every tick is what kept it there.
     if (held && !force) {
