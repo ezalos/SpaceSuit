@@ -75,14 +75,15 @@ def required_owner(owner: str | None) -> str:
 def touch_owner(entry: dict, owner: str | None) -> None:
     """An updating command records the caller's owner (caller_owner) on an entry without one; entries from before
     the field stay valid without it, and stay untouched when the caller has no id. It never replaces a different
-    owner: the entry's own session, or a re-registration under a new id, changes that."""
+    owner: an explicit --owner that would refuses; without --owner the owner is kept and the change applies, so
+    another session (main's upkeep) can still mark a service stopped."""
     found = caller_owner(owner)
     if not found:
         return
     current = entry.get(registry.OWNER_FIELD)
     if current is None:
         entry[registry.OWNER_FIELD] = found
-    elif current != found:
+    elif current != found and owner is not None:
         sys.stderr.write(
             f"service: {entry.get('id')!r} belongs to session {current}, not {found}: only that session changes it, "
             "or register the service again under a new id\n"

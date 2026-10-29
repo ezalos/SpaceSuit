@@ -170,15 +170,23 @@ def test_set_keeps_an_old_entry_valid_without_a_session(tmp_path):
     assert "owner" not in load(reg)[0]
 
 
-def test_set_by_another_session_refuses_and_keeps_the_owner(tmp_path):
+def test_set_by_another_session_keeps_the_owner_and_applies_the_change(tmp_path):
     reg = tmp_path / "services.yaml"
     save([{**svc("a"), "owner": "0123abcd"}], reg)
-    before = reg.read_text()
-    r = run([str(SERVICE), "--registry", str(reg), "set", "a", "--why", "touched"],
+    r = run([str(SERVICE), "--registry", str(reg), "set", "a", "--intended", "stopped", "--why", "lane closed"],
             env_extra={"CLAUDE_CODE_SESSION_ID": SESSION})
-    assert r.returncode == 2
-    assert "belongs to session 0123abcd" in r.stderr
-    assert reg.read_text() == before
+    assert r.returncode == 0, r.stderr
+    assert load(reg)[0]["owner"] == "0123abcd"
+    assert load(reg)[0]["intended"] == "stopped"
+
+
+def test_rename_by_another_session_keeps_the_owner(tmp_path):
+    reg = tmp_path / "services.yaml"
+    save([{**svc("a"), "owner": "0123abcd"}], reg)
+    r = run([str(SERVICE), "--registry", str(reg), "rename", "a", "b"],
+            env_extra={"CLAUDE_CODE_SESSION_ID": SESSION})
+    assert r.returncode == 0, r.stderr
+    assert load(reg)[0]["owner"] == "0123abcd"
 
 
 def test_register_refuses_another_sessions_owner(tmp_path):

@@ -24,8 +24,9 @@ A lane's ack or close proves that a unit belongs to another lane only through a 
   that wrote another session's id would make its own units look foreign to a lane's ack, and hide its live work.
 - An entry registered before the field existed stays valid without it.
 - `set` and `rename` give such an entry the caller's id (session or `--owner`) when there is one.
-- They never replace a different owner. They refuse instead: only the owning session changes that entry, or the
-  service is registered again under a new id.
+- They never replace a different owner. Without `--owner` they keep it and apply the change, so another session
+  (main's upkeep) can still mark a service stopped. `--owner` that would replace a different owner refuses: only the
+  owning session changes it, or the service is registered again under a new id.
 - `validate` refuses an owner that is not a string of exactly 8 lowercase hex characters.
 
 ## Unit names
