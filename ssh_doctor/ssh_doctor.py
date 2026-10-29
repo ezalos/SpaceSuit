@@ -25,6 +25,8 @@ FORBIDDEN_VALUES = {"forwardagent": {"yes"}, "stricthostkeychecking": {"no", "of
 # Every Host block must pin these.
 REQUIRED = ("hostkeyalias", "identitiesonly", "identityfile")
 CONFLICT = re.compile(r"^(<{7}|={7}|>{7})( |$)")
+# A Host token: a name or a glob, never anything ssh could read as an option.
+ALIAS = re.compile(r"^[A-Za-z0-9_.*?][A-Za-z0-9_.*?-]*$")
 
 
 def config_dir() -> Path:
@@ -79,9 +81,16 @@ def lint_file(path: Path) -> list[str]:
                 problems.append(f"{path.name}:{n}: Host {' '.join(aliases)} lacks {req}")
         if opts.get("identitiesonly", "yes").lower() != "yes":
             problems.append(f"{path.name}:{n}: Host {' '.join(aliases)} needs IdentitiesOnly yes")
-    if bs and not any(p.endswith("merge conflict marker") for p in problems):
-        alias = next((a for a in bs[0][1] if not a.startswith("!")), None)
-        r = subprocess.run(["ssh", "-G", "-F", str(path), alias], capture_output=True, text=True)
+    for n, aliases, _ in bs:
+        for a in aliases:
+            if not ALIAS.match(a.lstrip("!")):
+                problems.append(f"{path.name}:{n}: alias {a!r} is not a plain host name")
+    # ssh -G evaluates the file as it parses it (Match exec runs right there), so the real
+    # parser only ever sees a module the static checks above found clean.
+    if bs and not problems:
+        alias = next(a for a in bs[0][1] if not a.startswith("!"))
+        r = subprocess.run(["ssh", "-G", "-F", str(path), "--", alias],
+                           capture_output=True, text=True)
         if r.returncode != 0:
             err = (r.stderr.strip().splitlines() or ["(no message)"])[-1]
             problems.append(f"{path.name}: ssh -G refuses it: {err}")

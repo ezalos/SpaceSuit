@@ -93,6 +93,22 @@ def test_missing_required_settings_are_refused(home):
         assert r.returncode == 1, drop
 
 
+def test_lint_never_executes_the_module_it_checks(home, tmp_path):
+    """ssh -G evaluates Match exec while parsing: linting a hostile module must not run it."""
+    marker = tmp_path / "ran"
+    p = module(home, "box.conf", f'Match exec "touch {marker}"\n' + GOOD)
+    r = run("lint", str(p), home=home)
+    assert r.returncode == 1
+    assert not marker.exists()
+
+
+def test_flag_like_alias_is_refused_not_passed_to_ssh(home):
+    p = module(home, "box.conf", GOOD.replace("Host Box Box_ts", "Host -oProxyCommand=x Box"))
+    r = run("lint", str(p), home=home)
+    assert r.returncode == 1
+    assert "alias" in r.stdout.lower()
+
+
 def test_conflict_marker_is_refused(home):
     p = module(home, "box.conf", "<<<<<<< HEAD\n" + GOOD + "=======\n>>>>>>> abc\n")
     r = run("lint", str(p), home=home)
