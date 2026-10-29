@@ -1,0 +1,4 @@
+#!/bin/sh
+# ABOUTME: Wrapper putting ssh-doctor (lint + key report for shared ssh config modules) on PATH.
+# ABOUTME: Stdlib-only Python, so it deliberately does not use any repo venv (same rule as hf-pull).
+exec /usr/bin/python3 "$(dirname "$(readlink -f "$0")")/../ssh_doctor/ssh_doctor.py" "$@"
