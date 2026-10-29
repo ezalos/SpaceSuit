@@ -23,10 +23,11 @@ A lane's ack or close proves that a unit belongs to another lane only through a 
   first 8 characters, or the command refuses (rc 2). `--owner` exists for contexts with no session id. Why: a session
   that wrote another session's id would make its own units look foreign to a lane's ack, and hide its live work.
 - An entry registered before the field existed stays valid without it.
-- `set` and `rename` give such an entry the caller's id (session or `--owner`) when there is one.
-- They never replace a different owner. Without `--owner` they keep it and apply the change, so another session
-  (main's upkeep) can still mark a service stopped. `--owner` that would replace a different owner refuses: only the
-  owning session changes it, or the service is registered again under a new id.
+- `set` and `rename` never write an owner by themselves: the session touching an entry (main's upkeep) is not the one
+  running it, and a lane's ack would read the lane's live keeper as that session's. An entry without one gains it only
+  through `set --owner <8hex>`, the caller's own id.
+- An explicit `--owner` never replaces a different owner: it refuses. Only the owning session changes it, or the
+  service is registered again under a new id. Without `--owner`, `set` keeps the owner and applies the change.
 - `validate` refuses an owner that is not a string of exactly 8 lowercase hex characters.
 
 ## Unit names

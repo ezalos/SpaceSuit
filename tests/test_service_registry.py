@@ -153,10 +153,19 @@ def test_session_owner_reads_the_uuid_prefix():
     assert session_owner({"CLAUDE_CODE_SESSION_ID": "a1b2c3d4X"}) is None
 
 
-def test_set_gives_an_old_entry_the_sessions_owner(tmp_path):
+def test_set_never_gives_an_old_entry_the_touching_sessions_owner(tmp_path):
     reg = tmp_path / "services.yaml"
     save([svc("a")], reg)
     r = run([str(SERVICE), "--registry", str(reg), "set", "a", "--why", "touched"],
+            env_extra={"CLAUDE_CODE_SESSION_ID": SESSION})
+    assert r.returncode == 0, r.stderr
+    assert "owner" not in load(reg)[0]
+
+
+def test_set_own_owner_claims_a_free_entry(tmp_path):
+    reg = tmp_path / "services.yaml"
+    save([svc("a")], reg)
+    r = run([str(SERVICE), "--registry", str(reg), "set", "a", "--owner", "a1b2c3d4"],
             env_extra={"CLAUDE_CODE_SESSION_ID": SESSION})
     assert r.returncode == 0, r.stderr
     assert load(reg)[0]["owner"] == "a1b2c3d4"
@@ -235,13 +244,13 @@ def test_set_owner_without_a_session_fills_a_free_entry(tmp_path):
     assert load(reg)[0]["owner"] == "0123abcd"
 
 
-def test_rename_gives_an_old_entry_the_sessions_owner(tmp_path):
+def test_rename_never_gives_an_old_entry_the_sessions_owner(tmp_path):
     reg = tmp_path / "services.yaml"
     save([svc("a")], reg)
     r = run([str(SERVICE), "--registry", str(reg), "rename", "a", "b"],
             env_extra={"CLAUDE_CODE_SESSION_ID": SESSION})
     assert r.returncode == 0, r.stderr
-    assert load(reg)[0] == {**svc("a"), "id": "b", "owner": "a1b2c3d4"}
+    assert load(reg)[0] == {**svc("a"), "id": "b"}
 
 
 def test_validate_cli_accepts_a_registry_of_old_entries(tmp_path):

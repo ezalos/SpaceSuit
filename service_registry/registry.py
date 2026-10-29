@@ -12,7 +12,8 @@ VALID_INTENDED = ("running", "stopped", "on-demand")
 
 # `owner`: the first 8 hex characters of the registering Claude session's UUID (ruling of 2026-10-29). A lane's
 # ack/close proves a unit belongs to ANOTHER lane only through such an id, so a new entry must carry one. Entries
-# registered before the field existed stay valid without it and gain it when an updating command touches them.
+# registered before the field existed stay valid without it; only `register`, or an explicit `set --owner` of the
+# caller's own id, writes one (a session touching an entry is not the one running it).
 OWNER_FIELD = "owner"
 OWNER = re.compile(r"^[0-9a-f]{8}$")
 SESSION_ENV = "CLAUDE_CODE_SESSION_ID"
