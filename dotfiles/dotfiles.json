@@ -1293,17 +1293,29 @@
         },
         "ssh_config": {
             "alias": "ssh_config",
-            "main": "~/42/GroundControl/secrets/ssh/config.mbp3",
+            "main": "~/42/GroundControl/secrets/ssh/config.stub",
             "deploy": {
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.ssh/config",
                     "backups": []
+                },
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.ssh/config",
+                    "backups": [
+                        {
+                            "backup_path": "/home/ezalos/42/SpaceSuit/dotfiles/old/ssh_config_TheBeast.ezalos_2026-10-28_23:56:42.389059",
+                            "datetime": "2026-10-28_23:56:42.389059"
+                        }
+                    ]
                 }
             },
             "only_devices": [
-                "Louiss.MacBook.Pro.3.local.ezalos"
+                "Louiss.MacBook.Pro.3.local.ezalos",
+                "TheBeast.ezalos"
             ],
-            "variants": null,
+            "variants": {
+                "Louiss.MacBook.Pro.3.local.ezalos": "~/42/GroundControl/secrets/ssh/config.mbp3"
+            },
             "fanout": false
         },
         "claude_usage": {
