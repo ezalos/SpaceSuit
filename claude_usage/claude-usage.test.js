@@ -747,6 +747,14 @@ test('cmdAuto on: the EDF thresholds are settable by flag, persist, and the reti
   for (const dead of ['gapThreshold', 'sessionWeight', 'tieBandPoints', 'homeBelow']) assert.equal(th[dead], undefined, `${dead} is retired`);
 });
 
+test('auto on from the command line: every flag reaches cmdAuto (--enter-below was once parsed and then dropped)', async () => {
+  const t = fresh();
+  const { flags, args } = t.m.parseArgv(['on', '--switch-at', '95', '--enter-below', '93', '--drain-hours', '12']);
+  await t.m.cmdAuto(args[0], t.m.autoOptsOf(flags));
+  const th = t.m.thresholds();
+  assert.equal(th.switchAt, 95); assert.equal(th.enterBelow, 93); assert.equal(th.drainWindowMs, 12 * 3_600_000);
+});
+
 test('cmdAuto on: --fable-ceiling off stores null and says so; a number restores the gate', async () => {
   const t = fresh();
   const lines = []; console.log = (m = '') => lines.push(String(m));

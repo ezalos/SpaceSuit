@@ -2037,6 +2037,9 @@ function freshArg(v) {
   return set.size ? set : true;
 }
 
+// Every parsed flag goes to cmdAuto, which reads only the keys it knows. A hand-kept list here once dropped
+// --enter-below silently: the flag parsed, the CLI never passed it, and only the direct cmdAuto tests saw it work.
+function autoOptsOf(flags) { return Object.fromEntries(flags); }
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const { flags, args } = parseArgv(rest);
@@ -2070,7 +2073,7 @@ async function main() {
       break;
     }
     case 'adopt': await adoptLive(args[0]); break;
-    case 'auto': await cmdAuto(args[0], { every: flags.get('every'), 'switch-at': flags.get('switch-at'), 'target-below': flags.get('target-below'), 'fable-ceiling': flags.get('fable-ceiling'), 'session-hot': flags.get('session-hot'), 'session-warm': flags.get('session-warm'), 'edf-lead-hours': flags.get('edf-lead-hours'), 'min-hold-minutes': flags.get('min-hold-minutes') }); break;
+    case 'auto': await cmdAuto(args[0], autoOptsOf(flags)); break;
     case 'statusline': cmdStatusline(args[0]); break;
     case 'doctor': await cmdDoctor({ fix: flags.has('fix') }); break;
     case 'help': case '--help': case '-h': help(); break;
@@ -2078,4 +2081,4 @@ async function main() {
   }
 }
 if (require.main === module) main().catch((e) => die(e.message));
-else module.exports = { weeklyBoundsOf, reservesLine, cmdWeeklyCap, cmdStats, LEASE_IO, lockKey, leaseSupportMissing, freshArg, LIST_FLAGS, leaseState, takeLeases, codexLeaseDirs, cmdCodexLeaseDir, LEASE_TAKE_MS, extractLogin, cleanupLogin, parseUsage, parseCodexUsage, cmdAddGpt, cmdAuto, parseArgv, VALUE_FLAGS, cmdCost, cmdPrices, attribute, whereFromSession, claudeProcs, paneForPid, codexCulprit, transcriptFor, readCodexBlocked, actOnCodex, codexNames, codexActive, loadCodexAccount, refreshCodex, codexUsageForAccount, switchCodex, decideCodex, codexMigrate, CODEX_STORE, CODEX_LIVE, CODEX_BLOCKED, CODEX_TIER_FALLBACK, h8, keychainService, acctLock, SWITCH_TRACE, renderRows, addBlockedBy, deadRemedy, liveLogin, net, DARWIN, CFG, CREDS_FILE, CLAUDE_JSON, REFRESH_LOCK, WRITE_LOCK, AUTO_LOG, METER, state, setState, names, loadAccount, saveAccount, liveStoreRead, liveStoreWrite, takeLock, LOCK_WAIT, sleepSync, usageFor, collect, hasTokens, isCheckedOut, inTransition, stripTokens, parkPair, pairFromRecord, claudeJsonAccount, profileOf, liveIdentity, reconcile, adoptLive, writeClaudeJsonAccount, switchTo, refresh, THRESHOLDS, thresholds, worstOf, fablePctOf, unusable, edfCompare, candidates, decide, limitRefusals, notify, resetsLine, cmdTick, TAG, systemdUnits, statuslineText, cmdStatusline, USER_SETTINGS, STATUSLINE_SH, cmdDoctor };
+else module.exports = { autoOptsOf, weeklyBoundsOf, reservesLine, cmdWeeklyCap, cmdStats, LEASE_IO, lockKey, leaseSupportMissing, freshArg, LIST_FLAGS, leaseState, takeLeases, codexLeaseDirs, cmdCodexLeaseDir, LEASE_TAKE_MS, extractLogin, cleanupLogin, parseUsage, parseCodexUsage, cmdAddGpt, cmdAuto, parseArgv, VALUE_FLAGS, cmdCost, cmdPrices, attribute, whereFromSession, claudeProcs, paneForPid, codexCulprit, transcriptFor, readCodexBlocked, actOnCodex, codexNames, codexActive, loadCodexAccount, refreshCodex, codexUsageForAccount, switchCodex, decideCodex, codexMigrate, CODEX_STORE, CODEX_LIVE, CODEX_BLOCKED, CODEX_TIER_FALLBACK, h8, keychainService, acctLock, SWITCH_TRACE, renderRows, addBlockedBy, deadRemedy, liveLogin, net, DARWIN, CFG, CREDS_FILE, CLAUDE_JSON, REFRESH_LOCK, WRITE_LOCK, AUTO_LOG, METER, state, setState, names, loadAccount, saveAccount, liveStoreRead, liveStoreWrite, takeLock, LOCK_WAIT, sleepSync, usageFor, collect, hasTokens, isCheckedOut, inTransition, stripTokens, parkPair, pairFromRecord, claudeJsonAccount, profileOf, liveIdentity, reconcile, adoptLive, writeClaudeJsonAccount, switchTo, refresh, THRESHOLDS, thresholds, worstOf, fablePctOf, unusable, edfCompare, candidates, decide, limitRefusals, notify, resetsLine, cmdTick, TAG, systemdUnits, statuslineText, cmdStatusline, USER_SETTINGS, STATUSLINE_SH, cmdDoctor };
