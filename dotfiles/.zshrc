@@ -267,6 +267,16 @@ _dotfiles_sync_bg() {
 autoload -Uz add-zsh-hook
 add-zsh-hook precmd _dotfiles_sync_bg
 
+# Switch off mouse reporting, focus events and extended key modes before each prompt.
+# A remote tmux killed with its ssh link (hangup, kill-server) never sends its teardown,
+# so the local terminal keeps printing CSI garbage on every mouse move and key press.
+# Skipped inside tmux: there the modes belong to tmux, which resets them itself.
+_reset_input_modes() {
+  [[ -n "$TMUX" ]] && return
+  printf '\e[?1000l\e[?1002l\e[?1003l\e[?1005l\e[?1006l\e[?1015l\e[?1004l\e[>4m\e[<u'
+}
+add-zsh-hook precmd _reset_input_modes
+
 # General aliases
 # copy: stdin (or file args) -> clipboard. Over SSH, uses OSC 52 so the bytes travel
 # back through the ssh+tmux session to the LOCAL terminal's clipboard (xclip/pbcopy on a
