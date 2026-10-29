@@ -28,3 +28,11 @@ A lane's ack or close proves that a unit belongs to another lane only through a 
 
 The tool starts nothing: `start`, `stop` and `check` are commands the registering session writes, and only
 `service-checks` runs one (the `check`). A unit that a `start` command names is the registering session's to name.
+
+Registered units and transient units are proven differently (ruling of 2026-10-29):
+
+- A registered service is long-lived on purpose and outlives the session that started it. Its unit name carries no
+  session token, since that token would be wrong a day later. Its proof of ownership is the entry's `owner` plus its
+  exact `start` command.
+- A transient unit (a guard, or a keeper a lane starts) is not registered. Its proof is the starting session's 8-hex
+  id inside its unit name, which the tools that start it write.
