@@ -120,10 +120,9 @@ def test_register_refuses_a_malformed_session_id(tmp_path):
     assert not reg.exists()
 
 
-def test_register_takes_an_explicit_owner_over_the_session(tmp_path):
+def test_register_takes_an_explicit_owner_without_a_session(tmp_path):
     reg = tmp_path / "services.yaml"
-    r = run([str(SERVICE), "--registry", str(reg), *REGISTER, "--owner", "0123abcd"],
-            env_extra={"CLAUDE_CODE_SESSION_ID": SESSION})
+    r = run([str(SERVICE), "--registry", str(reg), *REGISTER, "--owner", "0123abcd"])
     assert r.returncode == 0, r.stderr
     assert load(reg)[0]["owner"] == "0123abcd"
 
@@ -131,9 +130,9 @@ def test_register_takes_an_explicit_owner_over_the_session(tmp_path):
 @pytest.mark.parametrize("owner", ["0123ABCD", "0123abc", "0123abcde", "lane-x", SESSION])
 def test_register_refuses_a_malformed_owner(tmp_path, owner):
     reg = tmp_path / "services.yaml"
-    r = run([str(SERVICE), "--registry", str(reg), *REGISTER, "--owner", owner],
-            env_extra={"CLAUDE_CODE_SESSION_ID": SESSION})
+    r = run([str(SERVICE), "--registry", str(reg), *REGISTER, "--owner", owner])  # no session: the shape alone refuses
     assert r.returncode == 2
+    assert "8 hex" in r.stderr
     assert not reg.exists()
 
 
@@ -171,11 +170,59 @@ def test_set_keeps_an_old_entry_valid_without_a_session(tmp_path):
     assert "owner" not in load(reg)[0]
 
 
-def test_set_keeps_an_existing_owner(tmp_path):
+def test_set_by_another_session_refuses_and_keeps_the_owner(tmp_path):
     reg = tmp_path / "services.yaml"
     save([{**svc("a"), "owner": "0123abcd"}], reg)
+    before = reg.read_text()
     r = run([str(SERVICE), "--registry", str(reg), "set", "a", "--why", "touched"],
             env_extra={"CLAUDE_CODE_SESSION_ID": SESSION})
+    assert r.returncode == 2
+    assert "belongs to session 0123abcd" in r.stderr
+    assert reg.read_text() == before
+
+
+def test_register_refuses_another_sessions_owner(tmp_path):
+    reg = tmp_path / "services.yaml"
+    r = run([str(SERVICE), "--registry", str(reg), *REGISTER, "--owner", "0123abcd"],
+            env_extra={"CLAUDE_CODE_SESSION_ID": SESSION})
+    assert r.returncode == 2
+    assert not reg.exists()
+
+
+def test_set_owner_of_another_session_on_a_free_entry_refuses(tmp_path):
+    reg = tmp_path / "services.yaml"
+    save([svc("a")], reg)
+    before = reg.read_text()
+    r = run([str(SERVICE), "--registry", str(reg), "set", "a", "--owner", "0123abcd"],
+            env_extra={"CLAUDE_CODE_SESSION_ID": SESSION})
+    assert r.returncode == 2
+    assert reg.read_text() == before
+
+
+def test_set_own_owner_on_another_sessions_entry_refuses(tmp_path):
+    reg = tmp_path / "services.yaml"
+    save([{**svc("a"), "owner": "0123abcd"}], reg)
+    before = reg.read_text()
+    r = run([str(SERVICE), "--registry", str(reg), "set", "a", "--owner", "a1b2c3d4"],
+            env_extra={"CLAUDE_CODE_SESSION_ID": SESSION})
+    assert r.returncode == 2
+    assert "belongs to session 0123abcd" in r.stderr
+    assert reg.read_text() == before
+
+
+def test_set_own_owner_on_its_own_entry_passes(tmp_path):
+    reg = tmp_path / "services.yaml"
+    save([{**svc("a"), "owner": "a1b2c3d4"}], reg)
+    r = run([str(SERVICE), "--registry", str(reg), "set", "a", "--owner", "a1b2c3d4", "--why", "mine"],
+            env_extra={"CLAUDE_CODE_SESSION_ID": SESSION})
+    assert r.returncode == 0, r.stderr
+    assert load(reg)[0]["owner"] == "a1b2c3d4"
+
+
+def test_set_owner_without_a_session_fills_a_free_entry(tmp_path):
+    reg = tmp_path / "services.yaml"
+    save([svc("a")], reg)
+    r = run([str(SERVICE), "--registry", str(reg), "set", "a", "--owner", "0123abcd"])
     assert r.returncode == 0, r.stderr
     assert load(reg)[0]["owner"] == "0123abcd"
 

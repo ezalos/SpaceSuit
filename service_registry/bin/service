@@ -44,11 +44,25 @@ def explicit_owner(owner: str) -> str:
     return owner
 
 
+def caller_owner(owner: str | None) -> str | None:
+    """The caller's owner id: its session's, or --owner. An owner may only ever be the caller's own session: a session
+    writing another's id would make its own units look foreign to a lane's ack and hide its live work. So with a
+    readable session, --owner must equal it; --owner alone serves contexts with no session id. None: neither."""
+    session = registry.session_owner(dict(os.environ))
+    if owner is None:
+        return session
+    explicit_owner(owner)
+    if session and owner != session:
+        sys.stderr.write(
+            f"service: --owner {owner} is not this session's id {session}: an owner may only be the caller's own session\n"
+        )
+        sys.exit(2)
+    return owner
+
+
 def required_owner(owner: str | None) -> str:
-    """The owner of a new entry: --owner, else the calling Claude session's. Refuses when neither gives an id."""
-    if owner is not None:
-        return explicit_owner(owner)
-    found = registry.session_owner(dict(os.environ))
+    """The owner of a new entry: the caller's (caller_owner). Refuses when there is none."""
+    found = caller_owner(owner)
     if not found:
         sys.stderr.write(
             f"service: a new entry needs an owner: no valid session id in ${registry.SESSION_ENV} "
@@ -59,14 +73,21 @@ def required_owner(owner: str | None) -> str:
 
 
 def touch_owner(entry: dict, owner: str | None) -> None:
-    """An updating command records the owner: --owner replaces it; an entry without one gains the calling session's
-    when it is readable (entries from before the field stay valid without it)."""
-    if owner is not None:
-        entry[registry.OWNER_FIELD] = explicit_owner(owner)
-    elif registry.OWNER_FIELD not in entry:
-        found = registry.session_owner(dict(os.environ))
-        if found:
-            entry[registry.OWNER_FIELD] = found
+    """An updating command records the caller's owner (caller_owner) on an entry without one; entries from before
+    the field stay valid without it, and stay untouched when the caller has no id. It never replaces a different
+    owner: the entry's own session, or a re-registration under a new id, changes that."""
+    found = caller_owner(owner)
+    if not found:
+        return
+    current = entry.get(registry.OWNER_FIELD)
+    if current is None:
+        entry[registry.OWNER_FIELD] = found
+    elif current != found:
+        sys.stderr.write(
+            f"service: {entry.get('id')!r} belongs to session {current}, not {found}: only that session changes it, "
+            "or register the service again under a new id\n"
+        )
+        sys.exit(2)
 
 
 def cmd_register(args) -> int:
@@ -170,8 +191,10 @@ def main() -> int:
         epilog=(
             "owner: every entry `register` writes carries `owner`, the first 8 hex characters of the registering "
             "Claude session's UUID ($CLAUDE_CODE_SESSION_ID), or --owner <8hex>; register refuses without one "
-            "(ruling of 2026-10-29). Older entries without it stay valid and gain it, from the calling session, when "
-            "`set` or `rename` touches them. A malformed owner fails validation."
+            "(ruling of 2026-10-29). An owner is only ever the caller's own session: with a session id readable, "
+            "--owner must equal it. Older entries without it stay valid and gain the caller's id when `set` or "
+            "`rename` touches them; neither ever replaces a different owner (they refuse: only that session changes "
+            "the entry, or a re-registration under a new id). A malformed owner fails validation."
         ),
     )
     ap.add_argument("--registry", default=None, help="registry file; default $SERVICE_REGISTRY")
@@ -187,7 +210,7 @@ def main() -> int:
     r.add_argument("--check", required=True)
     r.add_argument("--why")
     r.add_argument("--since")
-    r.add_argument("--owner", help="8 hex; default: the first 8 characters of $CLAUDE_CODE_SESSION_ID")
+    r.add_argument("--owner", help="8 hex; default: the first 8 characters of $CLAUDE_CODE_SESSION_ID, which --owner must equal when set")
     r.set_defaults(func=cmd_register)
 
     s = sub.add_parser("set")
@@ -200,7 +223,7 @@ def main() -> int:
     s.add_argument("--check")
     s.add_argument("--host")
     s.add_argument("--kind")
-    s.add_argument("--owner", help="8 hex; replaces the owner (default: an entry without one gains the session's)")
+    s.add_argument("--owner", help="8 hex, the caller's own session (only without a readable session id); fills a missing owner, never replaces one")
     s.set_defaults(func=cmd_set)
 
     rn = sub.add_parser("rename")

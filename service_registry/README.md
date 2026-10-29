@@ -19,9 +19,13 @@ A lane's ack or close proves that a unit belongs to another lane only through a 
 
 - `register` writes `owner` on every new entry: from `$CLAUDE_CODE_SESSION_ID` (its first 8 characters), or from
   `--owner <8hex>`. It refuses, and writes nothing, when neither gives a valid id.
+- An owner is only ever the caller's own session. When `$CLAUDE_CODE_SESSION_ID` is readable, `--owner` must equal its
+  first 8 characters, or the command refuses (rc 2). `--owner` exists for contexts with no session id. Why: a session
+  that wrote another session's id would make its own units look foreign to a lane's ack, and hide its live work.
 - An entry registered before the field existed stays valid without it.
-- `set` and `rename` give such an entry the calling session's owner when it is readable. They keep an existing owner.
-  `set --owner <8hex>` replaces it.
+- `set` and `rename` give such an entry the caller's id (session or `--owner`) when there is one.
+- They never replace a different owner. They refuse instead: only the owning session changes that entry, or the
+  service is registered again under a new id.
 - `validate` refuses an owner that is not a string of exactly 8 lowercase hex characters.
 
 ## Unit names
