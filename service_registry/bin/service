@@ -195,9 +195,10 @@ def main() -> int:
             "owner: every entry `register` writes carries `owner`, the first 8 hex characters of the registering "
             "Claude session's UUID ($CLAUDE_CODE_SESSION_ID), or --owner <8hex>; register refuses without one "
             "(ruling of 2026-10-29). An owner is only ever the caller's own session: with a session id readable, "
-            "--owner must equal it. Older entries without it stay valid and gain the caller's id when `set` or "
-            "`rename` touches them; neither ever replaces a different owner (they refuse: only that session changes "
-            "the entry, or a re-registration under a new id). A malformed owner fails validation."
+            "--owner must equal it. Older entries without it stay valid; `set` and `rename` never write an owner by "
+            "themselves (the session touching an entry is not the one running it), only `set --owner <own id>` claims "
+            "a free entry, and an explicit --owner never replaces a different owner (it refuses: only that session "
+            "changes it, or a re-registration under a new id). A malformed owner fails validation."
         ),
     )
     ap.add_argument("--registry", default=None, help="registry file; default $SERVICE_REGISTRY")
