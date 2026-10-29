@@ -360,7 +360,7 @@ test('unusable: the 5-hour window alone can rule an account out, under the bound
   assert.match(t.m.unusable(row('x', 90, 5), T, T.sessionHot), /5h 90% ≥ 85% cap/);
   assert.equal(t.m.unusable(row('y', 70, 5), T, T.sessionHot), null, 'under the hard-rule bound, 70 is room');
   assert.match(t.m.unusable(row('y', 70, 5), T, T.sessionWarm), /5h 70% ≥ 65% cap/, 'under the warm bound it is not enterable');
-  assert.match(t.m.unusable(row('z', 0, 96), T, T.sessionHot), /weekly 96% ≥ 95% ceiling/);
+  assert.match(t.m.unusable(row('z', 0, 96), T, T.sessionHot), /weekly 96% ≥ 95% reserve line/, 'no reset known: never in a drain window, so the bound is the reserve line');
   assert.match(t.m.unusable({ name: 'f', usage: { session: { percent: 0 }, weekly: { percent: 10 }, scoped: [{ label: 'Fable', percent: 91 }] } }, T, T.sessionHot), /Fable 91% ≥ 90% floor/);
   assert.match(t.m.unusable({ name: 'l', usage: { session: { percent: 5, locked: 'five_hour_limit_reached' }, weekly: { percent: 10 }, scoped: [] } }, T, T.sessionHot), /locked/);
   assert.match(t.m.unusable({ name: 'h', usage: { session: { percent: 3 }, weekly: null, scoped: [] } }, T, T.sessionHot), /weekly window unreadable/);
@@ -598,7 +598,7 @@ const T97 = { ...T, switchAt: 97, enterBelow: 96 };
 test('unusable: the weekly bound is the caller\'s — the ceiling for live, the entry bar for a target', () => {
   const t = fresh();
   assert.equal(t.m.unusable(row('z', 0, 96), T97, T.sessionHot), null, 'live at 96 under a 97 ceiling still serves');
-  assert.match(t.m.unusable(row('z', 0, 97), T97, T.sessionHot), /weekly 97% ≥ 97% ceiling/);
+  assert.match(t.m.unusable(row('z', 0, 97), T97, T.sessionHot), /weekly 97% ≥ 97% reserve line/);
   assert.match(t.m.unusable(row('z', 0, 96), T97, T.sessionHot, 'entry'), /weekly 96% ≥ 96% entry bar/);
   assert.equal(t.m.unusable(row('z', 0, 95), T97, T.sessionHot, 'entry'), null, '95 is under the bar: enterable');
 });
@@ -654,6 +654,67 @@ test('decideCodex: the ChatGPT domain keeps its own 95 ceiling — the wall test
   assert.equal(d.to, 'gpt-b');
 });
 
+// ---------- the weekly reserve: the last points of a week are Louis's, until the week is about to end ----------
+// Louis, 2026-10-29: leave an account at 95 and keep its last 5% for when every account is out; in the last hours before
+// its weekly reset that reserve would be lost, so the watcher may enter it again then and drain it to the wall margin.
+const H = 3_600_000;
+const TR = { ...T, switchAt: 95, enterBelow: 94, drainSwitchAt: 97, drainEnterBelow: 96, drainWindowMs: 8 * H };
+const wk = (name, five, week, resetInMs, extra = {}) => ({ name, usage: { session: { percent: five }, weekly: { percent: week, resetsAt: new Date(Date.now() + resetInMs).toISOString() }, scoped: [] }, ...extra });
+test('weeklyBoundsOf: 95/94 for most of the week, 97/96 in the drain window before the account\'s own reset', () => {
+  const t = fresh();
+  assert.deepEqual((({ ceiling, entry, draining }) => ({ ceiling, entry, draining }))(t.m.weeklyBoundsOf(wk('a', 0, 50, 3 * 24 * H), TR)), { ceiling: 95, entry: 94, draining: false });
+  assert.deepEqual((({ ceiling, entry, draining }) => ({ ceiling, entry, draining }))(t.m.weeklyBoundsOf(wk('a', 0, 50, 7 * H), TR)), { ceiling: 97, entry: 96, draining: true });
+  assert.equal(t.m.weeklyBoundsOf(wk('a', 0, 50, 10 * H), TR).draining, false, '10 h out is outside an 8 h window');
+  assert.ok(Math.abs(t.m.weeklyBoundsOf(wk('a', 0, 50, 10 * H), TR).opensInMs - 2 * H) < 60e3, 'and the window opens in 2 h');
+  assert.equal(t.m.weeklyBoundsOf({ name: 'u', usage: { session: { percent: 0 }, weekly: { percent: 50 }, scoped: [] } }, TR).draining, false, 'an unknown reset never opens the reserve');
+  assert.equal(t.m.weeklyBoundsOf(wk('a', 0, 50, -H), TR).draining, false, 'a reset already past is a stale reading, not a window');
+});
+
+test('decide: a reserve account stays shut until its drain window, then EDF drains it first', () => {
+  const t = fresh();
+  const live = wk('live', 5, 20, 6 * 24 * H, { checkedOut: true });
+  const shut = t.m.decide({ rows: [live, wk('res', 0, 95, 10 * H)], live: 'live', thresholds: TR, exhaustedSince: null, lastSwitchAt: 0 });
+  assert.equal(shut.action, 'none');
+  const table = t.m.candidates({ rows: [live, wk('res', 0, 95, 10 * H + 60e3)], live: 'live', thresholds: TR }); // + a minute: until() rounds down
+  assert.match(table.parked[0].blocked, /weekly 95% ≥ 94% entry bar · reserve, opens in 2h/);
+  const open = t.m.decide({ rows: [live, wk('res', 0, 95, 7 * H)], live: 'live', thresholds: TR, exhaustedSince: null, lastSwitchAt: 0 });
+  assert.equal(open.action, 'rebalance'); assert.equal(open.to, 'res', 'inside its window the reserve resets soonest: drained first');
+  const drained = t.m.decide({ rows: [live, wk('res', 0, 96, 7 * H)], live: 'live', thresholds: TR, exhaustedSince: null, lastSwitchAt: 0 });
+  assert.equal(drained.action, 'none', 'at 96 it is at the drain entry bar: nothing left worth a switch');
+});
+
+test('decide: live leaves at 95 outside its window, and serves on to 97 inside it', () => {
+  const t = fresh();
+  const spare = wk('spare', 0, 10, 5 * 24 * H);
+  const on = (week, resetIn) => t.m.decide({ rows: [wk('live', 5, week, resetIn, { checkedOut: true }), spare], live: 'live', thresholds: TR, exhaustedSince: null, lastSwitchAt: Date.now() });
+  const out = on(95, 3 * 24 * H);
+  assert.equal(out.action, 'failover'); assert.match(out.reason, /weekly 95% ≥ 95% reserve line/);
+  assert.equal(on(96, 5 * H).action, 'none', 'draining: 96 is under the 97 wall margin');
+  assert.equal(on(97, 5 * H).action, 'failover', 'and the wall margin still holds inside the window');
+});
+
+test('decide: with every account at its reserve line the machine stays put — a reserve is taken by hand, never by failover', () => {
+  const t = fresh();
+  const d = t.m.decide({ rows: [wk('live', 5, 95, 3 * 24 * H, { checkedOut: true }), wk('res', 0, 95, 2 * 24 * H)], live: 'live', thresholds: TR, exhaustedSince: null, lastSwitchAt: 0 });
+  assert.equal(d.action, 'exhausted');
+});
+
+test('reservesLine: names every account whose reserve a hand switch can take, soonest reset first', () => {
+  const t = fresh();
+  const rows = [wk('live', 5, 95, 3 * 24 * H, { checkedOut: true }), wk('a', 0, 96, 2 * 24 * H + 60e3), wk('b', 0, 95, 30 * H + 60e3), wk('dry', 0, 100, 24 * H), wk('fresh', 0, 20, 24 * H)];
+  assert.equal(t.m.reservesLine(rows, TR, 'live'), 'reserve by hand (claude-usage switch <name>): b 95% ↻1d6h, a 96% ↻2d0h');
+  assert.equal(t.m.reservesLine([wk('dry', 0, 100, H)], TR, 'live'), '', 'a spent week is no reserve');
+});
+
+test('statusline: a parked reserve is no room until its window opens', () => {
+  const t = fresh(); t.m.setState({ thresholds: TR });
+  const rows = anthropicRows(); rows.res = { name: 'res', provider: 'anthropic', usage: { session: { percent: 0 }, weekly: { percent: 95, resetsAt: new Date(Date.now() + 10 * H).toISOString() } } };
+  seedMeter(t, rows);
+  assert.doesNotMatch(plain(t.m.statuslineText()), /res/);
+  rows.res.usage.weekly.resetsAt = new Date(Date.now() + 5 * H).toISOString(); seedMeter(t, rows);
+  assert.match(plain(t.m.statuslineText()), /res ⏳0% 📅95%/);
+});
+
 test('decideCodex: a plan with no 5-hour window is still a target; one with no reading at all is not', () => {
   const t = fresh();
   const gpt = (name, u, extra = {}) => ({ name, provider: 'openai', usage: u, ...extra });
@@ -669,7 +730,7 @@ test('decideCodex: a plan with no 5-hour window is still a target; one with no r
 
 test('thresholds: defaults, overridden by state', () => {
   const t = fresh();
-  const defaults = { switchAt: 97, enterBelow: 96, codexSwitchAt: 95, targetBelow: 85, fableCeiling: 90, sessionHot: 85, sessionWarm: 65, edfLeadMs: 7_200_000, minHoldMs: 600_000, blindAfter: 3 };
+  const defaults = { switchAt: 95, enterBelow: 94, drainSwitchAt: 97, drainEnterBelow: 96, drainWindowMs: 8 * 3_600_000, codexSwitchAt: 95, targetBelow: 85, fableCeiling: 90, sessionHot: 85, sessionWarm: 65, edfLeadMs: 7_200_000, minHoldMs: 600_000, blindAfter: 3 };
   assert.deepEqual(t.m.thresholds(), defaults);
   t.m.setState({ thresholds: { switchAt: 90 } });
   assert.deepEqual(t.m.thresholds(), { ...defaults, switchAt: 90 });
@@ -678,9 +739,9 @@ test('thresholds: defaults, overridden by state', () => {
 test('cmdAuto on: the EDF thresholds are settable by flag, persist, and the retired keys are dropped', async () => {
   const t = fresh();
   t.m.setState({ thresholds: { gapThreshold: 100, sessionWeight: 1, tieBandPoints: 15, homeBelow: 50 } }); // what the interim mitigation left behind
-  await t.m.cmdAuto('on', { every: 60, 'session-hot': 80, 'session-warm': 60, 'edf-lead-hours': 3, 'min-hold-minutes': 5, 'fable-ceiling': 88, 'enter-below': 94 });
+  await t.m.cmdAuto('on', { every: 60, 'session-hot': 80, 'session-warm': 60, 'edf-lead-hours': 3, 'min-hold-minutes': 5, 'fable-ceiling': 88, 'enter-below': 93, 'drain-hours': 12 });
   const th = t.m.thresholds();
-  assert.equal(th.enterBelow, 94);
+  assert.equal(th.enterBelow, 93); assert.equal(th.drainWindowMs, 12 * 3_600_000);
   assert.equal(th.sessionHot, 80); assert.equal(th.sessionWarm, 60); assert.equal(th.edfLeadMs, 3 * 3_600_000);
   assert.equal(th.minHoldMs, 5 * 60_000); assert.equal(th.fableCeiling, 88);
   for (const dead of ['gapThreshold', 'sessionWeight', 'tieBandPoints', 'homeBelow']) assert.equal(th[dead], undefined, `${dead} is retired`);
@@ -700,7 +761,7 @@ test('cmdAuto on: --fable-ceiling off stores null and says so; a number restores
 
 test('parseArgv: every flag `auto on` reads takes a space-separated value', () => {
   const t = fresh();
-  for (const f of ['every', 'switch-at', 'enter-below', 'target-below', 'fable-ceiling', 'session-hot', 'session-warm', 'edf-lead-hours', 'min-hold-minutes']) assert.ok(t.m.VALUE_FLAGS.includes(f), f);
+  for (const f of ['every', 'switch-at', 'enter-below', 'drain-hours', 'target-below', 'fable-ceiling', 'session-hot', 'session-warm', 'edf-lead-hours', 'min-hold-minutes']) assert.ok(t.m.VALUE_FLAGS.includes(f), f);
   for (const f of ['gap-threshold', 'session-weight', 'tie-band', 'home-below']) assert.ok(!t.m.VALUE_FLAGS.includes(f), `${f} is retired`);
   const { flags, args } = t.m.parseArgv(['on', '--session-hot', '80', '--edf-lead-hours', '3', '--fresh']);
   assert.equal(flags.get('session-hot'), '80'); assert.equal(flags.get('edf-lead-hours'), '3'); assert.equal(flags.get('fresh'), true);
@@ -883,9 +944,10 @@ test('statusline always shows the current account, red or not, and only it when 
   assert.equal(plain(t.m.statuslineText()), 'perso ⏳96% 📅57%', '96 is the entry bar, so red, so not room');
 });
 
-test('statusline: the same 96% week is service on the current account and no room on a parked one', () => {
+test('statusline: the same 96% week in its drain window is service on the current account and no room on a parked one', () => {
   const t = fresh();
-  const rows = anthropicRows('perso'); rows.perso.usage = { session: { percent: 10 }, weekly: { percent: 96 } }; rows.work.usage = { session: { percent: 0 }, weekly: { percent: 96 } };
+  const soon = new Date(Date.now() + 5 * 3_600_000).toISOString(); // inside the default 8 h drain window: bounds 97 / 96
+  const rows = anthropicRows('perso'); rows.perso.usage = { session: { percent: 10 }, weekly: { percent: 96, resetsAt: soon } }; rows.work.usage = { session: { percent: 0 }, weekly: { percent: 96, resetsAt: soon } };
   seedMeter(t, rows);
   const line = t.m.statuslineText();
   assert.ok(line.startsWith(`${ANSI.orange}perso${ANSI.reset}`), 'current at 96 is under the 97 ceiling: orange, still serving');
