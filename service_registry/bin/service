@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script -q
 # ABOUTME: The service registry CLI. A services.yaml is NEVER hand-edited; this owns it.
-# ABOUTME: Subcommands: register, set, rename, list, validate. The registry path comes from --registry or $SERVICE_REGISTRY.
+# ABOUTME: Subcommands: register, set, rename, list, validate. Registry from --registry or $SERVICE_REGISTRY; owner from the session.
 # /// script
 # requires-python = ">=3.13"
 # dependencies = ["pyyaml>=6.0"]
@@ -37,10 +37,43 @@ def check_host(host: str) -> None:
         sys.exit(2)
 
 
+def explicit_owner(owner: str) -> str:
+    if not registry.OWNER.match(owner):
+        sys.stderr.write(f"service: --owner {owner!r} must be a session's first 8 hex characters ([0-9a-f]{{8}})\n")
+        sys.exit(2)
+    return owner
+
+
+def required_owner(owner: str | None) -> str:
+    """The owner of a new entry: --owner, else the calling Claude session's. Refuses when neither gives an id."""
+    if owner is not None:
+        return explicit_owner(owner)
+    found = registry.session_owner(dict(os.environ))
+    if not found:
+        sys.stderr.write(
+            f"service: a new entry needs an owner: no valid session id in ${registry.SESSION_ENV} "
+            "(run from a Claude session, or pass --owner <first 8 hex of the session UUID>)\n"
+        )
+        sys.exit(2)
+    return found
+
+
+def touch_owner(entry: dict, owner: str | None) -> None:
+    """An updating command records the owner: --owner replaces it; an entry without one gains the calling session's
+    when it is readable (entries from before the field stay valid without it)."""
+    if owner is not None:
+        entry[registry.OWNER_FIELD] = explicit_owner(owner)
+    elif registry.OWNER_FIELD not in entry:
+        found = registry.session_owner(dict(os.environ))
+        if found:
+            entry[registry.OWNER_FIELD] = found
+
+
 def cmd_register(args) -> int:
     check_host(args.host)
+    owner = required_owner(args.owner)
     services = registry.load(args.registry)
-    fields = {"id": args.id, "host": args.host, "kind": args.kind,
+    fields = {"id": args.id, "owner": owner, "host": args.host, "kind": args.kind,
               "intended": args.intended, "start": args.start, "stop": args.stop,
               "check": args.check}
     if args.why:
@@ -69,6 +102,7 @@ def cmd_set(args) -> int:
     if not match:
         print(f"unknown service {args.id!r}", file=sys.stderr)
         return 1
+    touch_owner(match[0], args.owner)
     if args.intended:
         match[0]["intended"] = args.intended
     if args.why:
@@ -103,6 +137,7 @@ def cmd_rename(args) -> int:
         print(f"target id {args.new_id!r} already exists", file=sys.stderr)
         return 1
     match[0]["id"] = args.new_id
+    touch_owner(match[0], None)
     problems = registry.validate(services)
     if problems:
         print("\n".join(problems), file=sys.stderr)
@@ -130,7 +165,15 @@ def cmd_validate(args) -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Own services.yaml. Never hand-edit that file.")
+    ap = argparse.ArgumentParser(
+        description="Own services.yaml. Never hand-edit that file.",
+        epilog=(
+            "owner: every entry `register` writes carries `owner`, the first 8 hex characters of the registering "
+            "Claude session's UUID ($CLAUDE_CODE_SESSION_ID), or --owner <8hex>; register refuses without one "
+            "(ruling of 2026-10-29). Older entries without it stay valid and gain it, from the calling session, when "
+            "`set` or `rename` touches them. A malformed owner fails validation."
+        ),
+    )
     ap.add_argument("--registry", default=None, help="registry file; default $SERVICE_REGISTRY")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -144,6 +187,7 @@ def main() -> int:
     r.add_argument("--check", required=True)
     r.add_argument("--why")
     r.add_argument("--since")
+    r.add_argument("--owner", help="8 hex; default: the first 8 characters of $CLAUDE_CODE_SESSION_ID")
     r.set_defaults(func=cmd_register)
 
     s = sub.add_parser("set")
@@ -156,6 +200,7 @@ def main() -> int:
     s.add_argument("--check")
     s.add_argument("--host")
     s.add_argument("--kind")
+    s.add_argument("--owner", help="8 hex; replaces the owner (default: an entry without one gains the session's)")
     s.set_defaults(func=cmd_set)
 
     rn = sub.add_parser("rename")
