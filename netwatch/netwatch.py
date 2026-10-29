@@ -1288,8 +1288,18 @@ def _publish_heartbeat(args) -> None:
               f"(limit {HC_INTERVAL_S * 2}s) -- letting the dead-man trip",
               file=sys.stderr)
         return
+    # The ping body carries the public IPv4: healthchecks.io keeps it in the
+    # check's ping log, an off-house second channel for the address when the
+    # Telegram announce is not getting through. Never masked: the log is
+    # private to the account, and a masked address is useless for ssh.
+    ip = None
     try:
-        urllib.request.urlopen(url, timeout=10).read()
+        ip = json.loads((STATE_DIR / PUBLIC_IP_STATE).read_text()).get("ip")
+    except Exception:
+        pass
+    body = f"public_ip={ip or 'unknown'}\n".encode()
+    try:
+        urllib.request.urlopen(url, data=body, timeout=10).read()
         if not args.quiet:
             print("healthcheck pinged (fresh data published)")
     except Exception:

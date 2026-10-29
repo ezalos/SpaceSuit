@@ -667,6 +667,54 @@ def test_human_dur():
     check("days", nw.human_dur(544382), "6d07h")
 
 
+def test_heartbeat_carries_public_ip():
+    """The dead-man ping is a second, off-house channel for the public IP.
+
+    A real HTTP server on loopback receives the ping, so the request that
+    reaches it is the one urllib actually sends."""
+    import http.server
+    import threading
+    print("heartbeat ping carries the public IP:")
+    got = []
+
+    class Sink(http.server.BaseHTTPRequestHandler):
+        def _take(self):
+            n = int(self.headers.get("Content-Length") or 0)
+            got.append((self.command, self.rfile.read(n).decode()))
+            self.send_response(200)
+            self.end_headers()
+        do_GET = do_POST = _take
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), Sink)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{srv.server_address[1]}/check-uuid"
+    args = argparse.Namespace(healthcheck_url=url, quiet=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        nw.STATE_DIR = Path(tmp)
+        nw.EVENTS = Path(tmp) / "events.jsonl"
+        try:
+            nw.append_jsonl(nw.EVENTS, {"type": "heartbeat", "ts": nw.iso(nw.now()),
+                                        "host": "h", "state": "ok"})
+            (Path(tmp) / nw.PUBLIC_IP_STATE).write_text(
+                json.dumps({"ip": "203.0.113.7", "since": nw.iso(nw.now())}))
+            nw._publish_heartbeat(args)
+            check("ping is a POST", [m for m, _ in got], ["POST"])
+            check("body carries the IP", got[-1][1] if got else None,
+                  "public_ip=203.0.113.7\n")
+
+            # No IP known yet: the dead-man ping must still go out.
+            (Path(tmp) / nw.PUBLIC_IP_STATE).unlink()
+            nw._publish_heartbeat(args)
+            check("unknown IP still pings", len(got), 2)
+            check("unknown IP says so", got[-1][1], "public_ip=unknown\n")
+        finally:
+            srv.shutdown()
+            nw.STATE_DIR = _real_state_dir
+
+
 def main():
     for t in (test_classification, test_gateway_silent_is_not_an_outage, test_outage_ledger, test_startup_during_outage,
               test_router_restart_detection, test_bootid_restart,
@@ -676,7 +724,8 @@ def main():
               test_bloat_grade_is_the_only_judge,
               test_public_ip_probe_validation, test_public_ip_change,
               test_undeliverable_alert, test_rotation_of_a_live_file,
-              test_summary_reads_only_its_window, test_human_dur):
+              test_summary_reads_only_its_window, test_human_dur,
+              test_heartbeat_carries_public_ip):
         t()
     print()
     if FAILURES:
