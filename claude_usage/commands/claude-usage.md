@@ -1,6 +1,6 @@
 ---
 description: Family Claude accounts: usage meters of every account in one table, switch the whole machine to another account without a browser, and the failover watcher (claude-usage tool)
-argument-hint: [stats [--fresh [<name>,...]]] | switch [<name>] | adopt <name> | list | add <name> [--email <addr>] | remove <name> | add-gpt <name> | remove-gpt <name> | codex-lease-dir [add|remove <dir>] | priority <name> [<n>] | cost [--by model|session|repo|day] [--roots <ids>] | prices [--refresh] | auto on|off|status | statusline install | doctor [--fix]
+argument-hint: [stats [--fresh [<name>,...]]] | switch [<name>] | adopt <name> | list | add <name> [--email <addr>] | remove <name> | add-gpt <name> | remove-gpt <name> | codex-lease-dir [add|remove <dir>] | priority <name> [<n>] | weekly-cap <name> [<pct>|off] | cost [--by model|session|repo|day] [--roots <ids>] | prices [--refresh] | auto on|off|status | statusline install | doctor [--fix]
 ---
 Run the local tool and report its output verbatim (it is a short table):
 
@@ -23,6 +23,10 @@ What the rows mean:
   taken — a dead machine is worse. The alert warns only when a preferred account existed and had no room, since with
   no preferred candidate the switch was the only possible move.
   `perso` and `gpt-perso` are 0 since 2026-09-27 (Louis lifted their last-resort status; `priority <name> 1` restores it).
+- `claude-usage weekly-cap <name> [<pct>|off]` sets a per-account weekly ceiling ON THIS MACHINE only (stored in this
+  machine's account record, like priority): the watcher never enters the account at or past it, by failover or rotation,
+  and leaves it as live once past it (the row reads `weekly N% ≥ C% cap of <name>`). The Lighthouse seat runs
+  `weekly-cap perso 50` (Louis, 2026-10-28: "dont autoswitch to perso if we used more than 50% (inside lighthouse only)").
 - `4m old` on a window means that reading came from the meter, not from a fresh call: the usage endpoint has a
   request budget and the tool reuses a reading rather than spend one (45 s checked out, 5 min parked, and longer
   while an account is backed off after a 429). It is the real number, just not this second's. `stats --fresh <name>`

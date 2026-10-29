@@ -364,6 +364,7 @@ function unusable(row, t, sessionBound, weekly_ = 'ceiling') {
   if (session !== null && session >= sessionBound) return `5h ${session}% ≥ ${sessionBound}% cap`;
   const weeklyBound = weekly_ === 'entry' ? entryBarOf(t) : t.switchAt;
   if (weekly !== null && weekly >= weeklyBound) return `weekly ${weekly}% ≥ ${weeklyBound}% ${weekly_ === 'entry' ? 'entry bar' : 'ceiling'}`;
+  if (weekly !== null && Number.isInteger(row.weeklyCap) && weekly >= row.weeklyCap) return `weekly ${weekly}% ≥ ${row.weeklyCap}% cap of ${row.name}`;
   if (fableCeiling !== null && fable >= fableCeiling) return `Fable ${fable}% ≥ ${fableCeiling}% floor`;
   return null;
 }
@@ -774,6 +775,19 @@ function cmdPriority(name, n) {
   if (a.provider === 'openai') saveCodexMeta(name, { priority: v });
   else { const rec = loadAccount(name); rec.priority = v; saveAccount(rec); }
   log(`${name} priority ${v}${v > 0 ? ' (last resort: taken only when nothing preferred has room)' : ''}`);
+}
+// A per-account weekly ceiling, on THIS machine only (it lives in this machine's account record, like priority): the
+// watcher never enters the account at or past it, and leaves it as live once past it. Louis, 2026-10-28, on the
+// Lighthouse seat: "make sure we dont autoswitch to perso if we used more than 50% (inside lighthouse only)".
+function cmdWeeklyCap(name, v) {
+  if (!name || !names().includes(name)) throw new UsageError(`no Claude account named ${name ?? '(none)'}`, 'usage');
+  const rec = loadAccount(name);
+  if (v === undefined) { log(`${name} weekly cap ${rec.weeklyCap ?? 'off'}${rec.weeklyCap ? '%' : ''}`); return; }
+  if (v === 'off') { delete rec.weeklyCap; saveAccount(rec); log(`${name} weekly cap off`); return; }
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1 || n > 100) throw new UsageError('weekly cap must be an integer 1-100 (percent of the weekly window) or off', 'usage');
+  rec.weeklyCap = n; saveAccount(rec);
+  log(`${name} weekly cap ${n}% on this machine: never entered at ${n}% or more, left as live once past it`);
 }
 function cmdRemoveGpt(name) {
   if (!codexNames().includes(name)) die(`no ChatGPT account named ${name}`);
@@ -1533,7 +1547,7 @@ async function collect({ includeLive = true, force = false, fresh = null } = {})
     // refreshers on one rotating token, the failure this whole section exists to prevent. Nothing here can stop either
     // proxy, so the row says it loudly (stats, doctor) for a person to stop one.
     if (a.provider === 'openai' && checkedOut && leaseState(a.name) === 'held') a.leaseConflict = true;
-    const row = { ...(a.leaseConflict ? { leaseConflict: true } : {}), name: a.name, provider: a.provider || 'anthropic', priority: a.priority || 0, live: !!a.live, checkedOut, home: a.name === state().home, email: a.email || '?', plan: planLabel(a), tier: a.tier || '', accountUuid: a.accountUuid || null, refreshTokenExpiresAt: a.refreshTokenExpiresAt || null };
+    const row = { ...(a.leaseConflict ? { leaseConflict: true } : {}), name: a.name, provider: a.provider || 'anthropic', priority: a.priority || 0, live: !!a.live, checkedOut, home: a.name === state().home, email: a.email || '?', plan: planLabel(a), tier: a.tier || '', accountUuid: a.accountUuid || null, refreshTokenExpiresAt: a.refreshTokenExpiresAt || null, ...(Number.isInteger(a.weeklyCap) ? { weeklyCap: a.weeklyCap } : {}) };
     if (a.provider === 'openai') { row.plan = a.plan; row.email = a.email; }
     const cached = prev[a.name]?.usage?.at ? prev[a.name].usage : null;
     const age = cached ? Date.now() - cached.at : Infinity;
@@ -1997,6 +2011,7 @@ async function main() {
     case 'remove': case 'rm': cmdRemove(args[0]); break;
     case 'add-gpt': await cmdAddGpt(args[0]); break;
     case 'priority': cmdPriority(args[0], args[1]); break;
+    case 'weekly-cap': cmdWeeklyCap(args[0], args[1]); break;
     case 'prices': await cmdPrices({ refresh: flags.has('refresh'), 'no-check': flags.has('no-check') }); break;
     case 'session-cost': {
       // Printed for the status line: just the number, and nothing on stderr that could end up on Louis's prompt.
@@ -2026,4 +2041,4 @@ async function main() {
   }
 }
 if (require.main === module) main().catch((e) => die(e.message));
-else module.exports = { cmdStats, LEASE_IO, lockKey, leaseSupportMissing, freshArg, LIST_FLAGS, leaseState, takeLeases, codexLeaseDirs, cmdCodexLeaseDir, LEASE_TAKE_MS, extractLogin, cleanupLogin, parseUsage, parseCodexUsage, cmdAddGpt, cmdAuto, parseArgv, VALUE_FLAGS, cmdCost, cmdPrices, attribute, whereFromSession, claudeProcs, paneForPid, codexCulprit, transcriptFor, readCodexBlocked, actOnCodex, codexNames, codexActive, loadCodexAccount, refreshCodex, codexUsageForAccount, switchCodex, decideCodex, codexMigrate, CODEX_STORE, CODEX_LIVE, CODEX_BLOCKED, CODEX_TIER_FALLBACK, h8, keychainService, acctLock, SWITCH_TRACE, renderRows, addBlockedBy, deadRemedy, liveLogin, net, DARWIN, CFG, CREDS_FILE, CLAUDE_JSON, REFRESH_LOCK, WRITE_LOCK, AUTO_LOG, METER, state, setState, names, loadAccount, saveAccount, liveStoreRead, liveStoreWrite, takeLock, LOCK_WAIT, sleepSync, usageFor, collect, hasTokens, isCheckedOut, inTransition, stripTokens, parkPair, pairFromRecord, claudeJsonAccount, profileOf, liveIdentity, reconcile, adoptLive, writeClaudeJsonAccount, switchTo, refresh, THRESHOLDS, thresholds, worstOf, fablePctOf, unusable, edfCompare, candidates, decide, limitRefusals, notify, resetsLine, cmdTick, TAG, systemdUnits, statuslineText, cmdStatusline, USER_SETTINGS, STATUSLINE_SH, cmdDoctor };
+else module.exports = { cmdWeeklyCap, cmdStats, LEASE_IO, lockKey, leaseSupportMissing, freshArg, LIST_FLAGS, leaseState, takeLeases, codexLeaseDirs, cmdCodexLeaseDir, LEASE_TAKE_MS, extractLogin, cleanupLogin, parseUsage, parseCodexUsage, cmdAddGpt, cmdAuto, parseArgv, VALUE_FLAGS, cmdCost, cmdPrices, attribute, whereFromSession, claudeProcs, paneForPid, codexCulprit, transcriptFor, readCodexBlocked, actOnCodex, codexNames, codexActive, loadCodexAccount, refreshCodex, codexUsageForAccount, switchCodex, decideCodex, codexMigrate, CODEX_STORE, CODEX_LIVE, CODEX_BLOCKED, CODEX_TIER_FALLBACK, h8, keychainService, acctLock, SWITCH_TRACE, renderRows, addBlockedBy, deadRemedy, liveLogin, net, DARWIN, CFG, CREDS_FILE, CLAUDE_JSON, REFRESH_LOCK, WRITE_LOCK, AUTO_LOG, METER, state, setState, names, loadAccount, saveAccount, liveStoreRead, liveStoreWrite, takeLock, LOCK_WAIT, sleepSync, usageFor, collect, hasTokens, isCheckedOut, inTransition, stripTokens, parkPair, pairFromRecord, claudeJsonAccount, profileOf, liveIdentity, reconcile, adoptLive, writeClaudeJsonAccount, switchTo, refresh, THRESHOLDS, thresholds, worstOf, fablePctOf, unusable, edfCompare, candidates, decide, limitRefusals, notify, resetsLine, cmdTick, TAG, systemdUnits, statuslineText, cmdStatusline, USER_SETTINGS, STATUSLINE_SH, cmdDoctor };

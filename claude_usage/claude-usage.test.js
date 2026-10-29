@@ -603,6 +603,32 @@ test('unusable: the weekly bound is the caller\'s — the ceiling for live, the 
   assert.equal(t.m.unusable(row('z', 0, 95), T97, T.sessionHot, 'entry'), null, '95 is under the bar: enterable');
 });
 
+test('unusable: an account\'s own weekly cap (this machine only) bounds it as live and as a target', () => {
+  // Louis, 2026-10-28, on the Lighthouse seat: "make sure we dont autoswitch to perso if we used more than 50%". The seat
+  // had rotated onto perso four times in a day (perso is priority 0 since 2026-09-27), taking it from 38% to 97% weekly.
+  const t = fresh();
+  const capped = (five, week) => row('perso', five, week, { weeklyCap: 50 });
+  assert.equal(t.m.unusable(capped(0, 49), T97, T.sessionHot, 'entry'), null, '49 is under its cap: enterable');
+  assert.match(t.m.unusable(capped(0, 50), T97, T.sessionHot, 'entry'), /weekly 50% ≥ 50% cap of perso/);
+  assert.match(t.m.unusable(capped(0, 60), T97, T.sessionHot), /weekly 60% ≥ 50% cap of perso/, 'live past its cap leaves too');
+  assert.equal(t.m.unusable(row('work', 0, 60), T97, T.sessionHot, 'entry'), null, 'no cap: the fleet bar alone applies');
+  assert.match(t.m.unusable(row('z', 0, 96, { weeklyCap: 99 }), T97, T.sessionHot, 'entry'), /96% ≥ 96% entry bar/, 'a cap above the fleet bar never loosens it');
+  const rows = [row('live', 90, 10, { checkedOut: true }), { name: 'perso', weeklyCap: 50, usage: { session: { percent: 0 }, weekly: { percent: 61, resetsAt: iso(3600e3) }, scoped: [] } }];
+  const { parked, next } = t.m.candidates({ rows, live: 'live', thresholds: T97 });
+  assert.match(parked[0].blocked, /cap of perso/); assert.equal(next, null, 'never rotated onto past its cap');
+});
+
+test('weekly-cap command: stored in this machine\'s account record, shown, cleared with off, refused out of range', async () => {
+  const t = fresh(); await machineOnPerso(t);
+  t.m.cmdWeeklyCap('work', '50');
+  assert.equal(t.m.loadAccount('work').weeklyCap, 50);
+  t.m.cmdWeeklyCap('work', 'off');
+  assert.equal(t.m.loadAccount('work').weeklyCap, undefined);
+  assert.throws(() => t.m.cmdWeeklyCap('work', '0'));
+  assert.throws(() => t.m.cmdWeeklyCap('work', '101'));
+  assert.throws(() => t.m.cmdWeeklyCap('nobody', '50'));
+});
+
 test('decide: live leaves at switchAt, and a target must sit under enterBelow', () => {
   const t = fresh();
   const soon = new Date(Date.now() + 3_600_000).toISOString(), later = new Date(Date.now() + 5 * 86_400_000).toISOString();
