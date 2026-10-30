@@ -1,6 +1,14 @@
 #!/bin/sh
 # ABOUTME: Table-driven identity guard: enforces per-tree git identity + content-scrub on commit.
 # ABOUTME: Data-free — reads ~/.config/git-identity/{contexts.conf,forbidden/*,scrub.py}. No tokens here.
+#
+# One script for every repo on the machine (unified 2026-10-29; until then ~/42 ran an untracked
+# copy without the merge fix below):
+#   - repos under ~/42 run it through core.hooksPath (~/.gitconfig-42 -> ~/.config/git/hooks-templates),
+#     which OVERRIDES any per-repo .git/hooks/pre-commit;
+#   - every other repo gets it through init.templateDir (~/.config/git/template/hooks).
+# Beyond identity and the token scrub, it refuses any staged private key (no bypass but the whole-guard
+# switch) and runs `ssh-doctor lint` on staged ssh config modules (*/ssh/config.d/*.conf).
 [ "${GIT_IDENTITY_GUARD:-}" = "off" ] && exit 0
 CFG="${GIT_IDENTITY_DIR:-$HOME/.config/git-identity}"
 CONF="$CFG/contexts.conf"
@@ -71,19 +79,64 @@ staged_diff() {
 	fi
 }
 
-if [ "${PRO_CONTENT_SCRUB:-}" != "off" ] && [ -f "$CFG/scrub.py" ]; then
-	mh=$(git rev-parse --git-path MERGE_HEAD) && [ -f "$mh" ] || mh=""
-	if [ -n "$mh" ]; then
-		keep=$(mktemp) && part=$(mktemp) && both=$(mktemp) || exit 1
-		trap 'rm -f "$keep" "$part" "$both"' EXIT
-		merge_authored_paths || {
-			printf '[content-scrub] BLOCKED: could not list the paths this merge authors\n' >&2
+mh=$(git rev-parse --git-path MERGE_HEAD) && [ -f "$mh" ] || mh=""
+keep=$(mktemp) && part=$(mktemp) && both=$(mktemp) && lintdir=$(mktemp -d) || exit 1
+trap 'rm -f "$keep" "$part" "$both"; rm -rf "$lintdir"' EXIT
+if [ -n "$mh" ]; then
+	merge_authored_paths || {
+		printf '[content-scrub] BLOCKED: could not list the paths this merge authors\n' >&2
+		exit 1
+	}
+fi
+
+# A private key never enters a repo, whatever the repo and whatever PRO_CONTENT_SCRUB says: the
+# token scrub's bypass exists for false positives on words, and a key is never one. ssh keys live
+# in ~/.ssh on the machine that made them (GroundControl secrets/ssh/README.md).
+if staged_diff | grep -Eq '^\+.*-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY-----'; then
+	printf '[key-guard] BLOCKED: a private key is staged. Keys stay in ~/.ssh on their machine.\n' >&2
+	printf '  find it: git diff --cached | grep -n "PRIVATE KEY"   unstage: git restore --staged <file>\n' >&2
+	exit 1
+fi
+
+# A shared ssh config module runs on every machine that loads it (ProxyCommand and friends execute
+# locally at the next ssh), so a staged one must pass `ssh-doctor lint`. The STAGED content is what is
+# checked, not the working tree.
+mods=$(git -c core.quotepath=off diff --cached --name-only --diff-filter=ACMR | grep -E '(^|/)ssh/config\.d/[^/]+\.conf$')
+if [ -n "$mods" ]; then
+	if command -v ssh-doctor >/dev/null 2>&1; then
+		printf '%s\n' "$mods" | while IFS= read -r f; do
+			git show ":$f" >"$lintdir/$(basename "$f")" && chmod 644 "$lintdir/$(basename "$f")"
+		done
+		ssh-doctor lint "$lintdir"/*.conf >&2 || {
+			printf '[ssh-module-guard] BLOCKED: a staged ssh config module fails ssh-doctor lint (above)\n' >&2
 			exit 1
 		}
+	else
+		printf '[ssh-module-guard] WARNING: ssh-doctor not on PATH; staged ssh modules NOT linted\n' >&2
 	fi
+fi
+
+# The public-repo list (extra forbidden tokens: machine names and the like) applies everywhere except
+# Louis's private repos, i.e. a repo under ~/42 other than SpaceSuit. Outside ~/42 (work, anon) it keeps
+# personal infrastructure names out; in SpaceSuit (public) it is why the list exists.
+extra_forbidden="$HOME/.config/git-content-scrub/spacesuit-extra.txt"
+home42=$(cd "$HOME/42" 2>/dev/null && pwd -P) || home42=""
+if [ -n "$home42" ]; then
+	case "$repo_root_abs" in
+		"$home42"/*)
+			is_spacesuit=0
+			[ "$(basename "$repo_root_abs")" = "SpaceSuit" ] && is_spacesuit=1
+			case "$(git config --get remote.origin.url 2>/dev/null)" in
+				*ezalos/SpaceSuit*) is_spacesuit=1 ;;
+			esac
+			[ "$is_spacesuit" = "1" ] || extra_forbidden="" ;;
+	esac
+fi
+
+if [ "${PRO_CONTENT_SCRUB:-}" != "off" ] && [ -f "$CFG/scrub.py" ]; then
 	staged_diff | \
 		python3 "$CFG/scrub.py" --context "$ctx" --config-dir "$CFG" \
-			--forbidden-file "$HOME/.config/git-content-scrub/spacesuit-extra.txt" || {
+			${extra_forbidden:+--forbidden-file "$extra_forbidden"} || {
 			printf '  bypass once: PRO_CONTENT_SCRUB=off git commit ...\n' >&2
 			exit 1
 		}
