@@ -730,7 +730,7 @@ test('decideCodex: a plan with no 5-hour window is still a target; one with no r
 
 test('thresholds: defaults, overridden by state', () => {
   const t = fresh();
-  const defaults = { switchAt: 95, enterBelow: 94, drainSwitchAt: 97, drainEnterBelow: 96, drainWindowMs: 8 * 3_600_000, codexSwitchAt: 95, targetBelow: 85, fableCeiling: 90, sessionHot: 85, sessionWarm: 65, edfLeadMs: 7_200_000, minHoldMs: 600_000, blindAfter: 3 };
+  const defaults = { switchAt: 90, enterBelow: 89, drainSwitchAt: 97, drainEnterBelow: 96, drainWindowMs: 12 * 3_600_000, codexSwitchAt: 95, targetBelow: 85, fableCeiling: 90, sessionHot: 85, sessionWarm: 65, edfLeadMs: 7_200_000, minHoldMs: 600_000, blindAfter: 3 };
   assert.deepEqual(t.m.thresholds(), defaults);
   t.m.setState({ thresholds: { switchAt: 90 } });
   assert.deepEqual(t.m.thresholds(), { ...defaults, switchAt: 90 });
@@ -954,7 +954,7 @@ test('statusline always shows the current account, red or not, and only it when 
 
 test('statusline: the same 96% week in its drain window is service on the current account and no room on a parked one', () => {
   const t = fresh();
-  const soon = new Date(Date.now() + 5 * 3_600_000).toISOString(); // inside the default 8 h drain window: bounds 97 / 96
+  const soon = new Date(Date.now() + 5 * 3_600_000).toISOString(); // inside the default 12 h drain window: bounds 97 / 96
   const rows = anthropicRows('perso'); rows.perso.usage = { session: { percent: 10 }, weekly: { percent: 96, resetsAt: soon } }; rows.work.usage = { session: { percent: 0 }, weekly: { percent: 96, resetsAt: soon } };
   seedMeter(t, rows);
   const line = t.m.statuslineText();
@@ -966,6 +966,7 @@ test('statusline colours each number on its own level and the name on the weekly
   const t = fresh();
   const rows = anthropicRows(); rows.work.usage = { session: { percent: 51 }, weekly: { percent: 71 } };
   rows.perso.usage.weekly.percent = 99; // off the line at every switch-at this test uses: the assertions below are about colours, on one account
+  t.m.setState({ thresholds: { switchAt: 97 } }); // a line the colours can sit on both sides of, apart from the reserve default
   seedMeter(t, rows);
   assert.equal(t.m.statuslineText(), `${ANSI.orange}work${ANSI.reset} ${ANSI.yellow}⏳51%${ANSI.reset} ${ANSI.orange}📅71%${ANSI.reset}`);
   rows.work.usage = { session: { percent: 50 }, weekly: { percent: 94 } }; seedMeter(t, rows);

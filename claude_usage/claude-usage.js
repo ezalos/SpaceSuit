@@ -288,12 +288,14 @@ async function cmdSwitch(target, opts) {
 // So the margin is the lag, not a guess, and the 2-point gap keeps the watcher off accounts with crumbs left — without
 // it, it handed the whole machine to an account at 99% for its last 1%. codexSwitchAt: the ChatGPT meter was not measured.
 // The reserve (Louis, 2026-10-29: "i often find myself without any usage left, having some 5% reminder could be useful
-// when i need it, but we dont want to let them waste"): the hard rule leaves at switchAt 95 and a target must sit under
-// enterBelow 94, so every spent week keeps its last points for a hand switch when nothing else has room. Inside the
+// when i need it, but we dont want to let them waste"; then: "the safety reserve should be at 90%", since the top 3 points
+// are the wall margin and only 90..97 is spendable): the hard rule leaves at switchAt 90 and a target must sit under
+// enterBelow 89, so every spent week keeps its last points for a hand switch when nothing else has room. Inside the
 // drainWindowMs before an account's OWN weekly reset that reserve would be lost, so the account takes the measured wall
-// margin instead (drainSwitchAt 97 / drainEnterBelow 96) and EDF drains it first. 8 h: on the seat's own log
-// (2026-09-24..10-29) a median 8-hour window burns 24+ weekly points, against the 2-4 that one or two reserves hold.
-const THRESHOLDS = { switchAt: 95, enterBelow: 94, drainSwitchAt: 97, drainEnterBelow: 96, drainWindowMs: 8 * 3_600_000, codexSwitchAt: 95, targetBelow: 85, fableCeiling: 90, sessionHot: 85, sessionWarm: 65, edfLeadMs: 7_200_000, minHoldMs: 600_000, blindAfter: 3 }; // targetBelow: the ChatGPT domain only (decideCodex); fableCeiling null = the Fable gate is off (`auto on --fable-ceiling off`)
+// margin instead (drainSwitchAt 97 / drainEnterBelow 96) and EDF drains it first. 12 h: on the seat's own log
+// (2026-09-24..10-29, fully measured windows only) the LEAST busy 12-hour window burned 15.5 weekly points (p5 20,
+// median 47), against the 7 one reserve holds or the 14 of two whose windows overlap. 8 h fell to 10.7, under 14.
+const THRESHOLDS = { switchAt: 90, enterBelow: 89, drainSwitchAt: 97, drainEnterBelow: 96, drainWindowMs: 12 * 3_600_000, codexSwitchAt: 95, targetBelow: 85, fableCeiling: 90, sessionHot: 85, sessionWarm: 65, edfLeadMs: 7_200_000, minHoldMs: 600_000, blindAfter: 3 }; // targetBelow: the ChatGPT domain only (decideCodex); fableCeiling null = the Fable gate is off (`auto on --fable-ceiling off`)
 // The meter is not the only evidence of a limit, and it is not always there. On 2026-09-15 perso's usage endpoint answered
 // 429 for nine ticks exactly while perso refused jobs (the granola sweep died at 18:45Z), and work2's for eleven while it
 // climbed from 65% to 100%: the meter goes blind when an account is busiest. Two answers: a refusal written by any run is
