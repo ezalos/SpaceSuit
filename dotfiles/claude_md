@@ -12,8 +12,11 @@
   No sycophancy, never "You're absolutely right!"
 - Ask for clarification rather than assuming
 - Jokes welcome, never at the task's expense
-- Name files by repo-root-relative path (`monitoring/bin/sweep`, not absolute) —
-  I cat them from a fresh tmux window at the repo root. Absolute only outside the repo
+- Name every file by a full path I can paste from ANY directory, `~/`-prefixed
+  (`~/42/GroundControl/monitoring/bin/sweep`), never relative to a repo, a subfolder or
+  the session's cwd: my tmux window is often in another repo, and a relative path is
+  unfindable <!-- 2026-10-30: dossier paths like `mails/outbox/x.md` given from a SevenLeagues subfolder, Louis was in GroundControl, both cats failed -->.
+  The `~/` form, not `/home/…`, keeps it short
 - Commands for me to run go FIRST in the reply, never buried at the end. Never
   `!`-prefix a `sudo` line: `!` runs non-interactively with no tty, so sudo cannot
   prompt and the line dies on "a terminal is required to read the password" <!-- 2026-08-20: four install lines lost this way -->.
