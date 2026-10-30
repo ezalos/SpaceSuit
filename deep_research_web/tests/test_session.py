@@ -145,19 +145,72 @@ class _FakeKeyboard:
         self.presses.append(key)
 
 
+class _FakeContext:
+    def __init__(self, link_page):
+        self.link_page = link_page
+        self.opened = 0
+
+    def new_page(self):
+        self.opened += 1
+        return self.link_page
+
+
+class _FakeLinkPage:
+    """The tab a sign-in link opens in: it lands on the app, shows a code, or never settles.
+
+    `polls_before_landing` keeps the URL on /magic-link for that many reads first, the way the
+    page's JavaScript exchanges the fragment token before claude.ai redirects.
+    """
+
+    def __init__(self, lands: str = "app", polls_before_landing: int = 0,
+                 page_title: str = "Claude", body: str = ""):
+        self.lands = lands
+        self.polls_left = polls_before_landing
+        self.page_title = page_title
+        self.body = body
+        self.visited: list[str] = []
+        self.closed = False
+        self._url = "about:blank"
+
+    def goto(self, url, wait_until=None):
+        self.visited.append(url)
+        self._url = url
+
+    @property
+    def url(self):
+        if self.lands == "app" and self.visited:
+            if self.polls_left > 0:
+                self.polls_left -= 1
+                return "https://claude.ai/magic-link"
+            return "https://claude.ai/new"
+        return self._url
+
+    def inner_text(self, selector):
+        return self.body
+
+    def title(self):
+        return self.page_title
+
+    def close(self):
+        self.closed = True
+
+
 class _FakePage:
     """A login page that either shows the one-time-code field or never does."""
 
-    def __init__(self, code_field: bool, page_title: str = "Claude", never_settles: bool = False):
+    def __init__(self, code_field: bool, page_title: str = "Claude", never_settles: bool = False,
+                 link_page: _FakeLinkPage | None = None):
         self.code_field = code_field
         self.page_title = page_title
         self.never_settles = never_settles
         self.waited_for = None
-        self.url = "https://claude.ai/magic-link"
+        self.url = "https://claude.ai/login"
         self.keyboard = _FakeKeyboard()
         self.filled: list[tuple[str, str]] = []
         self.visited: list[str] = []
         self.waited_for_url = False
+        self.closed = False
+        self.context = _FakeContext(link_page or _FakeLinkPage())
 
     def fill(self, selector, value):
         self.filled.append((selector, value))
@@ -170,6 +223,9 @@ class _FakePage:
     def goto(self, url, wait_until=None):
         self.visited.append(url)
         self.url = url
+
+    def close(self):
+        self.closed = True
 
     def title(self):
         return self.page_title
@@ -199,22 +255,62 @@ def test_login_types_a_code_into_the_code_field(tmp_path):
     assert page.visited == [] and page.waited_for_url
 
 
-def test_login_follows_a_pasted_sign_in_link(tmp_path):
+link = "https://claude.ai/magic-link?token=xyz"
+
+
+@pytest.fixture
+def fast_link(monkeypatch):
+    monkeypatch.setattr(session, "LINK_POLL_S", 0.0)
+
+
+def test_login_follows_a_pasted_sign_in_link(tmp_path, fast_link):
     # claude.ai sends a link instead of a code for some accounts; the link must open in THIS
-    # profile's browser, which is the one that asked for it.
-    page = _FakePage(code_field=False)
-    link = "https://claude.ai/magic-link?token=xyz"
-    _session_on(tmp_path, page).login("me@example.test", lambda: link)
-    assert page.visited == [link]
+    # profile's browser, which is the one that asked for it. It opens in a second tab so the
+    # login tab, and its code field, survive whatever the link's page turns out to be.
+    link_page = _FakeLinkPage(lands="app")
+    page = _FakePage(code_field=False, link_page=link_page)
+    s = _session_on(tmp_path, page)
+    s.login("me@example.test", lambda: link)
+    assert page.context.opened == 1 and link_page.visited == [link] and page.visited == []
     assert [sel for sel, _ in page.filled] == [session.LOGIN_EMAIL]
-    assert page.waited_for_url
+    assert s._page is link_page and page.closed   # the session continues in the app's tab
 
 
-def test_login_takes_a_link_even_when_the_code_field_is_there(tmp_path):
-    page = _FakePage(code_field=True)
-    link = "https://claude.ai/magic-link?token=xyz"
+
+def test_login_takes_a_link_even_when_the_code_field_is_there(tmp_path, fast_link):
+    link_page = _FakeLinkPage(lands="app")
+    page = _FakePage(code_field=True, link_page=link_page)
     _session_on(tmp_path, page).login("me@example.test", lambda: link)
-    assert page.visited == [link] and [sel for sel, _ in page.filled] == [session.LOGIN_EMAIL]
+    assert link_page.visited == [link] and [sel for sel, _ in page.filled] == [session.LOGIN_EMAIL]
+
+
+def test_a_link_that_shows_a_code_types_it_into_the_login_tab(tmp_path, fast_link):
+    # Since 2026-10 claude.ai may answer a magic link with "Use verification code to continue:
+    # Enter this verification code where you first tried to sign in" instead of a session.
+    # Opening the link over the login tab lost that tab's code field and the login hung.
+    body = ("Claude\nUse verification code to continue\nEnter this verification code where you "
+            "first tried to sign in\n482913\nCopy code\nSign in here instead")
+    link_page = _FakeLinkPage(lands="code", body=body)
+    page = _FakePage(code_field=True, link_page=link_page)
+    s = _session_on(tmp_path, page)
+    s.login("me@example.test", lambda: link)
+    assert page.filled == [(session.LOGIN_EMAIL, "me@example.test"), (session.LOGIN_CODE, "482913")]
+    assert page.keyboard.presses[-1] == "Enter" and page.waited_for_url
+    assert link_page.closed and s._page is page
+
+
+def test_a_code_from_the_link_with_no_code_field_says_what_to_do(tmp_path, fast_link):
+    body = "Use verification code to continue\n482913"
+    page = _FakePage(code_field=False, link_page=_FakeLinkPage(lands="code", body=body))
+    with pytest.raises(SessionError) as caught:
+        _session_on(tmp_path, page).login("me@example.test", lambda: link)
+    assert "482913" not in str(caught.value) and "code" in str(caught.value)
+
+
+def test_digits_on_a_page_without_the_code_wording_are_not_a_code():
+    assert session.shown_code("Use verification code to continue\n482913") == "482913"
+    assert session.shown_code("Loading 2026 results 123456") is None
+    assert session.shown_code("verification code: 12345") is None   # six digits only
 
 
 def test_login_says_what_to_do_when_no_code_field_and_no_link(tmp_path):
@@ -318,12 +414,12 @@ def test_a_failed_link_navigation_never_echoes_the_link(tmp_path):
     # main() prints that and hands it to claude-log, so the raise here must not carry it.
     link = "https://claude.ai/magic-link?token=SECRET"
 
-    class _Exploding(_FakePage):
+    class _Exploding(_FakeLinkPage):
         def goto(self, url, wait_until=None):
             from playwright.sync_api import Error as PlaywrightError
             raise PlaywrightError(f'net::ERR_ABORTED at {url}')
 
-    page = _Exploding(code_field=False)
+    page = _FakePage(code_field=False, link_page=_Exploding())
     with pytest.raises(SessionError) as caught:
         _session_on(tmp_path, page).login("me@example.test", lambda: link)
     assert "SECRET" not in str(caught.value) and "magic-link" not in str(caught.value)
@@ -333,27 +429,30 @@ def test_a_failed_link_navigation_never_echoes_the_link(tmp_path):
 def test_a_challenge_after_the_sign_in_link_is_waited_out_and_then_raises(tmp_path, monkeypatch):
     # The link's landing page gets the same interstitial handling as any other navigation.
     monkeypatch.setattr(session, "LOGIN_CHALLENGE_S", 0.0)   # the deadline is already past
-    page = _FakePage(code_field=False, page_title=session.CHALLENGE_TITLE)
+    link_page = _FakeLinkPage(lands="app", page_title=session.CHALLENGE_TITLE)
+    page = _FakePage(code_field=False, link_page=link_page)
     with pytest.raises(session.Challenged):
         _session_on(tmp_path, page).login("me@example.test", lambda: "https://claude.ai/magic?t=1")
-    assert page.visited == ["https://claude.ai/magic?t=1"] and not page.waited_for_url
+    assert link_page.visited == ["https://claude.ai/magic?t=1"] and not page.waited_for_url
 
 
-def test_a_link_waits_for_the_session_not_merely_for_leaving_login(tmp_path):
+def test_a_link_waits_for_the_session_not_merely_for_leaving_login(tmp_path, fast_link):
     # The token rides in the URL fragment, which no server sees: the page exchanges it in
     # JavaScript and only then lands on /new. Waiting for "not /login" returned too early and
     # the next API call met account_session_invalid.
-    page = _FakePage(code_field=False)
-    _session_on(tmp_path, page).login("me@example.test", lambda: "https://claude.ai/magic?t=1")
-    assert page.waited_for is session.LOGGED_IN_URL
+    link_page = _FakeLinkPage(lands="app", polls_before_landing=3)
+    s = _session_on(tmp_path, _FakePage(code_field=False, link_page=link_page))
+    s.login("me@example.test", lambda: "https://claude.ai/magic?t=1")
+    assert link_page.polls_left == 0 and s._page is link_page
     assert session.LOGGED_IN_URL.search("https://claude.ai/new?foo=1")
     assert session.LOGGED_IN_URL.search("https://claude.ai/chat/9b5f9863-b55f-ed93-c0b7-a13557651def")
     assert not session.LOGGED_IN_URL.search("https://claude.ai/login")
     assert not session.LOGGED_IN_URL.search("https://claude.ai/magic-link#token")
 
 
-def test_a_link_that_never_reaches_the_app_fails_without_echoing_itself(tmp_path):
-    page = _FakePage(code_field=False, never_settles=True)
+def test_a_link_that_never_reaches_the_app_fails_without_echoing_itself(tmp_path, monkeypatch, fast_link):
+    monkeypatch.setattr(session, "LINK_SETTLE_MS", 0)
+    page = _FakePage(code_field=False, link_page=_FakeLinkPage(lands="stuck"))
     with pytest.raises(SessionError) as caught:
         _session_on(tmp_path, page).login("me@example.test", lambda: "https://claude.ai/magic?t=SECRET")
     assert "SECRET" not in str(caught.value) and "sign-in link" in str(caught.value)

@@ -35,6 +35,11 @@ SETTLE_TIMEOUT_MS = 30_000
 LOGGED_IN_URL = re.compile(r"claude\.ai/(new|chat)")
 # How long the sign-in link's page may take to exchange its fragment token for that session.
 LINK_SETTLE_MS = 60_000
+LINK_POLL_S = 0.5
+# Since 2026-10 a magic link may land on "Use verification code to continue" instead of a
+# session: a six-digit code to type "where you first tried to sign in", i.e. the login tab.
+CODE_PAGE_WORDS = re.compile(r"verification code", re.IGNORECASE)
+SHOWN_CODE = re.compile(r"(?<!\d)(\d{6})(?!\d)")
 # Cloudflare's interstitial keeps the route's URL; only its title gives it away. Headless
 # Chrome never clears it on this host (probed 2026-09-16: 25 s, no change, even holding a
 # cf_clearance cookie); a headed Chrome on the X display clears it in about a second. So the
@@ -128,6 +133,17 @@ def is_login_link(answer: str) -> bool:
         return False
     host = (parsed.hostname or "").lower()
     return parsed.scheme.lower() == "https" and (host == LOGIN_HOST or host.endswith("." + LOGIN_HOST))
+
+
+def shown_code(text: str) -> str | None:
+    """The six-digit code a magic link's page shows instead of a session, or None.
+
+    The code is a one-time credential like the link: typed into the login tab, never printed.
+    """
+    if not CODE_PAGE_WORDS.search(text):
+        return None
+    match = SHOWN_CODE.search(text)
+    return match.group(1) if match else None
 
 
 def x_display(sockets: Path = X_SOCKETS) -> str | None:
@@ -336,6 +352,41 @@ class Session:
             return False
         return True
 
+    def _follow_link(self, login_page, link: str) -> str | None:
+        """Open a sign-in link in a second tab: None once it holds a session, else the code it shows.
+
+        A second tab, because the link may answer with a code to type into the login tab, and
+        opening the link over that tab lost its code field: the login then hung on a URL that
+        never came. On a session the engine carries on in the link's tab and drops the other.
+        """
+        link_page = login_page.context.new_page()
+        self._page = link_page
+        try:
+            link_page.goto(link, wait_until="domcontentloaded")
+            # The link's own landing can be challenged like any other navigation, and a human
+            # is already at the screen here, so it gets the login deadline.
+            self.wait_out_challenge(LOGIN_CHALLENGE_S)
+            # A magic link carries its token in the URL fragment, which no server ever sees: the
+            # page's own JavaScript exchanges it for a session, and only then does claude.ai send
+            # the browser to /new. Leaving /login alone is not enough: the next API call met
+            # "account_session_invalid" while the exchange was still running.
+            deadline = time.monotonic() + LINK_SETTLE_MS / 1000
+            while True:
+                if LOGGED_IN_URL.search(link_page.url):
+                    login_page.close()
+                    return None
+                code = shown_code(link_page.inner_text("body"))
+                if code:
+                    link_page.close()
+                    self._page = login_page
+                    return code
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("the sign-in link reached neither the app nor a code")
+                time.sleep(LINK_POLL_S)
+        except BaseException:
+            self._page = login_page
+            raise
+
     def login(self, email: str, code_prompt: Callable[[], str]) -> None:
         # A human may have to tick Cloudflare's checkbox on the X display through the
         # streaming bridge, so the interstitial gets minutes here, not seconds.
@@ -352,25 +403,22 @@ class Session:
             link = is_login_link(answer)
             try:
                 if link:
-                    page.goto(answer, wait_until="domcontentloaded")
-                    # The link's own landing can be challenged like any other navigation, and
-                    # a human is already at the screen here, so it gets the login deadline.
-                    self.wait_out_challenge(LOGIN_CHALLENGE_S)
-                    # A magic link carries its token in the URL fragment, which no server ever
-                    # sees: the page's own JavaScript exchanges it for a session, and only then
-                    # does claude.ai send the browser to /new. The URL leaves /login the moment
-                    # the link opens, so waiting on that alone returned while the exchange was
-                    # still running, and the next API call met "account_session_invalid".
-                    page.wait_for_url(LOGGED_IN_URL, timeout=LINK_SETTLE_MS)
-                    return
-                elif code_field:
-                    page.fill(LOGIN_CODE, answer)
-                    page.keyboard.press("Enter")
-                else:
+                    code = self._follow_link(page, answer)
+                    if code is None:
+                        return
+                    if not self._code_field_appeared():
+                        raise SessionError(
+                            "the sign-in link showed a verification code, but the login page has "
+                            "no code field to type it in; run login again"
+                        )
+                    answer = code
+                elif not code_field:
                     raise SessionError(
                         "claude.ai showed no code field, and what you pasted is not an https "
                         "claude.ai sign-in link; open the mail, copy that link and paste it here"
                     )
+                page.fill(LOGIN_CODE, answer)
+                page.keyboard.press("Enter")
                 # The code path keeps the looser wait on purpose: claude.ai checks a typed code
                 # on the server and only redirects once it holds, so leaving /login here does
                 # mean a session. A link is the opposite, which is why it waits for the app.
