@@ -130,6 +130,11 @@
   archived data, vault hygiene. Its `README.md` Layout table is the index: read it
   FIRST and follow it to the area's doc before searching the disk or asking me.
   Found something real that those docs miss: add it there
+- My personal, non-tech life (people, projects, life admin, captured pages, photos,
+  documents): `~/42/SevenLeagues` (private, and it stays private: its `CLAUDE.md`
+  § Privacy binds every agent, wherever launched). Facts in `memory/` (git),
+  artifacts in `files/` (not in git, indexed by `files/README.md`); its
+  `README.md` "Where Louis's stuff lives" is the map
 - Generic dotfiles, skills, installs: `~/42/SpaceSuit` (public — nothing naming a
   machine, place, or address may land there)
 - Naming anything (machines, repos, bots, Telegram prefixes): GroundControl `docs/naming.md`
