@@ -1659,6 +1659,21 @@
             "only_devices": null,
             "variants": null,
             "fanout": false
+        },
+        "git_pre_commit_guard_42": {
+            "alias": "git_pre_commit_guard_42",
+            "main": "dotfiles/git_pre_commit_guard",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.config/git/hooks-templates/pre-commit",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
         }
     },
     "devices": {
