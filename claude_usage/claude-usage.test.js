@@ -594,7 +594,7 @@ test('decide: the hard rule fires per window, each on its own', () => {
 // ---------- the weekly entry bar: leave at switchAt, enter only under enterBelow ----------
 // Measured 2026-09-30 by driving work6 into its wall: the weekly meter lags a heavy load by ~3 points (96 for 13 min,
 // then 99, then 100 within 80 s), and with no entry bar the watcher handed the whole machine to work5 for its last 1%.
-const T97 = { ...T, switchAt: 97, enterBelow: 96 };
+const T97 = { ...T, switchAt: 97, enterBelow: 96, drainSwitchAt: 97, drainEnterBelow: 96 }; // one 97/96 line all week: these tests are about the bars, not the drain window
 test('unusable: the weekly bound is the caller\'s — the ceiling for live, the entry bar for a target', () => {
   const t = fresh();
   assert.equal(t.m.unusable(row('z', 0, 96), T97, T.sessionHot), null, 'live at 96 under a 97 ceiling still serves');
@@ -730,7 +730,7 @@ test('decideCodex: a plan with no 5-hour window is still a target; one with no r
 
 test('thresholds: defaults, overridden by state', () => {
   const t = fresh();
-  const defaults = { switchAt: 90, enterBelow: 89, drainSwitchAt: 97, drainEnterBelow: 96, drainWindowMs: 12 * 3_600_000, codexSwitchAt: 95, targetBelow: 85, fableCeiling: 90, sessionHot: 85, sessionWarm: 65, edfLeadMs: 7_200_000, minHoldMs: 600_000, blindAfter: 3 };
+  const defaults = { switchAt: 90, enterBelow: 89, drainSwitchAt: 98, drainEnterBelow: 97, drainWindowMs: 12 * 3_600_000, codexSwitchAt: 95, targetBelow: 85, fableCeiling: 90, sessionHot: 85, sessionWarm: 65, edfLeadMs: 7_200_000, minHoldMs: 600_000, blindAfter: 3 };
   assert.deepEqual(t.m.thresholds(), defaults);
   t.m.setState({ thresholds: { switchAt: 90 } });
   assert.deepEqual(t.m.thresholds(), { ...defaults, switchAt: 90 });
@@ -749,10 +749,11 @@ test('cmdAuto on: the EDF thresholds are settable by flag, persist, and the reti
 
 test('auto on from the command line: every flag reaches cmdAuto (--enter-below was once parsed and then dropped)', async () => {
   const t = fresh();
-  const { flags, args } = t.m.parseArgv(['on', '--switch-at', '95', '--enter-below', '93', '--drain-hours', '12']);
+  const { flags, args } = t.m.parseArgv(['on', '--switch-at', '95', '--enter-below', '93', '--drain-hours', '12', '--drain-switch-at', '99', '--drain-enter-below', '98']);
   await t.m.cmdAuto(args[0], t.m.autoOptsOf(flags));
   const th = t.m.thresholds();
   assert.equal(th.switchAt, 95); assert.equal(th.enterBelow, 93); assert.equal(th.drainWindowMs, 12 * 3_600_000);
+  assert.equal(th.drainSwitchAt, 99); assert.equal(th.drainEnterBelow, 98);
 });
 
 test('cmdAuto on: --fable-ceiling off stores null and says so; a number restores the gate', async () => {
@@ -952,14 +953,14 @@ test('statusline always shows the current account, red or not, and only it when 
   assert.equal(plain(t.m.statuslineText()), 'perso ⏳96% 📅57%', '96 is the entry bar, so red, so not room');
 });
 
-test('statusline: the same 96% week in its drain window is service on the current account and no room on a parked one', () => {
+test('statusline: the same 97% week in its drain window is service on the current account and no room on a parked one', () => {
   const t = fresh();
-  const soon = new Date(Date.now() + 5 * 3_600_000).toISOString(); // inside the default 12 h drain window: bounds 97 / 96
-  const rows = anthropicRows('perso'); rows.perso.usage = { session: { percent: 10 }, weekly: { percent: 96, resetsAt: soon } }; rows.work.usage = { session: { percent: 0 }, weekly: { percent: 96, resetsAt: soon } };
+  const soon = new Date(Date.now() + 5 * 3_600_000).toISOString(); // inside the default 12 h drain window: bounds 98 / 97
+  const rows = anthropicRows('perso'); rows.perso.usage = { session: { percent: 10 }, weekly: { percent: 97, resetsAt: soon } }; rows.work.usage = { session: { percent: 0 }, weekly: { percent: 97, resetsAt: soon } };
   seedMeter(t, rows);
   const line = t.m.statuslineText();
-  assert.ok(line.startsWith(`${ANSI.orange}perso${ANSI.reset}`), 'current at 96 is under the 97 ceiling: orange, still serving');
-  assert.doesNotMatch(line, /work/, 'parked at 96 is at the entry bar: the watcher will not enter it, so it is not room');
+  assert.ok(line.startsWith(`${ANSI.orange}perso${ANSI.reset}`), 'current at 97 is under the 98 ceiling: orange, still serving');
+  assert.doesNotMatch(line, /work/, 'parked at 97 is at the entry bar: the watcher will not enter it, so it is not room');
 });
 
 test('statusline colours each number on its own level and the name on the weekly one', () => {

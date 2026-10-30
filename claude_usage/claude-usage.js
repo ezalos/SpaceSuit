@@ -292,10 +292,11 @@ async function cmdSwitch(target, opts) {
 // are the wall margin and only 90..97 is spendable): the hard rule leaves at switchAt 90 and a target must sit under
 // enterBelow 89, so every spent week keeps its last points for a hand switch when nothing else has room. Inside the
 // drainWindowMs before an account's OWN weekly reset that reserve would be lost, so the account takes the measured wall
-// margin instead (drainSwitchAt 97 / drainEnterBelow 96) and EDF drains it first. 12 h: on the seat's own log
+// margin instead (drainSwitchAt 98 / drainEnterBelow 97; Louis, 2026-10-29: "the autoswitch should only fire from 98%
+// not 97", one point past the measured margin, taken knowingly) and EDF drains it first. 12 h: on the seat's own log
 // (2026-09-24..10-29, fully measured windows only) the LEAST busy 12-hour window burned 15.5 weekly points (p5 20,
 // median 47), against the 7 one reserve holds or the 14 of two whose windows overlap. 8 h fell to 10.7, under 14.
-const THRESHOLDS = { switchAt: 90, enterBelow: 89, drainSwitchAt: 97, drainEnterBelow: 96, drainWindowMs: 12 * 3_600_000, codexSwitchAt: 95, targetBelow: 85, fableCeiling: 90, sessionHot: 85, sessionWarm: 65, edfLeadMs: 7_200_000, minHoldMs: 600_000, blindAfter: 3 }; // targetBelow: the ChatGPT domain only (decideCodex); fableCeiling null = the Fable gate is off (`auto on --fable-ceiling off`)
+const THRESHOLDS = { switchAt: 90, enterBelow: 89, drainSwitchAt: 98, drainEnterBelow: 97, drainWindowMs: 12 * 3_600_000, codexSwitchAt: 95, targetBelow: 85, fableCeiling: 90, sessionHot: 85, sessionWarm: 65, edfLeadMs: 7_200_000, minHoldMs: 600_000, blindAfter: 3 }; // targetBelow: the ChatGPT domain only (decideCodex); fableCeiling null = the Fable gate is off (`auto on --fable-ceiling off`)
 // The meter is not the only evidence of a limit, and it is not always there. On 2026-09-15 perso's usage endpoint answered
 // 429 for nine ticks exactly while perso refused jobs (the granola sweep died at 18:45Z), and work2's for eleven while it
 // climbed from 65% to 100%: the meter goes blind when an account is busiest. Two answers: a refusal written by any run is
@@ -1834,11 +1835,11 @@ async function cmdAuto(sub, opts = {}) {
     return;
   }
   if (sub === 'off') { setState({ auto: false }); DARWIN ? launchdOff() : systemdOff(); log('auto OFF (watcher removed)'); return; }
-  if (sub !== 'on') die('usage: claude-usage auto on [--every <s>] [--switch-at <p>] [--enter-below <p>] [--drain-hours <h>] [--session-hot <p>] [--session-warm <p>] [--fable-ceiling <p>|off] [--edf-lead-hours <h>] [--min-hold-minutes <n>] [--target-below <p>] | off | status | tick');
+  if (sub !== 'on') die('usage: claude-usage auto on [--every <s>] [--switch-at <p>] [--enter-below <p>] [--drain-hours <h>] [--drain-switch-at <p>] [--drain-enter-below <p>] [--session-hot <p>] [--session-warm <p>] [--fable-ceiling <p>|off] [--edf-lead-hours <h>] [--min-hold-minutes <n>] [--target-below <p>] | off | status | tick');
   const interval = Math.max(30, Number(opts.every || state().interval || 60));
   const t = { ...thresholds() };
   const pct = (v) => Math.max(1, Math.min(100, Number(v)));
-  for (const [k, f] of [['switchAt', 'switch-at'], ['enterBelow', 'enter-below'], ['targetBelow', 'target-below'], ['sessionHot', 'session-hot'], ['sessionWarm', 'session-warm']]) if (opts[f] !== undefined) t[k] = pct(opts[f]);
+  for (const [k, f] of [['switchAt', 'switch-at'], ['enterBelow', 'enter-below'], ['drainSwitchAt', 'drain-switch-at'], ['drainEnterBelow', 'drain-enter-below'], ['targetBelow', 'target-below'], ['sessionHot', 'session-hot'], ['sessionWarm', 'session-warm']]) if (opts[f] !== undefined) t[k] = pct(opts[f]);
   if (opts['fable-ceiling'] !== undefined) t.fableCeiling = String(opts['fable-ceiling']) === 'off' ? null : pct(opts['fable-ceiling']); // off: Fable is not the model in use
   if (opts['edf-lead-hours'] !== undefined) t.edfLeadMs = Math.max(0, Number(opts['edf-lead-hours'])) * 3_600_000;
   if (opts['drain-hours'] !== undefined) t.drainWindowMs = Math.max(0, Number(opts['drain-hours'])) * 3_600_000;
@@ -1989,7 +1990,7 @@ function help() {
   switch [<name>] [--failover] hand every session on this machine to <name> (no name = the other one). The live pair
                                is parked into its record, <name>'s pair goes into Claude Code's store; sessions and
                                their subagents follow at their next request. --failover leaves "home" unchanged
-  auto on [--every <s>] [--switch-at <p>] [--enter-below <p>] [--drain-hours <h>] [--session-hot <p>] [--session-warm <p>] [--fable-ceiling <p>|off]
+  auto on [--every <s>] [--switch-at <p>] [--enter-below <p>] [--drain-hours <h>] [--drain-switch-at <p>] [--drain-enter-below <p>] [--session-hot <p>] [--session-warm <p>] [--fable-ceiling <p>|off]
           [--edf-lead-hours <h>] [--min-hold-minutes <n>] [--target-below <p>] | off | status | tick
                                watcher (systemd user timer / launchd): meter every account. Hard rule — the live
                                account cannot serve (a locked window, 5-hour ≥85%, weekly ≥95%, Fable ≥90% or off): move
@@ -2013,7 +2014,7 @@ that should follow switches. Never share tokens; files are 0600 under ${ROOT}.`)
 // Flags that take the NEXT argv token as their value (`--session-hot 80`). A flag missing from this list parses as the
 // boolean true and its value becomes a stray positional — which is how five threshold flags shipped broken once
 // (2026-09-21): every flag `auto on` reads must be here, and a retired one must not.
-const VALUE_FLAGS = ['fresh', 'email', 'every', 'switch-at', 'enter-below', 'drain-hours', 'target-below', 'fable-ceiling', 'session-hot', 'session-warm', 'edf-lead-hours', 'min-hold-minutes', 'by', 'since', 'until', 'repo', 'roots'];
+const VALUE_FLAGS = ['fresh', 'email', 'every', 'switch-at', 'enter-below', 'drain-hours', 'drain-switch-at', 'drain-enter-below', 'target-below', 'fable-ceiling', 'session-hot', 'session-warm', 'edf-lead-hours', 'min-hold-minutes', 'by', 'since', 'until', 'repo', 'roots'];
 // A LIST flag may repeat, its values joined with commas (`--fresh a --fresh b` = `--fresh a,b`); bare, it is true —
 // unless a value was already given, which a bare repeat must not erase.
 const LIST_FLAGS = ['fresh'];

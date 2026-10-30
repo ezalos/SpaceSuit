@@ -154,20 +154,21 @@ Switching (Louis asks "switch to work", "use the perso account", "which account 
       **≥ 89 %** (`enterBelow`). Every week keeps 7 spendable points (90 to 97): when nothing has room, the "no account can take
       the machine" alert lists those reserves (`reserve by hand (claude-usage switch <name>): ...`) and Louis takes one
       himself. The watcher never spends a reserve on its own, not even to save a dead machine;
-    - in the last **12 h** before that reset (`drainWindowMs`, `auto on --drain-hours <h>`): live leaves at **97 %** and
-      the entry bar is **96 %** (`drainSwitchAt` / `drainEnterBelow`), so the reserve, about to be lost, is drained.
+    - in the last **12 h** before that reset (`drainWindowMs`, `auto on --drain-hours <h>`): live leaves at **98 %** and
+      the entry bar is **97 %** (`drainSwitchAt` / `drainEnterBelow`, `auto on --drain-switch-at <p> --drain-enter-below <p>`), so the reserve, about to be lost, is drained.
       Its reset is the soonest, so EDF drains it first. 12 h was measured on the Lighthouse seat's own log
       (2026-09-24..10-29, fully measured windows only): the least busy 12-hour window burned 15.5 weekly points (p5 20,
       median 47), against the 7 one reserve holds or the 14 of two whose windows overlap; 8 h fell to 10.7.
     - The `edf` column says when a reserve opens: `weekly 92% ≥ 89% entry bar · reserve, opens in 3h12`. A reset that
       is unknown or already past (a stale reading) never opens one.
-    - 97 / 96 are measured, not guessed (2026-09-30, one account driven into its wall): under heavy load the weekly
-      meter lags by ~3 points (96 for 13 min, then 99, then 100 within 80 s); a request already streaming survives
+    - 97 / 96 was the measured margin and 98 / 97 is one point past it, Louis's call (2026-10-29), so a heavy load
+      can reach the wall before the switch lands. The measurement (2026-09-30, one account driven into its wall):
+      under heavy load the weekly meter lags by ~3 points (96 for 13 min, then 99, then 100 within 80 s); a request already streaming survives
       100 %; a NEW request past the wall is refused as a synthetic `rate_limit` turn that nothing retries, and a
-      subagent dies on it. Do not raise `drainSwitchAt` past 97 without a new measurement. The ChatGPT side keeps its
+      subagent dies on it. Do not raise `drainSwitchAt` past 98 without a new measurement. The ChatGPT side keeps its
       own 95 % (`codexSwitchAt`): its meter was not measured.
     - These thresholds persist in each machine's state: a new default changes nothing until
-      `claude-usage auto on --switch-at 90 --enter-below 89 --drain-hours 12` runs on that machine.
+      `claude-usage auto on --switch-at 90 --enter-below 89 --drain-hours 12 --drain-switch-at 98 --drain-enter-below 97` runs on that machine.
   - **Rotation** — otherwise, the EDF pick among usable accounts in the live account's tier or better (a last-resort account is
     never rotated onto), entered only when its own 5-hour window is under 65 % (`sessionWarm`), and only when it
     leads the live account's weekly reset by ≥ 2 h (`edfLeadMs`), or a preferred account has become usable while
