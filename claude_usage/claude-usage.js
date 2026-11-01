@@ -326,16 +326,21 @@ function worstOf(usage) {
   return ps.length ? Math.max(...ps) : null; // null: nothing readable. No caller may read that as room.
 }
 // Why this account cannot take the machine, or null when it can — the test both halves of a switch have to pass.
-// An Anthropic payload always carries BOTH the 5-hour and the weekly window, so a missing one is a degraded reading
-// and not a plan without that window: the account fails here rather than being scored on the half that did parse.
+// An Anthropic payload carries the weekly window and, until 2026-10-31, always the 5-hour one too: a missing window is a
+// degraded reading and not a plan without it, so the account fails here rather than being scored on the half that
+// parsed. The one exception is the 5-hour window the payload declares absent (sessionMissing, above).
 // ChatGPT plans genuinely differ (on Pro Lite there is no 5-hour window at all), so there the test is only that
 // something was readable. A locked window is unavailable at any percentage — the number describes a budget, the lock
 // describes the door.
+// Since 2026-10-31 Anthropic sends `five_hour: null` and no `session` limit: the plan has no 5-hour window any more.
+// That explicit absence (parseUsage's sessionAbsent, only beside a readable weekly) is not a failed read; a payload
+// that simply lacks the field still is.
+const sessionMissing = (u) => pctOf(u.session) === null && !u.sessionAbsent;
 function blockedFrom(row, limit) {
   const u = row.usage;
   if (!u) return 'no reading';
   if ((row.provider || 'anthropic') === 'anthropic') {
-    if (pctOf(u.session) === null) return '5-hour window unreadable';
+    if (sessionMissing(u)) return '5-hour window unreadable';
     if (pctOf(u.weekly) === null) return 'weekly window unreadable';
   }
   const locked = windowsOf(u).find((w) => w.locked);
@@ -447,7 +452,7 @@ function candidates({ rows, live, thresholds: t, limited = {} }) {
 function decide({ rows, live, thresholds: t, exhaustedSince, blind = 0, limited = {}, lastSwitchAt = 0 }) {
   const { parked, next, ok, refused } = candidates({ rows, live, thresholds: t, limited });
   const L = rows.find((r) => r.name === live);
-  const halfRead = (r) => (r?.provider || 'anthropic') === 'anthropic' && !!r?.usage && (pctOf(r.usage.session) === null || pctOf(r.usage.weekly) === null);
+  const halfRead = (r) => (r?.provider || 'anthropic') === 'anthropic' && !!r?.usage && (sessionMissing(r.usage) || pctOf(r.usage.weekly) === null);
   // worstOf !== null first: halfRead is an OR, so it is true of a row where NOTHING parsed too, and that row's reason
   // is 'no window readable' — naming one window implies the other answered.
   const why = (r) => r?.error || (!r?.usage ? 'missing' : r.usage.at && Date.now() - r.usage.at > DECIDE_MAX_AGE_MS ? `last reading ${Math.round((Date.now() - r.usage.at) / 60e3)} min old` : worstOf(r.usage) !== null && halfRead(r) ? blockedFrom(r, Infinity) : 'no window readable');
@@ -1181,7 +1186,8 @@ function parseUsage(d) {
   const spend = d.spend || {};
   const extra = { enabled: !!d.extra_usage?.is_enabled, percent: spend.percent ?? (typeof d.extra_usage?.utilization === 'number' ? Math.round(d.extra_usage.utilization) : null),
     currency: spend.limit?.currency || d.extra_usage?.currency || null, usedMinor: spend.used?.amount_minor ?? null, limitMinor: spend.limit?.amount_minor ?? null, exponent: spend.limit?.exponent ?? 2 };
-  return { session, weekly, scoped: [...scoped, ...others], extra, breakdown: d.seven_day_breakdown?.rows || null, at: Date.now() };
+  const sessionAbsent = !session && d.five_hour === null && !lim.some((x) => x.kind === 'session') && !!weekly;
+  return { session, sessionAbsent, weekly, scoped: [...scoped, ...others], extra, breakdown: d.seven_day_breakdown?.rows || null, at: Date.now() };
 }
 
 // ---------- the ChatGPT (Codex) accounts behind the local model gateway ----------

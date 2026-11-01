@@ -1423,6 +1423,35 @@ test('decide: a blind live row with nowhere to go stays put', () => {
   assert.equal(d.action, 'none', 'switching into an account over sessionHot buys nothing');
 });
 
+// Since 2026-10-31 the usage endpoint sends five_hour: null and no session limit (payload read live that day).
+const NO_FIVE_HOUR = (pct) => ({ five_hour: null, seven_day: { utilization: pct, resets_at: '2026-11-06T12:00:00Z', locked_reason: null },
+  limits: [{ kind: 'weekly_all', group: 'weekly', percent: pct, severity: 'normal', resets_at: '2026-11-06T12:00:00Z', scope: null, is_active: true }] });
+
+test('parseUsage: a payload that declares no 5-hour window parses as weekly-only, not as a failed read', () => {
+  const t = fresh();
+  const u = t.m.parseUsage(NO_FIVE_HOUR(26));
+  assert.equal(u.session, null); assert.equal(u.sessionAbsent, true); assert.equal(u.weekly.percent, 26);
+  assert.equal(t.m.unusable({ name: 'w', usage: u }, T, T.sessionHot, 'entry'), null, 'a weekly-only account with room is usable');
+});
+
+test('parseUsage MUST-FAIL: a payload missing the five_hour key, or with no weekly, stays a degraded reading', () => {
+  const t = fresh();
+  const p = NO_FIVE_HOUR(26); delete p.five_hour;
+  const u = t.m.parseUsage(p);
+  assert.equal(u.sessionAbsent, false);
+  assert.match(t.m.unusable({ name: 'w', usage: u }, T, T.sessionHot, 'entry'), /5-hour window unreadable/);
+  const noWeekly = t.m.parseUsage({ five_hour: null, seven_day: null, limits: [] });
+  assert.equal(noWeekly.sessionAbsent, false, 'absence is trusted only beside a readable weekly');
+});
+
+test('decide: with no 5-hour windows anywhere, a spent live account fails over to the weekly-only account with room', () => {
+  const t = fresh();
+  const live = { name: 'work1', checkedOut: true, usage: t.m.parseUsage(NO_FIVE_HOUR(100)) };
+  const spare = { name: 'work4', usage: t.m.parseUsage(NO_FIVE_HOUR(25)) };
+  const d = t.m.decide({ rows: [live, spare], live: 'work1', thresholds: T, exhaustedSince: null, blind: 0 });
+  assert.equal(d.action, 'failover'); assert.equal(d.to, 'work4');
+});
+
 test('decide: a half-readable live row is a degraded reading — it joins the blind streak, never the hard rule', () => {
   const t = fresh();
   const half = { name: 'work7', checkedOut: true, usage: { session: null, weekly: { percent: 20 }, scoped: [] } };
