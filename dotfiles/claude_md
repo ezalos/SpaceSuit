@@ -17,6 +17,9 @@
   the session's cwd: my tmux window is often in another repo, and a relative path is
   unfindable <!-- 2026-10-30: dossier paths like `mails/outbox/x.md` given from a SevenLeagues subfolder, Louis was in GroundControl, both cats failed -->.
   The `~/` form, not `/home/…`, keeps it short
+- Print every URL bare and in full, never as a markdown `[label](url)` link: in my
+  terminal a label is coloured text that no click or modifier key opens <!-- 2026-11-05: a Gmail draft link, WezTerm on the Mac -->.
+  A URL long enough to wrap also gets a fallback, such as a draft's subject line
 - Commands for me to run go FIRST in the reply, never buried at the end. Never
   `!`-prefix a `sudo` line: `!` runs non-interactively with no tty, so sudo cannot
   prompt and the line dies on "a terminal is required to read the password" <!-- 2026-08-20: four install lines lost this way -->.
@@ -46,6 +49,9 @@
 - Bug reports: just fix them — logs, root cause, fix. No hand-holding
 - After any correction from me: record the pattern (project memory or tasks/lessons.md);
   write the rule on the second occurrence, not the first
+- Where a rule goes: could it matter to an agent working outside this repo? Yes: this
+  file (or the machine's local file), never project memory, which other repos do not
+  load. Memory is only for what stays true and useful inside this one project
 - A workstream with a project memory entry: read the FULL memory file before acting,
   not just the index line — it holds the remotes, access paths, and prior decisions
   that prevent failed first attempts
