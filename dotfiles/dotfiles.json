@@ -1313,9 +1313,7 @@
                 "Louiss.MacBook.Pro.3.local.ezalos",
                 "TheBeast.ezalos"
             ],
-            "variants": {
-                "Louiss.MacBook.Pro.3.local.ezalos": "~/42/GroundControl/secrets/ssh/config.mbp3"
-            },
+            "variants": null,
             "fanout": false
         },
         "claude_usage": {
