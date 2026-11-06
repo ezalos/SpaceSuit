@@ -47,11 +47,10 @@
   designing their container <!-- 2026-08-04 dashboard: every layout defect was invisible to a green test suite and obvious in one 390px capture; three rounds of container rework came from not checking the assets were portrait -->
 - Non-trivial change? Ask "is there a more elegant way". Simple fix? Don't over-engineer
 - Bug reports: just fix them — logs, root cause, fix. No hand-holding
-- After any correction from me: record the pattern (project memory or tasks/lessons.md);
-  write the rule on the second occurrence, not the first
-- Where a rule goes: could it matter to an agent working outside this repo? Yes: this
-  file (or the machine's local file), never project memory, which other repos do not
-  load. Memory is only for what stays true and useful inside this one project
+- After any correction from me, ask: could this matter to an agent working outside this
+  repo? Yes: write the rule at once in this file (or the machine's local file), never
+  in project memory, which other repos do not load. No: record the pattern in project
+  memory or tasks/lessons.md, and write the rule on the second occurrence, not the first
 - A workstream with a project memory entry: read the FULL memory file before acting,
   not just the index line — it holds the remotes, access paths, and prior decisions
   that prevent failed first attempts
