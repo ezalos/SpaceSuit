@@ -1610,6 +1610,10 @@
                 "Louiss.MacBook.Pro.3.local.ezalos": {
                     "deploy_path": "/Users/ezalos/.local/bin/tfind",
                     "backups": []
+                },
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/tfind",
+                    "backups": []
                 }
             },
             "only_devices": null,
@@ -1664,6 +1668,36 @@
             "deploy": {
                 "TheBeast.ezalos": {
                     "deploy_path": "/home/ezalos/.config/git/hooks-templates/pre-commit",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
+        },
+        "claude-draft": {
+            "alias": "claude-draft",
+            "main": "~/42/GroundControl/claude-draft/bin/claude-draft",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/claude-draft",
+                    "backups": []
+                }
+            },
+            "only_devices": [
+                "TheBeast.ezalos"
+            ],
+            "variants": null,
+            "fanout": false
+        },
+        "claude-draft-tap": {
+            "alias": "claude-draft-tap",
+            "main": "~/42/GroundControl/claude-draft/bin/claude-draft-tap",
+            "deploy": {
+                "TheBeast.ezalos": {
+                    "deploy_path": "/home/ezalos/.local/bin/claude-draft-tap",
                     "backups": []
                 }
             },
