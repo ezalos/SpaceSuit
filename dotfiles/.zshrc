@@ -796,7 +796,19 @@ claude() {
         fi
         dir=${dir:h}
     done
-    command claude --enable-auto-mode --rc "${tree[@]}" "$@"
+    # claude-draft-tap: crash recovery for Louis's own unsent prompts (private
+    # tool, GroundControl claude-draft/; design docs/plans/2026-10-18-claude-
+    # draft-recovery-design.md). Trial phase: opt-in only (CLAUDE_DRAFT=on),
+    # one tmux window at a time -- flip to opt-out (!= off) once
+    # `claude-draft check --since 7d` comes back clean. A no-op wherever the
+    # tool isn't installed, stdin/stdout aren't both real terminals, or this
+    # is already a tapped nested launch (CLAUDE_DRAFT_TAP set).
+    if [[ "$CLAUDE_DRAFT" == on && -z "$CLAUDE_DRAFT_TAP" && -t 0 && -t 1 ]] \
+            && command -v claude-draft-tap >/dev/null 2>&1; then
+        command claude-draft-tap -- claude --enable-auto-mode --rc "${tree[@]}" "$@"
+    else
+        command claude --enable-auto-mode --rc "${tree[@]}" "$@"
+    fi
 }
 # claudetg disabled 2026-05-28: telegram channel leaked 100%-CPU `bun server.ts` orphans on session crash. Plugin also off in claude_settings; notify-louis (outbound) unaffected.
 # claudetg() { command claude --enable-auto-mode --channels plugin:telegram@claude-plugins-official --rc "$@"; }
